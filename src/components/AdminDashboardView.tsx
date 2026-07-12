@@ -382,7 +382,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
           <div className="space-y-6">
             {history.map((log) => (
               <div className="flex gap-4" key={log.id}>
-                <div className={`mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                <div className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${
                   log.type === 'alert' ? 'bg-[#ba1a1a]' : log.type === 'update' ? 'bg-[#0037b0]' : 'bg-[#515f74]'
                 }`} />
                 <div>

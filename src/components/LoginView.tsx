@@ -78,7 +78,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       </div>
 
       {/* Main Container */}
-      <main className="relative z-10 w-full max-w-[1200px] flex items-stretch min-h-[700px] shadow-2xl rounded-xl overflow-hidden mx-4 md:mx-10 bg-white">
+      <main className="relative z-10 w-full max-w-300 flex items-stretch min-h-175 shadow-2xl rounded-xl overflow-hidden mx-4 md:mx-10 bg-white">
         
         {/* Left Column: Institutional Branding */}
         <section className="hidden lg:flex flex-col justify-between w-1/2 p-12 bg-[#3a485c] text-white">
@@ -123,7 +123,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
         {/* Right Column: Portal Login Form */}
         <section className="w-full lg:w-1/2 p-8 md:p-12 flex flex-col justify-center">
-          <div className="max-w-[400px] mx-auto w-full space-y-6">
+          <div className="max-w-100 mx-auto w-full space-y-6">
             
             {/* Mobile Branding */}
             <div className="lg:hidden flex items-center space-x-3 mb-6">
@@ -323,7 +323,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             {/* Disclaimer Section */}
             <footer className="pt-6 border-t border-[#c4c5d7] mt-8">
               <div className="flex items-start space-x-3">
-                <Gavel className="w-5 h-5 text-[#ba1a1a] flex-shrink-0 mt-0.5" />
+                <Gavel className="w-5 h-5 text-[#ba1a1a] shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="text-xs font-bold text-[#191c1d]">Official Government Use Only</p>
                   <p className="text-[10px] text-[#434655] leading-relaxed">
