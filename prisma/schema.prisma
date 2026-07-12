@@ -1,0 +1,416 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ─────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  RESEARCH_OFFICER
+  RESEARCH_ASSISTANT
+  MP
+}
+
+enum RequestStatus {
+  SUBMITTED
+  ASSIGNED
+  IN_PROGRESS
+  DRAFT_SUBMITTED
+  REVISION_REQUESTED
+  REVISED
+  APPROVED
+  DELIVERED
+  CLOSED
+}
+
+enum Priority {
+  STANDARD
+  URGENT
+}
+
+enum NotificationType {
+  REQUEST_SUBMITTED
+  REQUEST_ASSIGNED
+  REPORT_UPLOADED
+  REVISION_REQUESTED
+  REPORT_APPROVED
+  REPORT_DELIVERED
+  GENERAL
+}
+
+enum FileType {
+  PDF
+  DOCX
+  XLSX
+  ZIP
+}
+
+enum ActivityAction {
+  CREATED
+  UPDATED
+  ASSIGNED
+  STATUS_CHANGED
+  FILE_UPLOADED
+  COMMENT_ADDED
+  APPROVED
+  REJECTED
+  DEACTIVATED
+  LOGIN
+  LOGOUT
+}
+
+// ─── Department ─────────────────────────────────────────
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+
+  @@map("departments")
+}
+
+// ─── User ───────────────────────────────────────────────
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           Role
+  title          String?
+  phone          String?
+  avatarUrl      String?
+  initials       String
+  isActive       Boolean   @default(true)
+  departmentId   String?
+  constituency   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastLoginAt    DateTime?
+
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  // Research requests submitted by this user (as MP)
+  submittedRequests ResearchRequest[] @relation("RequestSubmitter")
+
+  // Research requests assigned to this user (as Officer)
+  assignedRequests  ResearchRequest[] @relation("AssignedOfficer")
+
+  // Research reports authored by this user
+  authoredReports ResearchReport[] @relation("ReportAuthor")
+
+  // Reports reviewed by this user
+  reviewedReports ReviewComment[] @relation("CommentAuthor")
+
+  // Notifications
+  notifications Notification[] @relation("NotificationRecipient")
+
+  // Activity logs
+  activities ActivityLog[] @relation("ActivityAuthor")
+
+  // Reports uploaded by this user
+  uploadedReports ResearchReport[] @relation("ReportUploader")
+
+  // Assignments
+  assignmentsMade   Assignment[] @relation("AssignmentAssigner")
+  assignmentsTaken  Assignment[] @relation("AssignmentAssignee")
+
+  // Attachments uploaded by this user
+  uploadedAttachments Attachment[] @relation("AttachmentUploader")
+
+  // Cross-committee sharing
+  sharedResearch SharedResearch[] @relation("SharedBy")
+
+  // Teams
+  ledTeams      ResearchTeam[] @relation("TeamLead")
+  teamMemberships TeamMember[]
+
+  @@map("users")
+}
+
+// ─── Committee ──────────────────────────────────────────
+
+enum CommitteeType {
+  STANDING
+  SELECT
+  JOINT
+  AD_HOC
+}
+
+model Committee {
+  id            String        @id @default(uuid())
+  name          String        @unique
+  shortName     String?
+  description   String?
+  committeeType CommitteeType @default(STANDING)
+  chairperson   String?
+  clerk         String?
+  jurisdiction  String?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  requests ResearchRequest[]
+  sharedResearch SharedResearch[] @relation("SharedCommittee")
+
+  @@map("committees")
+}
+
+// ─── Research Request ───────────────────────────────────
+
+model ResearchRequest {
+  id                  String        @id @default(uuid())
+  requestNumber       String        @unique
+  title               String
+  subject             String?
+  description         String
+  scope               String?
+  keyStakeholders     String?
+  dataSources         String?
+  language            String        @default("English")
+  priority            Priority      @default(STANDARD)
+  status              RequestStatus @default(SUBMITTED)
+  deadline            DateTime
+  dateSubmitted       DateTime      @default(now())
+  dateAssigned        DateTime?
+  dateCompleted       DateTime?
+  dateDelivered       DateTime?
+  dateClosed          DateTime?
+  draftVersion        Int           @default(0)
+  categoryId          String?
+  submitterId         String
+  assignedOfficerId   String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  category   Committee?        @relation(fields: [categoryId], references: [id])
+  submitter  User             @relation("RequestSubmitter", fields: [submitterId], references: [id])
+  officer    User?            @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id])
+
+  reports     ResearchReport[]
+  comments    ReviewComment[]
+  attachments Attachment[]
+  assignments Assignment[]
+  sharedWith  SharedResearch[] @relation("SharedWith")
+  teamId      String?
+  team        ResearchTeam? @relation(fields: [teamId], references: [id])
+
+  @@map("research_requests")
+}
+
+// ─── Assignment ─────────────────────────────────────────
+
+model Assignment {
+  id              String    @id @default(uuid())
+  requestId       String
+  assignedById    String
+  assignedToId    String?
+  teamId          String?
+  deadline        DateTime
+  notes           String?
+  acceptedAt      DateTime?
+  declinedAt      DateTime?
+  declineReason   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  request   ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  assignedBy User           @relation("AssignmentAssigner", fields: [assignedById], references: [id])
+  assignedTo User?          @relation("AssignmentAssignee", fields: [assignedToId], references: [id])
+  team      ResearchTeam?   @relation(fields: [teamId], references: [id])
+
+  @@map("assignments")
+}
+
+// ─── Research Team ──────────────────────────────────────
+
+model ResearchTeam {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  leadId      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lead            User?           @relation("TeamLead", fields: [leadId], references: [id])
+  members         TeamMember[]
+  assignments     Assignment[]
+  requests        ResearchRequest[]
+
+  @@map("research_teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  team ResearchTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+// ─── Research Report ────────────────────────────────────
+
+model ResearchReport {
+  id            String    @id @default(uuid())
+  requestId     String
+  authorId      String
+  uploadedById  String?
+  title         String
+  content       String?
+  filePath      String?
+  fileType      FileType?
+  fileSize      Int?
+  version       Int       @default(1)
+  isDraft       Boolean   @default(true)
+  isApproved    Boolean   @default(false)
+  approvedAt    DateTime?
+  approvedById  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  request    ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author     User            @relation("ReportAuthor", fields: [authorId], references: [id])
+  uploader   User?           @relation("ReportUploader", fields: [uploadedById], references: [id])
+
+  versions    ReportVersion[]
+  comments    ReviewComment[]
+
+  @@map("research_reports")
+}
+
+// ─── Report Version ─────────────────────────────────────
+
+model ReportVersion {
+  id         String    @id @default(uuid())
+  reportId   String
+  version    Int
+  content    String?
+  filePath   String?
+  fileType   FileType?
+  fileSize   Int?
+  notes      String?
+  createdAt  DateTime  @default(now())
+
+  report ResearchReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, version])
+  @@map("report_versions")
+}
+
+// ─── Review Comment ─────────────────────────────────────
+
+model ReviewComment {
+  id         String    @id @default(uuid())
+  reportId   String
+  requestId  String
+  authorId   String
+  section    String?
+  text       String
+  resolved   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  report  ResearchReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  request ResearchRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author  User             @relation("CommentAuthor", fields: [authorId], references: [id])
+
+  @@map("review_comments")
+}
+
+// ─── Attachment ─────────────────────────────────────────
+
+model Attachment {
+  id          String    @id @default(uuid())
+  requestId   String
+  uploadedById String
+  name        String
+  fileType    FileType
+  filePath    String
+  fileSize    Int?
+  createdAt   DateTime  @default(now())
+
+  request  ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  uploader User            @relation("AttachmentUploader", fields: [uploadedById], references: [id])
+
+  @@map("attachments")
+}
+
+// ─── Cross-Committee Sharing ─────────────────────────────
+
+model SharedResearch {
+  id             String   @id @default(uuid())
+  requestId      String
+  sharedWithId   String
+  sharedById     String
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  request    ResearchRequest @relation("SharedWith", fields: [requestId], references: [id], onDelete: Cascade)
+  sharedWith Committee       @relation("SharedCommittee", fields: [sharedWithId], references: [id], onDelete: Cascade)
+  sharedBy   User            @relation("SharedBy", fields: [sharedById], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, sharedWithId])
+  @@map("shared_research")
+}
+
+// ─── Notification ───────────────────────────────────────
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  type        NotificationType
+  title       String
+  message     String
+  link        String?
+  isRead      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ─── Activity Log ───────────────────────────────────────
+
+model ActivityLog {
+  id          String         @id @default(uuid())
+  authorId    String?
+  action      ActivityAction
+  entityType  String
+  entityId    String
+  description String
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  author User? @relation("ActivityAuthor", fields: [authorId], references: [id])
+
+  @@map("activity_logs")
+}
+
+// ─── Settings ───────────────────────────────────────────
+
+model Setting {
+  id    String @id @default(uuid())
+  key   String @unique
+  value Json
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}

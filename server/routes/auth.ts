@@ -1,0 +1,156 @@
+import { Router } from "express";
+import bcrypt from "bcryptjs";
+import prisma from "../lib/prisma.js";
+import { generateToken, authenticateToken } from "../middleware/auth.js";
+
+const router = Router();
+
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        authorId: user.id,
+        action: "LOGIN",
+        entityType: "User",
+        entityId: user.id,
+        description: `${user.firstName} ${user.lastName} logged in`,
+      },
+    });
+
+    const token = generateToken({ userId: user.id, role: user.role });
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        title: user.title,
+        initials: user.initials,
+        avatarUrl: user.avatarUrl,
+        departmentId: user.departmentId,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      return res.json({ message: "If an account exists, a reset link has been sent" });
+    }
+
+    // In production: generate reset token, send email via PHPMailer/SMTP
+    res.json({ message: "If an account exists, a reset link has been sent" });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/profile", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user!.userId;
+    const { firstName, lastName, title, phone, constituency } = req.body;
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(firstName && { firstName }),
+        ...(lastName && { lastName }),
+        ...(title !== undefined && { title }),
+        ...(phone !== undefined && { phone }),
+        ...(constituency !== undefined && { constituency }),
+      },
+      select: { id: true, firstName: true, lastName: true, role: true, title: true, initials: true, email: true, departmentId: true, constituency: true },
+    });
+
+    res.json(user);
+  } catch (error) {
+    console.error("Profile update error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/change-password", authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user!.userId;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current and new password are required" });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const validPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        authorId: userId,
+        action: "UPDATED",
+        entityType: "User",
+        entityId: userId,
+        description: "Password changed",
+      },
+    });
+
+    res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+export default router;
