@@ -17,7 +17,7 @@ export const StatisticsView: React.FC = () => {
   }, []);
 
   const totalRequests = analytics?.requestsByStatus?.reduce((sum: number, s: any) => sum + s._count, 0) || 0;
-  const completedRequests = analytics?.requestsByStatus?.find((s: any) => s.status === 'APPROVED')?._count || 0;
+  const completedRequests = analytics?.requestsByStatus?.filter((s: any) => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(s.status)).reduce((sum: number, s: any) => sum + s._count, 0) || 0;
   const officersCount = analytics?.officersWorkload?.length || 0;
 
   return (

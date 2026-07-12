@@ -12,9 +12,10 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    getRequests({ status: 'APPROVED' })
+    getRequests({ limit: 200 })
       .then((data) => {
-        if (Array.isArray(data)) setArchived(data);
+        const requests = Array.isArray(data) ? data : (data?.requests || []);
+        setArchived(requests.filter((r: any) => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)));
         setLoading(false);
       })
       .catch(() => setLoading(false));

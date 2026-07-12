@@ -10,6 +10,12 @@ function generateRequestNumber(): string {
   return `REQ-${year}-${seq}`;
 }
 
+function lookupByIdOrNumber(idOrNumber: string): any {
+  return idOrNumber.startsWith('REQ-')
+    ? { requestNumber: idOrNumber }
+    : { id: idOrNumber };
+}
+
 // List requests (filtered by role)
 router.get("/", authenticateToken, async (req, res) => {
   try {
@@ -64,7 +70,7 @@ router.get("/", authenticateToken, async (req, res) => {
 router.get("/:id", authenticateToken, async (req, res) => {
   try {
     const request = await prisma.researchRequest.findUnique({
-      where: { id: req.params.id },
+      where: lookupByIdOrNumber(req.params.id),
       include: {
         category: true,
         submitter: { select: { id: true, firstName: true, lastName: true, initials: true, title: true, email: true } },
@@ -156,13 +162,13 @@ router.put("/:id", authenticateToken, async (req, res) => {
   try {
     const { title, subject, description, scope, keyStakeholders, dataSources, language, priority, deadline, categoryId, status } = req.body;
 
-    const existing = await prisma.researchRequest.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.researchRequest.findUnique({ where: lookupByIdOrNumber(req.params.id) });
     if (!existing) {
       return res.status(404).json({ error: "Request not found" });
     }
 
     const updated = await prisma.researchRequest.update({
-      where: { id: req.params.id },
+      where: { id: existing.id },
       data: {
         ...(title && { title }),
         ...(subject !== undefined && { subject }),
@@ -200,13 +206,13 @@ router.put("/:id", authenticateToken, async (req, res) => {
 // Cancel request
 router.post("/:id/cancel", authenticateToken, async (req, res) => {
   try {
-    const request = await prisma.researchRequest.findUnique({ where: { id: req.params.id } });
+    const request = await prisma.researchRequest.findUnique({ where: lookupByIdOrNumber(req.params.id) });
     if (!request) {
       return res.status(404).json({ error: "Request not found" });
     }
 
     const updated = await prisma.researchRequest.update({
-      where: { id: req.params.id },
+      where: { id: request.id },
       data: { status: "CLOSED", dateClosed: new Date() },
     });
 

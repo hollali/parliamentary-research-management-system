@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, ResearchRequest, NotificationItem, HistoryItem, AppState, Comment, Attachment, Role } from '../types';
-import { loginApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile } from '../lib/api';
+import { loginApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile, getActivityLog } from '../lib/api';
 
 interface AppContextType extends AppState {
   login: (email: string, password?: string) => Promise<boolean> | boolean;
@@ -86,7 +86,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>(() => {
+    const saved = localStorage.getItem('prrms_history');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   const [preferences, setPreferences] = useState<AppState['preferences']>(() => {
     const savedPrefs = localStorage.getItem('prrms_prefs');
@@ -122,17 +125,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     getNotifications().then((data: any) => {
       if (data?.notifications) {
+        const typeMap: Record<string, NotificationItem['type']> = {
+          REQUEST_SUBMITTED: 'RESEARCH',
+          REQUEST_ASSIGNED: 'COLLABORATION',
+          REPORT_UPLOADED: 'RESEARCH',
+          REVISION_REQUESTED: 'WARNING',
+          REPORT_APPROVED: 'CRITICAL',
+          REPORT_DELIVERED: 'CRITICAL',
+          GENERAL: 'RESEARCH',
+        };
         const mapped = data.notifications.map((n: any) => ({
           id: n.id,
           title: n.title,
           message: n.message,
           time: new Date(n.createdAt).toLocaleString(),
-          type: n.type as NotificationItem['type'],
+          type: typeMap[n.type] || 'RESEARCH',
           read: n.isRead,
           link: n.link,
         }));
         setNotifications(mapped);
       }
+    }).catch(() => {});
+
+    getActivityLog({ limit: 20 }).then((data: any) => {
+      const logs = data?.activity || [];
+      const mapped: HistoryItem[] = logs.map((a: any) => ({
+        id: a.id,
+        userName: a.author ? `${a.author.firstName} ${a.author.lastName}` : 'System',
+        text: a.description || `${a.action} ${a.entityType}`,
+        time: new Date(a.createdAt).toLocaleString(),
+        sector: a.entityType,
+        type: (a.action === 'DELETE' ? 'alert' : a.action === 'UPDATE' ? 'update' : 'normal') as HistoryItem['type'],
+      }));
+      setHistory(mapped);
     }).catch(() => {});
   }, [isOnline]);
 
@@ -269,6 +294,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     // Persist to backend if online
+    let apiFailed = false;
     if (isOnline) {
       const req = requests.find(r => r.id === requestId);
       try {
@@ -281,46 +307,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await updateRequest(requestId, { status: backendStatus });
         }
       } catch {
-        // Fall through to local-only
+        apiFailed = true;
       }
     }
 
-    setRequests(prev => prev.map(req => {
-      if (req.id === requestId) {
-        return { ...req, status };
-      }
-      return req;
-    }));
+    if (!apiFailed) {
+      setRequests(prev => prev.map(req => {
+        if (req.id === requestId) {
+          return { ...req, status };
+        }
+        return req;
+      }));
 
-    // Notify relevant parties
-    const reqTitle = requests.find(r => r.id === requestId)?.title || 'Request';
-    const newNotif: NotificationItem = {
-      id: 'notif_' + Date.now(),
-      title: `Status Update: ${requestId}`,
-      message: `"${reqTitle}" status changed to ${status.replace('_', ' ')}`,
-      time: 'Just now',
-      type: 'RESEARCH',
-      read: false
-    };
-    setNotifications(prev => [newNotif, ...prev]);
+      // Notify relevant parties
+      const reqTitle = requests.find(r => r.id === requestId)?.title || 'Request';
+      const newNotif: NotificationItem = {
+        id: 'notif_' + Date.now(),
+        title: `Status Update: ${requestId}`,
+        message: `"${reqTitle}" status changed to ${status.replace('_', ' ')}`,
+        time: 'Just now',
+        type: 'RESEARCH',
+        read: false
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+    }
   };
 
   const updateRequestPriority = async (requestId: string, priority: ResearchRequest['priority']) => {
+    if (isOnline) {
+      try {
+        await updateRequest(requestId, { priority });
+      } catch (err) {
+        console.error('Failed to update priority:', err);
+        return;
+      }
+    }
+
     setRequests(prev => prev.map(req => {
       if (req.id === requestId) {
         return { ...req, priority };
       }
       return req;
     }));
-
-    if (isOnline) {
-      try {
-        // Find the real DB id from the requestNumber
-        await updateRequest(requestId, { priority });
-      } catch (err) {
-        console.error('Failed to update priority:', err);
-      }
-    }
 
     const newNotif: NotificationItem = {
       id: 'notif_' + Date.now(),
@@ -334,20 +362,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const extendRequestDeadline = async (requestId: string, newDeadline: string) => {
+    if (isOnline) {
+      try {
+        await updateRequest(requestId, { deadline: newDeadline });
+      } catch (err) {
+        console.error('Failed to extend deadline:', err);
+        return;
+      }
+    }
+
     setRequests(prev => prev.map(req => {
       if (req.id === requestId) {
         return { ...req, deadline: newDeadline };
       }
       return req;
     }));
-
-    if (isOnline) {
-      try {
-        await updateRequest(requestId, { deadline: newDeadline });
-      } catch (err) {
-        console.error('Failed to extend deadline:', err);
-      }
-    }
 
     const newNotif: NotificationItem = {
       id: 'notif_' + Date.now(),

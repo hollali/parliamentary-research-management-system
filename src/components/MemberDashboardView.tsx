@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
-import { getDownloadUrl } from '../lib/api';
+import { getDownloadUrl, uploadFile } from '../lib/api';
 import { ResearchRequest } from '../types';
 import { 
   BarChart3, 
@@ -11,17 +11,14 @@ import {
   FileCheck, 
   Download, 
   ChevronRight, 
-  ArrowRight,
-  RefreshCw,
   Send,
-  UserCheck,
   Upload
 } from 'lucide-react';
 
 export const MemberDashboardView: React.FC = () => {
-  const { requests, currentUser, addComment, uploadAttachment, updateRequestPriority } = useApp();
+  const { requests, currentUser, addComment, updateRequestPriority } = useApp();
   const { toast } = useToast();
-  const memberRequests = requests.filter(r => r.member === currentUser.name || r.member.includes('Abena') || r.member.includes('Kwame') || r.member.includes('Appiah'));
+  const memberRequests = requests.filter(r => r.member === currentUser.name);
   
   // Default to first request if available
   const [selectedRequestId, setSelectedRequestId] = useState<string>(
@@ -247,14 +244,9 @@ export const MemberDashboardView: React.FC = () => {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file && activeRequest) {
-                      let type: 'pdf' | 'xlsx' | 'docx' = 'pdf';
-                      if (file.name.toLowerCase().endsWith('.xlsx')) type = 'xlsx';
-                      if (file.name.toLowerCase().endsWith('.docx')) type = 'docx';
-                      uploadAttachment(activeRequest.id, {
-                        name: file.name,
-                        type,
-                        size: (file.size / (1024 * 1024)).toFixed(1) + ' MB'
-                      });
+                      uploadFile(activeRequest.id, file)
+                        .then(() => toast.success(`"${file.name}" uploaded successfully.`))
+                        .catch(() => toast.error('Failed to upload file'));
                     }
                   }}
                 />

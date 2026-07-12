@@ -232,7 +232,7 @@ export async function compareReportVersions(reportId: string, v1: number, v2: nu
 export async function shareWithCommittee(requestId: string, committeeId: string, notes?: string) {
   return request(`/requests/${requestId}/share`, {
     method: 'POST',
-    body: JSON.stringify({ committeeId, notes }),
+    body: { committeeId, notes },
   });
 }
 
@@ -259,7 +259,7 @@ export async function acceptAssignment(assignmentId: string) {
 export async function declineAssignment(assignmentId: string, reason?: string) {
   return request(`/assignments/${assignmentId}/decline`, {
     method: 'POST',
-    body: JSON.stringify({ reason }),
+    body: { reason },
   });
 }
 

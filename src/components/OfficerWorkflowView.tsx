@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
-import { acceptAssignment, declineAssignment } from '../lib/api';
+import { acceptAssignment, declineAssignment, uploadFile, getToken } from '../lib/api';
 import { ResearchRequest } from '../types';
 import { 
   Inbox, 
@@ -25,8 +25,10 @@ interface OfficerWorkflowViewProps {
   onNavigate: (view: string, targetId?: string) => void;
 }
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
 export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavigate }) => {
-  const { requests, updateRequestStatus, uploadAttachment } = useApp();
+  const { requests, updateRequestStatus } = useApp();
   const { toast } = useToast();
   
   // Officer's assigned requests
@@ -44,18 +46,18 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
 
   const handleAccept = async () => {
     try {
-      // Find the assignment for this request
-      const res = await fetch(`/api/assignments?requestId=${activeRequest.id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` },
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/assignments/pending`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      const assignments = await res.json();
-      const myAssignment = Array.isArray(assignments) ? assignments.find((a: any) => a.requestId === activeRequest.id && !a.acceptedAt && !a.declinedAt) : null;
+      const data = await res.json();
+      const assignments = Array.isArray(data) ? data : (data?.requests || []);
+      const myAssignment = Array.isArray(assignments) ? assignments.find((a: any) => a.id && a.requestId === activeRequest.id) : null;
       if (myAssignment) {
         await acceptAssignment(myAssignment.id);
         toast.success('Assignment accepted');
         handleStatusChange('IN_PROGRESS');
       } else {
-        // Direct accept via status change
         handleStatusChange('IN_PROGRESS');
         toast.success('Assignment accepted');
       }
@@ -66,11 +68,13 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
 
   const handleDecline = async () => {
     try {
-      const res = await fetch(`/api/assignments?requestId=${activeRequest.id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` },
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/assignments/pending`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      const assignments = await res.json();
-      const myAssignment = Array.isArray(assignments) ? assignments.find((a: any) => a.requestId === activeRequest.id && !a.acceptedAt && !a.declinedAt) : null;
+      const data = await res.json();
+      const assignments = Array.isArray(data) ? data : (data?.requests || []);
+      const myAssignment = Array.isArray(assignments) ? assignments.find((a: any) => a.id && a.requestId === activeRequest.id) : null;
       if (myAssignment) {
         await declineAssignment(myAssignment.id);
         toast.success('Assignment declined');
@@ -87,28 +91,28 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
     e.preventDefault();
   };
 
-  const handleDropDraft = (e: React.DragEvent) => {
+  const handleDropDraft = async (e: React.DragEvent) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files) as File[];
     if (files.length > 0) {
-      uploadAttachment(activeRequest.id, {
-        name: files[0].name,
-        size: (files[0].size / (1024 * 1024)).toFixed(1) + ' MB',
-        type: 'pdf'
-      });
-      toast.success(`Report draft "${files[0].name}" uploaded to briefing #${activeRequest.id}.`);
+      try {
+        await uploadFile(activeRequest.id, files[0]);
+        toast.success(`"${files[0].name}" uploaded successfully.`);
+      } catch {
+        toast.error('Failed to upload file');
+      }
     }
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []) as File[];
     if (files.length > 0) {
-      uploadAttachment(activeRequest.id, {
-        name: files[0].name,
-        size: (files[0].size / (1024 * 1024)).toFixed(1) + ' MB',
-        type: 'pdf'
-      });
-      toast.success(`Report draft "${files[0].name}" uploaded to briefing #${activeRequest.id}.`);
+      try {
+        await uploadFile(activeRequest.id, files[0]);
+        toast.success(`"${files[0].name}" uploaded successfully.`);
+      } catch {
+        toast.error('Failed to upload file');
+      }
     }
   };
 
@@ -217,9 +221,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
                       >
                         <option value="ASSIGNED">Assigned</option>
                         <option value="IN_PROGRESS">In Progress</option>
-                        <option value="REVISION_IN_PROGRESS">Under Revision</option>
                         <option value="COMPLETED">Completed</option>
-                        <option value="OVERDUE">Overdue</option>
                       </select>
                     </>
                   )}
