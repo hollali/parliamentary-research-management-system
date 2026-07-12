@@ -28,7 +28,19 @@ const fileFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
   if (ALLOWED_MIMETYPES[file.mimetype]) {
     cb(null, true);
   } else {
-    cb(new Error("Only PDF, DOCX, XLSX, and ZIP files are allowed"));
+    // Fallback: check file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    const ALLOWED_EXTENSIONS: Record<string, string> = {
+      ".pdf": "pdf",
+      ".docx": "docx",
+      ".xlsx": "xlsx",
+      ".zip": "zip",
+    };
+    if (ALLOWED_EXTENSIONS[ext]) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF, DOCX, XLSX, and ZIP files are allowed"));
+    }
   }
 };
 
