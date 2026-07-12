@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
-import { Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
+import { changePassword } from '../lib/api';
+import { Settings as SettingsIcon, ShieldCheck, Lock, Eye, EyeOff } from 'lucide-react';
 
 interface SettingsViewProps {
   onSignOut: () => void;
@@ -14,6 +15,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSignOut }) => {
   const [pEmail, setPEmail] = useState(currentUser.email);
   const [pConstituency, setPConstituency] = useState((currentUser as any).constituency || '');
   const [saving, setSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [changingPw, setChangingPw] = useState(false);
 
   const handleUpdate = async () => {
     setSaving(true);
@@ -27,6 +34,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSignOut }) => {
       toast.error(err.message || 'Failed to update profile');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPassword || !newPassword) {
+      toast.error('Please fill in all password fields');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    setChangingPw(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      toast.success('Password changed successfully');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to change password');
+    } finally {
+      setChangingPw(false);
     }
   };
 
@@ -88,6 +123,66 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSignOut }) => {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm overflow-hidden">
+        <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex items-center gap-2">
+          <Lock className="w-5 h-5 text-[#0037b0]" />
+          <h3 className="font-sans font-bold text-[#191c1d]">Change Password</h3>
+        </div>
+        <form onSubmit={handleChangePassword} className="p-6 space-y-4">
+          <div className="space-y-1 max-w-md">
+            <label className="text-xs font-bold text-[#434655] uppercase">Current Password</label>
+            <div className="relative">
+              <input
+                type={showCurrentPw ? 'text' : 'password'}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+                className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 text-xs outline-none pr-10"
+              />
+              <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#747686] hover:text-[#191c1d]">
+                {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-lg">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#434655] uppercase">New Password</label>
+              <div className="relative">
+                <input
+                  type={showNewPw ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min. 8 characters"
+                  className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 text-xs outline-none pr-10"
+                />
+                <button type="button" onClick={() => setShowNewPw(!showNewPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#747686] hover:text-[#191c1d]">
+                  {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#434655] uppercase">Confirm Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter new password"
+                className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 text-xs outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={changingPw}
+              className="bg-[#0037b0] text-white font-bold text-xs px-4 py-2 rounded shadow hover:bg-[#1d4ed8] transition-all disabled:opacity-50"
+            >
+              {changingPw ? 'Changing...' : 'Update Password'}
+            </button>
+          </div>
+        </form>
       </div>
 
       <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm p-6 space-y-4">

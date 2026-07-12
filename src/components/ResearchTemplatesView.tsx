@@ -114,6 +114,54 @@ export const ResearchTemplatesView: React.FC = () => {
   const { toast } = useToast();
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [copied, setCopied] = useState(false);
+  const [customTemplates, setCustomTemplates] = useState<Template[]>(() => {
+    const saved = localStorage.getItem('prrms_custom_templates');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [customName, setCustomName] = useState('');
+  const [customDescription, setCustomDescription] = useState('');
+  const [showNewForm, setShowNewForm] = useState(false);
+
+  const allTemplates = [...TEMPLATES, ...customTemplates];
+
+  const saveCustomTemplates = (templates: Template[]) => {
+    setCustomTemplates(templates);
+    localStorage.setItem('prrms_custom_templates', JSON.stringify(templates));
+  };
+
+  const handleCreateCustom = () => {
+    if (!customName.trim()) {
+      toast.error('Template name is required');
+      return;
+    }
+    const newTemplate: Template = {
+      id: `custom-${Date.now()}`,
+      name: customName.trim(),
+      description: customDescription.trim() || 'Custom research template',
+      category: 'Custom',
+      icon: <FileText className="w-5 h-5" />,
+      sections: [
+        { heading: 'Introduction', prompt: 'Provide context and purpose of this research document.' },
+        { heading: 'Methodology', prompt: 'Describe the research approach and data sources used.' },
+        { heading: 'Findings', prompt: 'Present the key findings with supporting evidence.' },
+        { heading: 'Analysis', prompt: 'Interpret findings and discuss implications.' },
+        { heading: 'Recommendations', prompt: 'Provide actionable recommendations based on the analysis.' },
+      ],
+    };
+    saveCustomTemplates([...customTemplates, newTemplate]);
+    setCustomName('');
+    setCustomDescription('');
+    setShowNewForm(false);
+    setSelectedTemplate(newTemplate);
+    toast.success('Custom template created');
+  };
+
+  const handleDeleteCustom = (templateId: string) => {
+    const updated = customTemplates.filter((t) => t.id !== templateId);
+    saveCustomTemplates(updated);
+    if (selectedTemplate?.id === templateId) setSelectedTemplate(null);
+    toast.success('Template deleted');
+  };
 
   const generateMarkdown = (template: Template): string => {
     let md = `# ${template.name}\n\n`;
@@ -137,13 +185,56 @@ export const ResearchTemplatesView: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      <div>
-        <h2 className="font-sans font-bold text-2xl text-[#191c1d]">Research Output Templates</h2>
-        <p className="font-sans text-sm text-[#434655] mt-1">Pre-defined report structures for common research deliverables.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-sans font-bold text-2xl text-[#191c1d]">Research Output Templates</h2>
+          <p className="font-sans text-sm text-[#434655] mt-1">Pre-defined report structures for common research deliverables.</p>
+        </div>
+        <button
+          onClick={() => setShowNewForm(!showNewForm)}
+          className="bg-[#0037b0] text-white text-xs font-bold px-4 py-2 rounded shadow hover:bg-[#1d4ed8] transition-all"
+        >
+          {showNewForm ? 'Cancel' : '+ New Template'}
+        </button>
       </div>
 
+      {showNewForm && (
+        <div className="bg-white border border-[#0037b0] rounded-lg shadow-sm p-6 space-y-4">
+          <h3 className="font-bold text-sm text-[#191c1d]">Create Custom Template</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#434655] uppercase">Template Name</label>
+              <input
+                type="text"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="e.g. Budget Analysis Brief"
+                className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 text-xs outline-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#434655] uppercase">Description</label>
+              <input
+                type="text"
+                value={customDescription}
+                onChange={(e) => setCustomDescription(e.target.value)}
+                placeholder="Brief description of the template purpose"
+                className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 text-xs outline-none"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-gray-400">New templates include 5 default sections (Introduction, Methodology, Findings, Analysis, Recommendations). You can copy and customize after creation.</p>
+          <button
+            onClick={handleCreateCustom}
+            className="bg-[#0037b0] text-white text-xs font-bold px-4 py-2 rounded shadow hover:bg-[#1d4ed8] transition-all"
+          >
+            Create Template
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {TEMPLATES.map((t) => (
+        {allTemplates.map((t) => (
           <div
             key={t.id}
             className={`bg-white border rounded-lg shadow-sm p-5 cursor-pointer transition-all hover:shadow-md ${
@@ -167,16 +258,26 @@ export const ResearchTemplatesView: React.FC = () => {
               <span className="text-[10px] text-gray-400 font-semibold">
                 {t.sections.length} sections
               </span>
-              <button
-                onClick={(e) => { e.stopPropagation(); handleCopy(t); }}
-                className="text-[10px] font-bold text-[#0037b0] hover:underline flex items-center gap-1"
-              >
-                {copied && selectedTemplate?.id === t.id ? (
-                  <><CheckCircle2 className="w-3 h-3" /> Copied</>
-                ) : (
-                  <><Copy className="w-3 h-3" /> Copy Template</>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleCopy(t); }}
+                  className="text-[10px] font-bold text-[#0037b0] hover:underline flex items-center gap-1"
+                >
+                  {copied && selectedTemplate?.id === t.id ? (
+                    <><CheckCircle2 className="w-3 h-3" /> Copied</>
+                  ) : (
+                    <><Copy className="w-3 h-3" /> Copy</>
+                  )}
+                </button>
+                {t.id.startsWith('custom-') && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteCustom(t.id); }}
+                    className="text-[10px] font-bold text-[#ba1a1a] hover:underline"
+                  >
+                    Delete
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
           </div>
         ))}

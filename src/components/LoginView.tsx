@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Shield, BookOpen, Mail, Lock, Eye, EyeOff, Gavel, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { forgotPassword } from '../lib/api';
+import { Shield, BookOpen, Mail, Lock, Eye, EyeOff, Gavel, ArrowRight, CheckCircle2, ArrowLeft } from 'lucide-react';
 
 interface LoginViewProps {
   onLoginSuccess: () => void;
@@ -13,6 +14,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +45,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       onLoginSuccess();
     } else {
       setError('Demo login failed. Is the backend running?');
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    setForgotLoading(true);
+    try {
+      await forgotPassword(forgotEmail);
+      setForgotSent(true);
+    } catch {
+      setForgotSent(true);
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -123,8 +142,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </div>
 
             <header>
-              <h2 className="text-2xl font-bold text-[#191c1d] mb-1">Portal Login</h2>
-              <p className="text-sm text-[#434655]">Enter your official credentials to access the system.</p>
+              <h2 className="text-2xl font-bold text-[#191c1d] mb-1">{showForgot ? 'Reset Password' : 'Portal Login'}</h2>
+              <p className="text-sm text-[#434655]">
+                {showForgot
+                  ? 'Enter your registered email to receive a password reset link.'
+                  : 'Enter your official credentials to access the system.'}
+              </p>
             </header>
 
             {error && (
@@ -133,6 +156,54 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               </div>
             )}
 
+            {showForgot ? (
+              forgotSent ? (
+                <div className="space-y-4">
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-lg text-xs font-semibold space-y-1">
+                    <p className="font-bold">Reset link sent</p>
+                    <p>If an account exists with <span className="font-bold">{forgotEmail}</span>, a password reset link has been sent. Check your inbox and follow the instructions.</p>
+                  </div>
+                  <button
+                    onClick={() => { setShowForgot(false); setForgotSent(false); setForgotEmail(''); }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-[#0037b0] hover:underline"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back to login
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider flex items-center gap-2" htmlFor="forgot-email">
+                      <Mail className="w-4 h-4 text-[#747686]" />
+                      Registered Email Address
+                    </label>
+                    <input
+                      id="forgot-email"
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="name@parliament.gov"
+                      className="w-full px-4 py-3 bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg focus:ring-2 focus:ring-[#0037b0] outline-none text-sm font-sans"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="w-full bg-[#0037b0] hover:bg-[#1d4ed8] text-white py-3.5 rounded-lg text-sm font-bold transition-all duration-200 shadow-md active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {forgotLoading ? 'Sending...' : 'Send Reset Link'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowForgot(false); setForgotEmail(''); }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-[#0037b0] hover:underline"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back to login
+                  </button>
+                </form>
+              )
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Email Address */}
               <div className="space-y-1">
@@ -158,7 +229,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     <Lock className="w-4 h-4 text-[#747686]" />
                     Password
                   </label>
-                  <a href="#forgot" className="text-xs text-[#0037b0] hover:underline" onClick={(e) => e.preventDefault()}>Forgot password?</a>
+                  <a href="#forgot" className="text-xs text-[#0037b0] hover:underline" onClick={(e) => { e.preventDefault(); setShowForgot(true); }}>Forgot password?</a>
                 </div>
                 <div className="relative">
                   <input 
@@ -203,7 +274,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
+            )}
 
+            {!showForgot && (
+            <>
             {/* Quick Demo Logins block */}
             <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-2.5">
               <h4 className="text-xs font-bold text-[#0039b5] uppercase tracking-wider flex items-center gap-1.5">
@@ -269,6 +343,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 </div>
               </div>
             </footer>
+            </>
+            )}
           </div>
         </section>
       </main>
