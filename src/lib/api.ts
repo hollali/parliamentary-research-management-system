@@ -288,10 +288,10 @@ export async function createReview(data: {
   return request('/reviews/', { method: 'POST', body: data });
 }
 
-export async function requestRevision(data: { reportId: string; requestId: string }) {
-  return request(`/reviews/${data.reportId}/request-revision`, {
+export async function requestRevision(data: { reportId: string; requestId: string; commentText?: string }) {
+  return request('/reviews/request-revision', {
     method: 'POST',
-    body: { requestId: data.requestId },
+    body: { requestId: data.requestId, commentText: data.commentText },
   });
 }
 

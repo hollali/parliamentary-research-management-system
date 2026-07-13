@@ -6,10 +6,10 @@ import path from "path";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import { fileURLToPath } from "url";
+import JWT_SECRET from "../lib/jwt.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "../../uploads");
-const JWT_SECRET = process.env.JWT_SECRET || "prrms-dev-secret";
 
 const router = Router();
 
@@ -117,6 +117,15 @@ router.post(
       });
       if (!request) {
         return res.status(404).json({ error: "Request not found" });
+      }
+
+      // Authorization: only the submitter, assigned officer, or admin can upload
+      const { role, userId } = req.user!;
+      const isSubmitter = request.submitterId === userId;
+      const isOfficer = request.assignedOfficerId === userId;
+      const isAdmin = role === "ADMIN";
+      if (!isSubmitter && !isOfficer && !isAdmin) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const ext = req.file.originalname.split(".").pop()?.toUpperCase();

@@ -155,13 +155,17 @@ router.put("/:commentId/resolve", authenticateToken, async (req, res) => {
 });
 
 // Request revision
-router.post("/:commentId/request-revision", authenticateToken, requireRole("ADMIN"), async (req, res) => {
+router.post("/request-revision", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
-    const { requestId } = req.body;
+    const { requestId, commentText } = req.body;
 
-    const comment = await prisma.reviewComment.findUnique({ where: { id: req.params.commentId } });
-    if (!comment) {
-      return res.status(404).json({ error: "Comment not found" });
+    if (!requestId) {
+      return res.status(400).json({ error: "requestId is required" });
+    }
+
+    const requestObj = await prisma.researchRequest.findUnique({ where: { id: requestId } });
+    if (!requestObj) {
+      return res.status(404).json({ error: "Request not found" });
     }
 
     await prisma.researchRequest.update({
@@ -210,7 +214,7 @@ router.post("/:commentId/request-revision", authenticateToken, requireRole("ADMI
       }
     }
 
-    const emailText = comment.text || "Please review the feedback and revise your draft.";
+    const emailText = commentText || "Please review the feedback and revise your draft.";
 
     for (const [recipientId, recipient] of recipientMap) {
       if (await shouldNotify(recipientId, 'statusChanges')) {

@@ -206,6 +206,13 @@ model ResearchRequest {
   teamId      String?
   team        ResearchTeam? @relation(fields: [teamId], references: [id])
 
+  @@index([submitterId])
+  @@index([assignedOfficerId])
+  @@index([status])
+  @@index([priority])
+  @@index([deadline])
+  @@index([categoryId])
+  @@index([teamId])
   @@map("research_requests")
 }
 
@@ -230,6 +237,8 @@ model Assignment {
   assignedTo User?          @relation("AssignmentAssignee", fields: [assignedToId], references: [id])
   team      ResearchTeam?   @relation(fields: [teamId], references: [id])
 
+  @@index([requestId])
+  @@index([assignedToId])
   @@map("assignments")
 }
 
@@ -292,6 +301,8 @@ model ResearchReport {
   versions    ReportVersion[]
   comments    ReviewComment[]
 
+  @@index([requestId])
+  @@index([authorId])
   @@map("research_reports")
 }
 
@@ -337,6 +348,9 @@ model ReviewComment {
   parent   ReviewComment?   @relation("CommentReplies", fields: [parentId], references: [id])
   replies  ReviewComment[]   @relation("CommentReplies")
 
+  @@index([reportId])
+  @@index([requestId])
+  @@index([parentId])
   @@map("review_comments")
 }
 
@@ -355,6 +369,7 @@ model Attachment {
   request  ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   uploader User            @relation("AttachmentUploader", fields: [uploadedById], references: [id])
 
+  @@index([requestId])
   @@map("attachments")
 }
 
@@ -390,6 +405,8 @@ model Notification {
 
   recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
 
+  @@index([recipientId])
+  @@index([recipientId, isRead])
   @@map("notifications")
 }
 
@@ -407,6 +424,8 @@ model ActivityLog {
 
   author User? @relation("ActivityAuthor", fields: [authorId], references: [id])
 
+  @@index([authorId])
+  @@index([entityType, entityId])
   @@map("activity_logs")
 }
 

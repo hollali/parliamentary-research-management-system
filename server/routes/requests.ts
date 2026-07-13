@@ -38,11 +38,20 @@ router.get("/", authenticateToken, async (req, res) => {
     if (priority) where.priority = priority;
     if (categoryId) where.categoryId = categoryId;
     if (search) {
-      where.OR = [
-        { title: { contains: search as string, mode: "insensitive" } },
-        { requestNumber: { contains: search as string, mode: "insensitive" } },
-        { description: { contains: search as string, mode: "insensitive" } },
-      ];
+      const searchFilter = {
+        OR: [
+          { title: { contains: search as string, mode: "insensitive" } },
+          { requestNumber: { contains: search as string, mode: "insensitive" } },
+          { description: { contains: search as string, mode: "insensitive" } },
+        ],
+      };
+      // Combine role filter with search using AND to preserve access control
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, searchFilter];
+        delete where.OR;
+      } else {
+        where.OR = searchFilter.OR;
+      }
     }
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -177,6 +186,20 @@ router.put("/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Request not found" });
     }
 
+    // Authorization: only the submitter, assigned officer, or admin can update
+    const { role, userId } = req.user!;
+    const isSubmitter = existing.submitterId === userId;
+    const isOfficer = existing.assignedOfficerId === userId;
+    const isAdmin = role === "ADMIN";
+    if (!isSubmitter && !isOfficer && !isAdmin) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // MPs can only update their own request metadata, not status
+    if (role === "MP" && status && status !== existing.status) {
+      return res.status(403).json({ error: "Cannot change status" });
+    }
+
     const updated = await prisma.researchRequest.update({
       where: { id: existing.id },
       data: {
@@ -219,6 +242,14 @@ router.post("/:id/cancel", authenticateToken, async (req, res) => {
     const request = await prisma.researchRequest.findUnique({ where: lookupByIdOrNumber(req.params.id) });
     if (!request) {
       return res.status(404).json({ error: "Request not found" });
+    }
+
+    // Authorization: only the submitter or admin can cancel
+    const { role, userId } = req.user!;
+    const isSubmitter = request.submitterId === userId;
+    const isAdmin = role === "ADMIN";
+    if (!isSubmitter && !isAdmin) {
+      return res.status(403).json({ error: "Access denied" });
     }
 
     const updated = await prisma.researchRequest.update({

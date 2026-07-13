@@ -30,6 +30,15 @@ router.get("/", authenticateToken, async (req, res) => {
 // Mark notification as read
 router.put("/:id/read", authenticateToken, async (req, res) => {
   try {
+    // Verify the notification belongs to the authenticated user
+    const existing = await prisma.notification.findUnique({ where: { id: req.params.id }, select: { recipientId: true } });
+    if (!existing) {
+      return res.status(404).json({ error: "Notification not found" });
+    }
+    if (existing.recipientId !== req.user!.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     const notification = await prisma.notification.update({
       where: { id: req.params.id },
       data: { isRead: true },
