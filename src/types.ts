@@ -1,4 +1,4 @@
-export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'RESEARCH_OFFICER' | 'RESEARCH_ASSISTANT' | 'MP';
+export type Role = 'ADMIN' | 'RESEARCH_OFFICER' | 'RESEARCH_ASSISTANT' | 'MP';
 
 export interface Committee {
   id: string;
@@ -38,6 +38,7 @@ export interface Comment {
   time: string;
   text: string;
   section?: string;
+  highlightedText?: string;
   resolved?: boolean;
 }
 
@@ -61,6 +62,9 @@ export interface ResearchRequest {
   member: string; // Member who requested
   assignedOfficerId: string | null; // ID of Officer
   assignedOfficerName: string | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  assignedOfficers?: { id: string; firstName: string; lastName: string; initials: string }[];
   status: 'PENDING_REVIEW' | 'ASSIGNED' | 'IN_PROGRESS' | 'REVISION_REQUESTED' | 'REVISION_IN_PROGRESS' | 'OVERDUE' | 'COMPLETED';
   priority: 'STANDARD' | 'URGENT';
   dateSubmitted: string;

@@ -126,6 +126,41 @@ export function revisionRequestedEmail(officerName: string, requestNumber: strin
   return { subject, html };
 }
 
+export function commentAddedEmail(
+  officerName: string,
+  requestNumber: string,
+  title: string,
+  section: string,
+  comment: string,
+  highlightedText?: string | null,
+) {
+  const subject = `New review comment on ${requestNumber}`;
+  const highlightBlock = highlightedText
+    ? `<p style="margin: 8px 0 0 0;"><strong>Highlighted text:</strong></p><blockquote style="border-left: 3px solid #0037b0; padding-left: 12px; margin: 8px 0; color: #555; font-style: italic;">"${highlightedText}"</blockquote>`
+    : "";
+  const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #3a485c; padding: 20px; text-align: center;">
+        <h1 style="color: white; font-size: 18px; margin: 0;">PRRMS Review Comment</h1>
+      </div>
+      <div style="padding: 24px; background: #f9fafb;">
+        <p>Dear ${officerName},</p>
+        <p>An admin has left a review comment on your draft:</p>
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <p style="margin: 0;"><strong>Request:</strong> ${requestNumber}</p>
+          <p style="margin: 8px 0 0 0;"><strong>Title:</strong> ${title}</p>
+          <p style="margin: 8px 0 0 0;"><strong>Section:</strong> ${section}</p>
+          ${highlightBlock}
+          <p style="margin: 8px 0 0 0;"><strong>Comment:</strong></p>
+          <p style="margin: 8px 0 0 0; color: #555; font-style: italic;">"${comment}"</p>
+        </div>
+        <a href="${FRONTEND_URL}" style="display: inline-block; background: #0037b0; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px;">Open in Portal</a>
+        <p style="color: #888; font-size: 11px; margin-top: 24px;">Parliamentary Research Department — PRRMS</p>
+      </div>
+    </div>`;
+  return { subject, html };
+}
+
 export function overdueAlertEmail(recipientName: string, requestNumber: string, title: string, deadline: string) {
   const subject = `OVERDUE: ${requestNumber} — ${title}`;
   const html = `

@@ -54,7 +54,7 @@ router.get("/:teamId", authenticateToken, async (req, res) => {
 });
 
 // Create team
-router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { name, description, leadId, memberIds } = req.body;
     if (!name) return res.status(400).json({ error: "Team name is required" });
@@ -98,7 +98,7 @@ router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (
 });
 
 // Update team
-router.put("/:teamId", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.put("/:teamId", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { name, description, leadId } = req.body;
     const team = await prisma.researchTeam.update({
@@ -124,7 +124,7 @@ router.put("/:teamId", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), a
 });
 
 // Add members to team
-router.post("/:teamId/members", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/:teamId/members", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { userIds } = req.body;
     if (!userIds?.length) return res.status(400).json({ error: "userIds required" });
@@ -151,7 +151,7 @@ router.post("/:teamId/members", authenticateToken, requireRole("ADMIN", "SUPER_A
 });
 
 // Remove member from team
-router.delete("/:teamId/members/:userId", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.delete("/:teamId/members/:userId", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     await prisma.teamMember.deleteMany({
       where: { teamId: req.params.teamId, userId: req.params.userId },
@@ -163,7 +163,7 @@ router.delete("/:teamId/members/:userId", authenticateToken, requireRole("ADMIN"
 });
 
 // Deactivate team
-router.delete("/:teamId", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.delete("/:teamId", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     await prisma.researchTeam.update({
       where: { id: req.params.teamId },

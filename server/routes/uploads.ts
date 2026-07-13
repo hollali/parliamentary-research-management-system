@@ -69,7 +69,7 @@ router.get("/:attachmentId/download", async (req, res) => {
 
     const isSubmitter = attachment.request.submitterId === userId;
     const isOfficer = attachment.request.assignedOfficerId === userId;
-    const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+    const isAdmin = role === "ADMIN";
 
     if (!isSubmitter && !isOfficer && !isAdmin) {
       return res.status(403).json({ error: "Access denied" });

@@ -79,7 +79,7 @@ router.get("/", authenticateToken, async (req, res) => {
 router.get("/analytics", authenticateToken, async (req, res) => {
   try {
     const { role } = req.user!;
-    if (role !== "ADMIN" && role !== "SUPER_ADMIN") {
+    if (role !== "ADMIN") {
       return res.status(403).json({ error: "Insufficient permissions" });
     }
 
@@ -163,7 +163,7 @@ router.get("/activity", authenticateToken, async (req, res) => {
 });
 
 // Officer workload balancing stats
-router.get("/workload", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (_req, res) => {
+router.get("/workload", authenticateToken, requireRole("ADMIN"), async (_req, res) => {
   try {
     const officers = await prisma.user.findMany({
       where: { role: "RESEARCH_OFFICER", isActive: true },

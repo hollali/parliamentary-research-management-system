@@ -280,6 +280,9 @@ export async function createReview(data: {
   requestId: string;
   section?: string;
   text: string;
+  highlightedText?: string;
+  startOffset?: number;
+  endOffset?: number;
 }) {
   return request('/reviews/', { method: 'POST', body: data });
 }

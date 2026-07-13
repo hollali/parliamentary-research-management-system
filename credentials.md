@@ -4,16 +4,11 @@ All users share the same password: **`password123`**
 
 ---
 
-## Super Admin
-
-| Name | Email | Role |
-|------|-------|------|
-| Kwame Asante | `admin@parliament.gh` | SUPER_ADMIN |
-
 ## Admin
 
 | Name | Email | Role |
 |------|-------|------|
+| Kwame Asante | `admin@parliament.gh` | ADMIN |
 | Ama Mensah | `research.director@parliament.gh` | ADMIN |
 
 ## Research Officers

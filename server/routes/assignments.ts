@@ -6,7 +6,7 @@ import { sendEmail, assignmentEmail } from "../lib/email.js";
 const router = Router();
 
 // List pending requests (admin)
-router.get("/pending", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (_req, res) => {
+router.get("/pending", authenticateToken, requireRole("ADMIN"), async (_req, res) => {
   try {
     const requests = await prisma.researchRequest.findMany({
       where: { status: "SUBMITTED" },
@@ -23,7 +23,7 @@ router.get("/pending", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), a
 });
 
 // Assign research officer
-router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { requestId, assignedToId, assignedToIds, teamId, deadline, notes } = req.body;
 
@@ -160,7 +160,7 @@ router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (
 });
 
 // Get available research officers
-router.get("/officers", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (_req, res) => {
+router.get("/officers", authenticateToken, requireRole("ADMIN"), async (_req, res) => {
   try {
     const officers = await prisma.user.findMany({
       where: { role: "RESEARCH_OFFICER", isActive: true },

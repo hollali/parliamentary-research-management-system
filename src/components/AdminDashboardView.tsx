@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { getOfficers } from '../lib/api';
 import { ResearchRequest } from '../types';
+import { AssignModal } from './AssignModal';
 import { 
   FileText, 
   TrendingUp, 
@@ -27,10 +28,11 @@ interface AdminDashboardViewProps {
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNavigate }) => {
-  const { requests, history, assignRequest, updateRequestStatus, updateRequestPriority } = useApp();
+  const { requests, history, updateRequestStatus, updateRequestPriority } = useApp();
   const [filterTab, setFilterTab] = useState<'ALL' | 'PENDING'>('ALL');
   const [showHighPriorityOnly, setShowHighPriorityOnly] = useState<boolean>(false);
-  const [assigningRequestId, setAssigningRequestId] = useState<string | null>(null);
+  const [assignModalRequestId, setAssignModalRequestId] = useState<string | null>(null);
+  const [assignModalRequestTitle, setAssignModalRequestTitle] = useState<string>('');
   const [officers, setOfficers] = useState<any[]>([]);
 
   useEffect(() => {
@@ -51,11 +53,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
     if (filterTab === 'PENDING' && req.status !== 'PENDING_REVIEW') return false;
     return true;
   });
-
-  const handleAssign = (requestId: string, officerId: string) => {
-    assignRequest(requestId, [officerId]);
-    setAssigningRequestId(null);
-  };
 
   const getStatusBadge = (status: ResearchRequest['status']) => {
     switch (status) {
@@ -287,7 +284,28 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
 
                   {/* Assigned Officer */}
                   <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                    {req.assignedOfficerId ? (
+                    {req.assignedOfficers && req.assignedOfficers.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {req.assignedOfficers.map((officer) => (
+                          <div key={officer.id} className="flex items-center gap-1.5 bg-[#f3f4f5] border border-[#c4c5d7] rounded-full px-2 py-0.5">
+                            <div className="w-5 h-5 rounded-full bg-[#dce1ff] flex items-center justify-center text-[8px] font-bold text-[#001551]">
+                              {officer.initials}
+                            </div>
+                            <span className="text-[10px] font-semibold text-[#191c1d]">{officer.firstName} {officer.lastName}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : req.teamName ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
+                          {req.teamName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <span className="text-sm text-[#191c1d] font-semibold">{req.teamName}</span>
+                          <span className="text-[10px] text-gray-400 block">Team</span>
+                        </div>
+                      </div>
+                    ) : req.assignedOfficerName ? (
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
                           {req.assignedOfficerName?.split(' ').pop()?.slice(0, 2).toUpperCase() || 'RO'}
@@ -295,29 +313,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                         <span className="text-sm text-[#191c1d]">{req.assignedOfficerName}</span>
                       </div>
                     ) : (
-                      <div>
-                        {assigningRequestId === req.id ? (
-                          <select 
-                            onChange={(e) => handleAssign(req.id, e.target.value)}
-                            className="text-xs p-1 border border-[#c4c5d7] rounded focus:ring-1 focus:ring-[#0037b0]"
-                            defaultValue=""
-                          >
-                            <option value="" disabled>Choose staff...</option>
-                            <option value="osei">Dr. David osei</option>
-                            <option value="serwaa">Alice serwaa</option>
-                            <option value="okyere">S. okyere</option>
-                            <option value="mensah">Officer K. Mensah</option>
-                          </select>
-                        ) : (
-                          <button 
-                            onClick={() => setAssigningRequestId(req.id)}
-                            className="text-[#ba1a1a] hover:text-[#ba1a1a]/80 font-semibold text-xs flex items-center gap-1 hover:underline"
-                          >
-                            <UserPlus className="w-3.5 h-3.5" />
-                            Unassigned
-                          </button>
-                        )}
-                      </div>
+                      <button 
+                        onClick={() => { setAssignModalRequestId(req.id); setAssignModalRequestTitle(req.title); }}
+                        className="text-[#ba1a1a] hover:text-[#ba1a1a]/80 font-semibold text-xs flex items-center gap-1 hover:underline"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Unassigned
+                      </button>
                     )}
                   </td>
 
@@ -340,7 +342,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                         <Eye className="w-4 h-4" />
                       </button>
                       <button 
-                        onClick={() => setAssigningRequestId(req.id === assigningRequestId ? null : req.id)}
+                        onClick={() => { setAssignModalRequestId(req.id); setAssignModalRequestTitle(req.title); }}
                         className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-all"
                         title="Reassign Staff"
                       >
@@ -441,6 +443,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
           </button>
         </div>
       </div>
+      {/* Assign Modal */}
+      {assignModalRequestId && (
+        <AssignModal
+          requestId={assignModalRequestId}
+          requestTitle={assignModalRequestTitle}
+          onClose={() => { setAssignModalRequestId(null); setAssignModalRequestTitle(''); }}
+        />
+      )}
     </div>
   );
 };

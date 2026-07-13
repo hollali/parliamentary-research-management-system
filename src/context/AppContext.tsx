@@ -12,7 +12,7 @@ interface AppContextType extends AppState {
   updateRequestStatus: (requestId: string, status: ResearchRequest['status']) => void;
   updateRequestPriority: (requestId: string, priority: ResearchRequest['priority']) => void;
   extendRequestDeadline: (requestId: string, newDeadline: string) => void;
-  addComment: (requestId: string, text: string, section?: string) => void;
+  addComment: (requestId: string, text: string, section?: string, highlightedText?: string, startOffset?: number, endOffset?: number) => void;
   resolveComment: (requestId: string, commentId: string) => void;
   updateRequestContent: (requestId: string, content: string) => void;
   uploadAttachment: (requestId: string, attachment: Attachment) => void;
@@ -45,6 +45,14 @@ function mapApiRequest(r: any): ResearchRequest {
     member: r.submitter ? `${r.submitter.firstName} ${r.submitter.lastName}` : '',
     assignedOfficerId: r.assignedOfficerId || null,
     assignedOfficerName: r.officer ? `${r.officer.firstName} ${r.officer.lastName}` : null,
+    teamId: r.teamId || null,
+    teamName: r.team?.name || null,
+    assignedOfficers: (r.assignments || []).map((a: any) => ({
+      id: a.assignedTo?.id || '',
+      firstName: a.assignedTo?.firstName || '',
+      lastName: a.assignedTo?.lastName || '',
+      initials: a.assignedTo?.initials || '',
+    })),
     status: statusMap[r.status] || 'PENDING_REVIEW',
     priority: r.priority as ResearchRequest['priority'],
     dateSubmitted: new Date(r.dateSubmitted).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
@@ -389,7 +397,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications(prev => [newNotif, ...prev]);
   };
 
-  const addComment = async (requestId: string, text: string, section?: string) => {
+  const addComment = async (requestId: string, text: string, section?: string, highlightedText?: string, startOffset?: number, endOffset?: number) => {
     const newComment: Comment = {
       id: 'comment_' + Date.now(),
       userName: currentUser.name + (currentUser.role === 'ADMIN' ? ' (Admin)' : ''),
@@ -411,6 +419,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             requestId,
             section: section || '',
             text,
+            highlightedText,
+            startOffset,
+            endOffset,
           });
           newComment.id = created.id || newComment.id;
         } catch {

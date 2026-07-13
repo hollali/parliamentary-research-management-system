@@ -4,7 +4,7 @@ A full-stack application for managing research requests, assignments, reports, a
 
 ## Tech Stack
 
-- **Frontend:** React 19, Vite 6, Tailwind CSS 4, TypeScript 5.8, Lucide React icons, Framer Motion
+- **Frontend:** React 19, Vite 6, Tailwind CSS 4, TypeScript 5.8, Lucide React icons, TipTap rich text editor
 - **Backend:** Express.js, Prisma 7 ORM, PostgreSQL, JWT authentication, Nodemailer
 - **Tooling:** tsx, Vitest, concurrently, ESLint
 
@@ -82,7 +82,7 @@ All users use password: **`password123`**
 
 | Role | Name | Email |
 |------|------|-------|
-| Super Admin | Kwame Asante | `admin@parliament.gh` |
+| Admin | Kwame Asante | `admin@parliament.gh` |
 | Admin | Ama Mensah | `research.director@parliament.gh` |
 | Research Officer | Kofi Osei | `kofi.osei@parliament.gh` |
 | Research Officer | Serwaa Appiah | `serwaa.appiah@parliament.gh` |
@@ -97,10 +97,9 @@ All users use password: **`password123`**
 
 ### Role-Based Access Control
 
-The system has 5 roles with different permissions:
+The system has 4 roles with different permissions:
 
-- **Super Admin** — Full system access, user management, all features
-- **Admin** — Assign research, manage requests, review reports, manage teams
+- **Admin** — Assign research, manage requests, review reports, manage teams, full user management
 - **Research Officer** — Accept/decline assignments, submit drafts, manage revisions
 - **Research Assistant** — Support officers, view assigned work
 - **MP** — Submit research requests, track progress
@@ -122,19 +121,22 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 - **Research Request Management** — Submit, track, filter, and search research requests with priority levels and deadlines
 - **Assignment System** — Assign individual officers, multiple officers, or research teams to requests with custom deadlines and notes
 - **Team Management** — Create and manage research teams with members, assign work to entire teams
-- **Report Drafting** — Officers create and submit research reports with version history
-- **Review Workflow** — Admin annotates reports with page-specific comments, requests revisions, approves final versions
+- **Report Drafting** — Officers create and submit research reports with version history using a rich text editor (TipTap)
+- **Rich Text Editor** — Full formatting toolbar: bold, italic, strikethrough, headings, bullet/numbered lists, blockquotes, horizontal rules, undo/redo
+- **Inline Review Annotations** — Admins select specific text in a draft and annotate it with feedback; officers see exactly which text the comment references
+- **Review Workflow** — Admin annotates reports with inline or section-level comments, requests revisions, approves final versions
+- **Immediate Feedback Notifications** — Officers receive in-app notifications and email alerts immediately when an admin posts a review comment (not just on formal revision requests)
 - **Document Version Diff** — Side-by-side comparison of report versions with line-by-line diff highlighting
 - **Committee Workbench** — View and manage requests per parliamentary committee with cross-committee sharing
 - **Parliamentary Calendar** — Month-grid view of deadlines, overdue alerts, and upcoming milestones
 - **Research Templates** — Predefined report structures (Legislative Brief, Policy Brief, Committee Report, etc.)
-- **Email Notifications** — Automated emails for assignments, draft submissions, revision requests (requires SMTP config)
+- **Email Notifications** — Automated emails for assignments, draft submissions, review comments, and revision requests (requires SMTP config)
 - **Activity Audit Log** — Filterable log of all system actions with user attribution
 - **Workload Balancing** — Dashboard showing officer capacity and utilization stats
 - **Global Search** — Command palette (Ctrl+K) for searching requests, reports, and people
 - **CSV/PDF Export** — Export data views as CSV or print to PDF
-- **File Uploads** — Attach documents to requests with secure download links
-- **Notifications** — In-app notification中心 with read/unread tracking
+- **File Uploads** — Attach multiple files (PDF, DOCX, XLSX, ZIP up to 50MB) to requests with upload progress indicators and secure download links
+- **Notifications** — In-app notification center with read/unread tracking
 - **User Profile Management** — Update name, title, constituency (for MPs), password
 
 ## Project Structure
@@ -180,9 +182,9 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 │       ├── MemberDashboardView.tsx    # MP dashboard
 │       ├── ProjectsView.tsx           # Request pipeline with filters
 │       ├── AssignModal.tsx            # Multi-officer/team assignment modal
-│       ├── OfficerWorkflowView.tsx    # Officer's task queue
-│       ├── OfficerRevisionWorkspaceView.tsx  # Revision workspace
-│       ├── AdminRevisionReviewView.tsx       # Admin review interface
+│       ├── OfficerWorkflowView.tsx    # Officer's task queue with multi-file uploads
+│       ├── OfficerRevisionWorkspaceView.tsx  # Revision workspace with TipTap rich text editor
+│       ├── AdminRevisionReviewView.tsx       # Admin review interface with inline text annotation
 │       ├── NewRequestFormView.tsx     # Research request form
 │       ├── CommitteeWorkbenchView.tsx # Committee management
 │       ├── ParliamentaryCalendarView.tsx  # Calendar view
@@ -221,7 +223,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | `TeamMember` | Team membership join table |
 | `ResearchReport` | Report drafts and final versions |
 | `ReportVersion` | Version history for reports |
-| `ReviewComment` | Admin review comments on reports |
+| `ReviewComment` | Admin review comments on reports with inline text highlighting |
 | `Attachment` | File attachments on requests |
 | `SharedResearch` | Cross-committee request sharing |
 | `Notification` | In-app notifications |
@@ -232,7 +234,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 
 | Enum | Values |
 |------|--------|
-| `Role` | `SUPER_ADMIN`, `ADMIN`, `RESEARCH_OFFICER`, `RESEARCH_ASSISTANT`, `MP` |
+| `Role` | `ADMIN`, `RESEARCH_OFFICER`, `RESEARCH_ASSISTANT`, `MP` |
 | `RequestStatus` | `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `DRAFT_SUBMITTED`, `REVISION_REQUESTED`, `REVISED`, `APPROVED`, `DELIVERED`, `CLOSED` |
 | `Priority` | `STANDARD`, `URGENT` |
 | `CommitteeType` | `STANDING`, `SELECT`, `JOINT`, `AD_HOC` |
@@ -291,10 +293,10 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/request/:requestId` | Get review comments | Yes |
-| POST | `/` | Add review comment | Yes (ADMIN) |
+| POST | `/` | Add review comment (with optional `highlightedText`, `startOffset`, `endOffset` for inline annotations) | Yes (ADMIN) |
 | PUT | `/:commentId/resolve` | Resolve comment | Yes (ADMIN) |
-| POST | `/:commentId/request-revision` | Request revision | Yes (ADMIN) |
-| POST | `/approve` | Approve report | Yes (ADMIN) |
+| POST | `/:commentId/request-revision` | Request revision (notifies officer via in-app + email) | Yes (ADMIN) |
+| POST | `/approve` | Approve report (notifies submitter) | Yes (ADMIN) |
 
 ### Teams (`/api/teams`)
 

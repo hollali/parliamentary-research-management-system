@@ -6,7 +6,7 @@ import { sendEmail, draftSubmittedEmail } from "../lib/email.js";
 const router = Router();
 
 // Upload report
-router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), async (req, res) => {
   try {
     const { requestId, title, content, filePath, fileType, fileSize, isDraft, notes } = req.body;
 
@@ -79,7 +79,7 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN", "SU
     // Notify all admins that a draft was submitted
     if (isDraft !== false) {
       const admins = await prisma.user.findMany({
-        where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true },
+        where: { role: { in: ["ADMIN"] }, isActive: true },
         select: { id: true },
       });
 
@@ -95,7 +95,7 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN", "SU
 
       // Send email notifications to admins
       const adminUsers = await prisma.user.findMany({
-        where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true },
+        where: { role: { in: ["ADMIN"] }, isActive: true },
         select: { email: true, firstName: true },
       });
       for (const admin of adminUsers) {

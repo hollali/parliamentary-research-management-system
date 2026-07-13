@@ -6,7 +6,7 @@ import { authenticateToken, requireRole } from "../middleware/auth.js";
 const router = Router();
 
 // List users
-router.get("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.get("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { role, search } = req.query;
 
@@ -48,7 +48,7 @@ router.get("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (r
 });
 
 // Create user
-router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { email, password, firstName, lastName, role, title, phone, departmentId } = req.body;
 
@@ -107,7 +107,7 @@ router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (
 });
 
 // Update user
-router.put("/:id", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.put("/:id", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { firstName, lastName, role, title, phone, departmentId, isActive } = req.body;
 
@@ -152,7 +152,7 @@ router.put("/:id", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async
 });
 
 // Reset password
-router.post("/:id/reset-password", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/:id/reset-password", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { newPassword } = req.body;
 
@@ -188,15 +188,11 @@ router.post("/:id/reset-password", authenticateToken, requireRole("ADMIN", "SUPE
 });
 
 // Deactivate user
-router.post("/:id/deactivate", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/:id/deactivate", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
-    }
-
-    if (user.role === "SUPER_ADMIN") {
-      return res.status(403).json({ error: "Cannot deactivate a Super Administrator" });
     }
 
     const updated = await prisma.user.update({

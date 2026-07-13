@@ -27,7 +27,11 @@ router.get("/", authenticateToken, async (req, res) => {
     if (role === "MP") {
       where.submitterId = userId;
     } else if (role === "RESEARCH_OFFICER") {
-      where.assignedOfficerId = userId;
+      where.OR = [
+        { assignedOfficerId: userId },
+        { assignments: { some: { assignedToId: userId } } },
+        { team: { members: { some: { userId } } } },
+      ];
     }
 
     if (status) where.status = status;
@@ -50,6 +54,12 @@ router.get("/", authenticateToken, async (req, res) => {
           category: true,
           submitter: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
           officer: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
+          team: { select: { id: true, name: true } },
+          assignments: {
+            include: {
+              assignedTo: { select: { id: true, firstName: true, lastName: true, initials: true } },
+            },
+          },
           _count: { select: { reports: true, comments: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -379,7 +389,7 @@ router.get("/search/global", authenticateToken, async (req, res) => {
 });
 
 // Share a request with another committee
-router.post("/:requestId/share", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/:requestId/share", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { committeeId, notes } = req.body;
     if (!committeeId) {

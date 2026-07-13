@@ -291,7 +291,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 >
                   <div>
                     <p className="text-gray-900 font-bold">Admin Officer</p>
-                    <p className="text-gray-500 text-[10px]">Kwame Asante (Super Admin)</p>
+                    <p className="text-gray-500 text-[10px]">Kwame Asante (Admin)</p>
                   </div>
                   <span className="text-[10px] bg-[#dce1ff] text-[#0039b5] px-2 py-0.5 rounded-full font-bold">Admin Panel</span>
                 </button>

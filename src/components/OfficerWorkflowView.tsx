@@ -94,26 +94,27 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
   const handleDropDraft = async (e: React.DragEvent) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files) as File[];
-    if (files.length > 0) {
+    for (const file of files) {
       try {
-        await uploadFile(activeRequest.id, files[0]);
-        toast.success(`"${files[0].name}" uploaded successfully.`);
+        await uploadFile(activeRequest.id, file);
+        toast.success(`"${file.name}" uploaded successfully.`);
       } catch {
-        toast.error('Failed to upload file');
+        toast.error(`Failed to upload "${file.name}"`);
       }
     }
   };
 
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []) as File[];
-    if (files.length > 0) {
+    for (const file of files) {
       try {
-        await uploadFile(activeRequest.id, files[0]);
-        toast.success(`"${files[0].name}" uploaded successfully.`);
+        await uploadFile(activeRequest.id, file);
+        toast.success(`"${file.name}" uploaded successfully.`);
       } catch {
-        toast.error('Failed to upload file');
+        toast.error(`Failed to upload "${file.name}"`);
       }
     }
+    e.target.value = '';
   };
 
   return (
@@ -287,12 +288,14 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
                   <input 
                     id="officer-brief-file"
                     type="file" 
+                    accept=".pdf,.docx,.xlsx,.zip"
+                    multiple
                     onChange={handleFileInput}
                     className="hidden" 
                   />
                   <Upload className="w-5 h-5 text-gray-400" />
-                  <p className="text-xs font-bold text-gray-900">Drag & drop brief draft PDF file here to attach</p>
-                  <p className="text-[9px] text-gray-500">Supports PDF files up to 25MB. Files are verified for active security compliance.</p>
+                  <p className="text-xs font-bold text-gray-900">Drag & drop files here to attach</p>
+                  <p className="text-[9px] text-gray-500">Supports PDF, DOCX, XLSX, ZIP up to 50MB. Files are verified for active security compliance.</p>
                 </div>
 
                 {/* Attached files rows */}

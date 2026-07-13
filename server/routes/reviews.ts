@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
-import { sendEmail, revisionRequestedEmail } from "../lib/email.js";
+import { sendEmail, revisionRequestedEmail, commentAddedEmail } from "../lib/email.js";
 
 const router = Router();
 
@@ -20,9 +20,9 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
 });
 
 // Add review comment
-router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
-    const { reportId, requestId, section, text } = req.body;
+    const { reportId, requestId, section, text, highlightedText, startOffset, endOffset } = req.body;
 
     if (!reportId || !requestId || !text) {
       return res.status(400).json({ error: "reportId, requestId, and text are required" });
@@ -35,6 +35,9 @@ router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (
         authorId: req.user!.userId,
         section,
         text,
+        highlightedText: highlightedText || null,
+        startOffset: startOffset ?? null,
+        endOffset: endOffset ?? null,
       },
       include: { author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } } },
     });
@@ -48,6 +51,30 @@ router.post("/", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (
         description: `Review comment added to request`,
       },
     });
+
+    // Notify the assigned officer
+    const request = await prisma.researchRequest.findUnique({ where: { id: requestId } });
+    if (request?.assignedOfficerId) {
+      await prisma.notification.create({
+        data: {
+          recipientId: request.assignedOfficerId,
+          type: "REPORT_UPLOADED",
+          title: "New Review Comment",
+          message: `Admin commented on "${request.title}": ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`,
+          link: `/requests/${requestId}`,
+        },
+      });
+
+      const officer = await prisma.user.findUnique({
+        where: { id: request.assignedOfficerId },
+        select: { firstName: true, email: true },
+      });
+      if (officer) {
+        const sectionLabel = section || "General";
+        const email = commentAddedEmail(officer.firstName, request.requestNumber, request.title, sectionLabel, text, highlightedText);
+        await sendEmail({ to: officer.email, ...email });
+      }
+    }
 
     res.status(201).json(comment);
   } catch (error) {
@@ -85,7 +112,7 @@ router.put("/:commentId/resolve", authenticateToken, async (req, res) => {
 });
 
 // Request revision
-router.post("/:commentId/request-revision", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/:commentId/request-revision", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { requestId } = req.body;
 
@@ -136,7 +163,7 @@ router.post("/:commentId/request-revision", authenticateToken, requireRole("ADMI
 });
 
 // Approve report
-router.post("/approve", authenticateToken, requireRole("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.post("/approve", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
     const { reportId, requestId } = req.body;
 

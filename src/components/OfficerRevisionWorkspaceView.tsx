@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { getRequest, getReviews, createReport } from '../lib/api';
+import { getRequest, getReviews, createReport, getAttachments, uploadFile } from '../lib/api';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
 import { 
   FileText, 
   Save, 
@@ -11,7 +13,20 @@ import {
   AlertCircle,
   Undo2,
   ArrowLeft,
-  Loader2
+  Loader2,
+  Upload,
+  Paperclip,
+  Bold,
+  Italic,
+  Strikethrough,
+  List,
+  ListOrdered,
+  Quote,
+  Heading1,
+  Heading2,
+  Minus,
+  Undo,
+  Redo
 } from 'lucide-react';
 
 interface OfficerRevisionWorkspaceViewProps {
@@ -27,6 +42,7 @@ interface ReviewComment {
   time: string;
   text: string;
   section?: string;
+  highlightedText?: string;
   resolved: boolean;
 }
 
@@ -42,6 +58,22 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   const [reviewComments, setReviewComments] = useState<ReviewComment[]>([]);
   const [reportId, setReportId] = useState<string | null>(null);
   const [draftVersion, setDraftVersion] = useState(1);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const editor = useEditor({
+    extensions: [StarterKit],
+    content: '',
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm max-w-none font-serif text-sm leading-relaxed min-h-[400px] outline-none p-4',
+      },
+    },
+    onUpdate: ({ editor }) => {
+      setEditorText(editor.getText());
+    },
+  });
 
   // Fetch report content and reviews from API on mount
   useEffect(() => {
@@ -52,24 +84,32 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     // Fetch full request with reports
     getRequest(requestId)
       .then((data: any) => {
+        let content = '';
         if (data?.reports?.[0]) {
-          setEditorText(data.reports[0].content || '');
+          content = data.reports[0].content || '';
           setReportId(data.reports[0].id);
           setDraftVersion(data.reports[0].version || 1);
         } else if (request?.content) {
-          setEditorText(request.content);
+          content = request.content;
           setReportId(request.reportId || null);
           setDraftVersion(request.draftVersion);
         } else {
-          setEditorText(`Report draft for ${request?.title || 'Unknown'}.\n\nSection 1: Executive Summary\n[Edit this draft to add your summary analysis here]`);
+          content = `Report draft for ${request?.title || 'Unknown'}.\n\nSection 1: Executive Summary\n[Edit this draft to add your summary analysis here]`;
+        }
+        setEditorText(content);
+        if (editor && content) {
+          editor.commands.setContent(content);
         }
         setLoading(false);
       })
       .catch(() => {
-        // Fall back to context data
-        setEditorText(request?.content || '');
+        const fallback = request?.content || '';
+        setEditorText(fallback);
         setReportId(request?.reportId || null);
         setDraftVersion(request?.draftVersion || 1);
+        if (editor && fallback) {
+          editor.commands.setContent(fallback);
+        }
         setLoading(false);
       });
 
@@ -85,6 +125,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             time: new Date(c.createdAt).toLocaleString(),
             text: c.text,
             section: c.section || undefined,
+            highlightedText: c.highlightedText || undefined,
             resolved: c.resolved,
           })));
         }
@@ -98,6 +139,15 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
           })));
         }
       });
+
+    // Fetch attachments
+    getAttachments(requestId)
+      .then((data: any) => {
+        if (Array.isArray(data)) {
+          setAttachments(data);
+        }
+      })
+      .catch(() => {});
   }, [requestId]);
 
   const unresolvedComments = reviewComments.filter(c => !c.resolved);
@@ -105,19 +155,19 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   const handleSaveDraft = async () => {
     updateRequestContent(request.id, editorText);
     
-    // Also save to backend if online and we have a report
-    if (reportId) {
-      try {
-        await createReport({
-          requestId: request.id,
-          title: request.title,
-          content: editorText,
-          isDraft: true,
-          notes: `Draft saved (v${draftVersion})`,
-        });
-      } catch {
-        // Local save already happened
+    try {
+      const data = await createReport({
+        requestId: request.id,
+        title: request.title,
+        content: editorText,
+        isDraft: true,
+        notes: `Draft saved (v${draftVersion})`,
+      });
+      if (data?.id && !reportId) {
+        setReportId(data.id);
       }
+    } catch {
+      // Local save already happened
     }
   };
 
@@ -125,13 +175,25 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     setSubmitting(true);
     updateRequestContent(request.id, editorText);
     
+    // Get latest attachment info if available
+    let latestAttachment: any = null;
+    try {
+      const data = await getAttachments(request.id);
+      if (Array.isArray(data) && data.length > 0) {
+        latestAttachment = data[0];
+      }
+    } catch {}
+
     // Create new report version via API
     try {
       await createReport({
         requestId: request.id,
         title: request.title,
         content: editorText,
-        isDraft: true,
+        isDraft: false,
+        filePath: latestAttachment?.filePath || undefined,
+        fileType: latestAttachment?.fileType || undefined,
+        fileSize: latestAttachment?.fileSize || undefined,
         notes: `Revision v${draftVersion + 1} submitted for review`,
       });
     } catch {
@@ -167,6 +229,24 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     }]);
     setReplyText('');
     setActiveCommentId(null);
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []) as File[];
+    if (files.length === 0) return;
+    setUploading(true);
+    setUploadProgress(0);
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const result = await uploadFile(request.id, files[i]);
+        setAttachments(prev => [result, ...prev]);
+        setUploadProgress(Math.round(((i + 1) / files.length) * 100));
+      } catch {
+        // continue with next file
+      }
+    }
+    setUploading(false);
+    e.target.value = '';
   };
 
   if (loading) {
@@ -238,17 +318,100 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             </span>
           </div>
 
-          <div className="p-8 flex-1 flex flex-col">
-            <textarea 
-              value={editorText}
-              onChange={(e) => setEditorText(e.target.value)}
-              className="w-full flex-1 p-4 border border-[#c4c5d7] rounded-lg font-serif text-sm leading-relaxed outline-none focus:ring-1 focus:ring-[#0037b0] resize-none min-h-[400px]"
-              placeholder="Start drafting the briefing document here..."
-            />
+          {/* Toolbar */}
+          {editor && (
+            <div className="border-b border-[#c4c5d7] px-4 py-2 flex items-center gap-1 flex-wrap">
+              <button
+                onClick={() => editor.chain().focus().toggleBold().run()}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('bold') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
+                title="Bold"
+              >
+                <Bold className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleItalic().run()}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('italic') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
+                title="Italic"
+              >
+                <Italic className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleStrike().run()}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('strike') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
+                title="Strikethrough"
+              >
+                <Strikethrough className="w-3.5 h-3.5" />
+              </button>
+              <div className="w-px h-5 bg-gray-200 mx-1" />
+              <button
+                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('heading', { level: 1 }) ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
+                title="Heading 1"
+              >
+                <Heading1 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('heading', { level: 2 }) ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
+                title="Heading 2"
+              >
+                <Heading2 className="w-3.5 h-3.5" />
+              </button>
+              <div className="w-px h-5 bg-gray-200 mx-1" />
+              <button
+                onClick={() => editor.chain().focus().toggleBulletList().run()}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('bulletList') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
+                title="Bullet List"
+              >
+                <List className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('orderedList') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
+                title="Numbered List"
+              >
+                <ListOrdered className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleBlockquote().run()}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('blockquote') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
+                title="Blockquote"
+              >
+                <Quote className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => editor.chain().focus().setHorizontalRule().run()}
+                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors"
+                title="Horizontal Rule"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <div className="w-px h-5 bg-gray-200 mx-1" />
+              <button
+                onClick={() => editor.chain().focus().undo().run()}
+                disabled={!editor.can().undo()}
+                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-30"
+                title="Undo"
+              >
+                <Undo className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => editor.chain().focus().redo().run()}
+                disabled={!editor.can().redo()}
+                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-30"
+                title="Redo"
+              >
+                <Redo className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto min-h-[400px]">
+            <EditorContent editor={editor} className="p-6" />
           </div>
 
           <div className="bg-[#f3f4f5] border-t border-[#c4c5d7] px-6 py-3 text-xs text-gray-500 font-semibold flex justify-between items-center">
-            <span>Word count: {editorText.split(/\s+/).filter(Boolean).length} words</span>
+            <span>Word count: {editor ? editor.getText().split(/\s+/).filter(Boolean).length : 0} words</span>
             <span>Last auto-saved: Just now</span>
           </div>
         </div>
@@ -277,6 +440,12 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
                       <p className="text-[9px] text-[#0039b5] bg-blue-50/50 px-1.5 py-0.5 rounded font-bold inline-block">
                         {comment.section}
                       </p>
+                    )}
+                    {comment.highlightedText && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded px-2 py-1 mt-1">
+                        <p className="text-[10px] text-yellow-700 font-semibold">Referenced text:</p>
+                        <p className="text-[10px] text-gray-600 italic">"{comment.highlightedText}"</p>
+                      </div>
                     )}
                     <p className="text-xs text-gray-700 leading-relaxed italic">"{comment.text}"</p>
                   </div>
@@ -341,6 +510,50 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
           </div>
         </div>
 
+      </div>
+
+      {/* Attachments Section */}
+      <div className="bg-white border border-[#c4c5d7] rounded-lg p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h4 className="font-sans font-bold text-sm text-[#191c1d] uppercase tracking-wider flex items-center gap-1.5">
+            <Paperclip className="w-4 h-4 text-[#0037b0]" /> Attached Files
+          </h4>
+          <label className="px-3 py-1.5 border border-[#c4c5d7] hover:bg-gray-50 text-gray-700 font-semibold text-xs rounded cursor-pointer transition-all flex items-center gap-1.5 shadow-sm">
+            <Upload className="w-3.5 h-3.5" />
+            <span>{uploading ? `Uploading... ${uploadProgress}%` : 'Upload File'}</span>
+            <input
+              type="file"
+              accept=".pdf,.docx,.xlsx,.zip"
+              multiple
+              onChange={handleUpload}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        </div>
+        {uploading && (
+          <div className="w-full bg-gray-200 rounded-full h-1.5">
+            <div
+              className="bg-[#0037b0] h-1.5 rounded-full transition-all"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        )}
+        {attachments.length > 0 ? (
+          <div className="space-y-2">
+            {attachments.map((att: any, idx: number) => (
+              <div key={att.id || idx} className="bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg p-2.5 flex justify-between items-center text-xs shadow-sm">
+                <div className="flex items-center gap-2.5">
+                  <FileText className="w-4 h-4 text-red-500" />
+                  <span className="font-semibold text-gray-900">{att.name}</span>
+                </div>
+                <span className="text-gray-500 font-bold">{att.fileSize ? `${(att.fileSize / 1024 / 1024).toFixed(1)} MB` : ''}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-gray-500 text-center py-4">No files attached yet.</p>
+        )}
       </div>
     </div>
   );
