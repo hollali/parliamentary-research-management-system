@@ -1,14 +1,9 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { clampPagination } from "../lib/pagination.js";
 
 const router = Router();
-
-function clampPagination(page: string, limit: string) {
-  const p = Math.max(1, parseInt(page) || 1);
-  const l = Math.min(100, Math.max(1, parseInt(limit) || 20));
-  return { page: p, limit: l, skip: (p - 1) * l };
-}
 
 function generateRequestNumber(): string {
   const year = new Date().getFullYear();
@@ -27,11 +22,14 @@ async function generateUniqueRequestNumber(): Promise<string> {
   return `REQ-${new Date().getFullYear()}-${ts}`;
 }
 
-function lookupByIdOrNumber(idOrNumber: string): any {
+function lookupByIdOrNumber(idOrNumber: string): { requestNumber: string } | { id: string } {
   return idOrNumber.startsWith('REQ-')
     ? { requestNumber: idOrNumber }
     : { id: idOrNumber };
 }
+
+const VALID_STATUSES = ["SUBMITTED","ASSIGNED","IN_PROGRESS","DRAFT_SUBMITTED","REVISION_REQUESTED","REVISED","APPROVED","DELIVERED","CLOSED"];
+const VALID_PRIORITIES = ["STANDARD","URGENT"];
 
 // List requests (filtered by role)
 router.get("/", authenticateToken, async (req, res) => {
@@ -52,8 +50,8 @@ router.get("/", authenticateToken, async (req, res) => {
       ];
     }
 
-    if (status) where.status = status;
-    if (priority) where.priority = priority;
+    if (status && VALID_STATUSES.includes(status as string)) where.status = status;
+    if (priority && VALID_PRIORITIES.includes(priority as string)) where.priority = priority;
     if (committeeId) where.committeeId = committeeId;
     if (search) {
       const searchFilter = {

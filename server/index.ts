@@ -16,15 +16,19 @@ import notificationRoutes from "./routes/notifications.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import uploadRoutes from "./routes/uploads.js";
 import teamRoutes from "./routes/teams.js";
+import { checkOverdueRequests } from "./lib/overdueCheck.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Middleware
-app.use(cors({ origin: process.env.FRONTEND_URL || "http://localhost:3000", credentials: true }));
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(cors({
+  origin: (process.env.FRONTEND_URL || "http://localhost:3000").split(","),
+  credentials: true,
+}));
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -53,6 +57,8 @@ if (process.env.NODE_ENV === "production") {
 
 app.listen(PORT, () => {
   console.log(`PRRMS API server running on port ${PORT}`);
+  checkOverdueRequests();
+  setInterval(() => checkOverdueRequests(), 60 * 60 * 1000).unref();
 });
 
 export default app;

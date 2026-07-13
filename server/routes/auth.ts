@@ -110,7 +110,7 @@ router.post("/forgot-password", rateLimit(15 * 60 * 1000, 5), async (req, res) =
   }
 });
 
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", rateLimit(15 * 60 * 1000, 10), async (req, res) => {
   try {
     const { token, newPassword } = req.body;
 
@@ -241,7 +241,7 @@ router.get("/notification-prefs", authenticateToken, async (req, res) => {
       triggers: { newAssignments: true, statusChanges: true, draftMentions: true, deadlineReminders: true },
     });
   } catch (error) {
-    console.error("Reset password error:", error);
+    console.error("Get notification prefs error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -250,13 +250,20 @@ router.get("/notification-prefs", authenticateToken, async (req, res) => {
 router.put("/notification-prefs", authenticateToken, async (req, res) => {
   try {
     const prefs = req.body;
+    if (!prefs || typeof prefs !== "object" || typeof prefs.pushNotifications !== "boolean" || typeof prefs.emailSummaries !== "boolean") {
+      return res.status(400).json({ error: "Invalid notification preferences" });
+    }
+    // Limit payload size
+    if (JSON.stringify(prefs).length > 1024) {
+      return res.status(400).json({ error: "Preferences payload too large" });
+    }
     await prisma.user.update({
       where: { id: req.user!.userId },
       data: { notificationPrefs: prefs },
     });
     res.json({ message: "Preferences updated" });
   } catch (error) {
-    console.error("Refresh token error:", error);
+    console.error("Update notification prefs error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,34 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { ToastProvider } from './lib/toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { LoginView } from './components/LoginView';
-import { AdminDashboardView } from './components/AdminDashboardView';
-import { MemberDashboardView } from './components/MemberDashboardView';
-import { NewRequestFormView } from './components/NewRequestFormView';
-import { AdminRevisionReviewView } from './components/AdminRevisionReviewView';
-import { OfficerRevisionWorkspaceView } from './components/OfficerRevisionWorkspaceView';
-import { NotificationsView } from './components/NotificationsView';
-import { OfficerWorkflowView } from './components/OfficerWorkflowView';
-import { SettingsView } from './components/SettingsView';
 import { SupportView } from './components/SupportView';
-import { StatisticsView } from './components/StatisticsView';
-import { ProjectsView } from './components/ProjectsView';
-import { MembersView } from './components/MembersView';
-import { ArchiveView } from './components/ArchiveView';
-import { CommitteeWorkbenchView } from './components/CommitteeWorkbenchView';
-import { ParliamentaryCalendarView } from './components/ParliamentaryCalendarView';
-import { ResearchTemplatesView } from './components/ResearchTemplatesView';
-import { DocumentVersionDiffView } from './components/DocumentVersionDiffView';
 import { GlobalSearch } from './components/GlobalSearch';
-import { ActivityLogView } from './components/ActivityLogView';
-import { FileText } from 'lucide-react';
+import { FileText, Loader2 } from 'lucide-react';
+import { getToken } from './lib/api';
+
+const AdminDashboardView = lazy(() => import('./components/AdminDashboardView').then(m => ({ default: m.AdminDashboardView })));
+const MemberDashboardView = lazy(() => import('./components/MemberDashboardView').then(m => ({ default: m.MemberDashboardView })));
+const NewRequestFormView = lazy(() => import('./components/NewRequestFormView').then(m => ({ default: m.NewRequestFormView })));
+const AdminRevisionReviewView = lazy(() => import('./components/AdminRevisionReviewView').then(m => ({ default: m.AdminRevisionReviewView })));
+const OfficerRevisionWorkspaceView = lazy(() => import('./components/OfficerRevisionWorkspaceView').then(m => ({ default: m.OfficerRevisionWorkspaceView })));
+const NotificationsView = lazy(() => import('./components/NotificationsView').then(m => ({ default: m.NotificationsView })));
+const OfficerWorkflowView = lazy(() => import('./components/OfficerWorkflowView').then(m => ({ default: m.OfficerWorkflowView })));
+const SettingsView = lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
+const StatisticsView = lazy(() => import('./components/StatisticsView').then(m => ({ default: m.StatisticsView })));
+const ProjectsView = lazy(() => import('./components/ProjectsView').then(m => ({ default: m.ProjectsView })));
+const MembersView = lazy(() => import('./components/MembersView').then(m => ({ default: m.MembersView })));
+const ArchiveView = lazy(() => import('./components/ArchiveView').then(m => ({ default: m.ArchiveView })));
+const CommitteeWorkbenchView = lazy(() => import('./components/CommitteeWorkbenchView').then(m => ({ default: m.CommitteeWorkbenchView })));
+const ParliamentaryCalendarView = lazy(() => import('./components/ParliamentaryCalendarView').then(m => ({ default: m.ParliamentaryCalendarView })));
+const ResearchTemplatesView = lazy(() => import('./components/ResearchTemplatesView').then(m => ({ default: m.ResearchTemplatesView })));
+const DocumentVersionDiffView = lazy(() => import('./components/DocumentVersionDiffView').then(m => ({ default: m.DocumentVersionDiffView })));
+const ActivityLogView = lazy(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })));
 
 function AppContent() {
   const { currentUser, requests } = useApp();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!getToken());
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedRequestId, setSelectedRequestId] = useState('');
   const [selectedReportId, setSelectedReportId] = useState('');
@@ -271,7 +273,9 @@ function AppContent() {
         
         {/* Dynamic page context */}
         <main className="flex-1 pt-24 px-4 sm:px-6 lg:px-10 pb-12 overflow-y-auto max-w-350 mx-auto w-full min-w-0">
-          {renderView()}
+          <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-[#0037b0]" /></div>}>
+            {renderView()}
+          </Suspense>
         </main>
       </div>
     </div>

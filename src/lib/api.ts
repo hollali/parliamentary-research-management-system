@@ -1,5 +1,9 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
+  console.error('VITE_API_URL is not set. API calls will fail in production.');
+}
+
 interface ApiOptions {
   method?: string;
   body?: any;
@@ -419,8 +423,7 @@ export async function uploadFile(requestId: string, file: File, onUploaded?: (at
 }
 
 export function getDownloadUrl(attachmentId: string) {
-  const token = getToken();
-  return `${API_BASE}/uploads/${attachmentId}/download${token ? `?token=${token}` : ''}`;
+  return `${API_BASE}/uploads/${attachmentId}/download`;
 }
 
 // ─── Utility ────────────────────────────────────────────

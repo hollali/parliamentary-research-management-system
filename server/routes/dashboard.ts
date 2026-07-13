@@ -2,8 +2,6 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 
-const OFFICER_CAPACITY = parseInt(process.env.OFFICER_CAPACITY || "10", 10);
-
 const router = Router();
 
 router.get("/", authenticateToken, async (req, res) => {
@@ -186,12 +184,14 @@ router.get("/workload", authenticateToken, requireRole("ADMIN"), async (_req, re
       orderBy: { firstName: "asc" },
     });
 
+    const officerCapacity = parseInt(process.env.OFFICER_CAPACITY || "10", 10);
+
     const enriched = officers.map((o) => ({
       ...o,
       activeCount: o._count.assignedRequests,
-      capacity: OFFICER_CAPACITY,
-      utilization: Math.round((o._count.assignedRequests / OFFICER_CAPACITY) * 100),
-      status: o._count.assignedRequests >= OFFICER_CAPACITY ? "at_capacity" : o._count.assignedRequests >= 7 ? "high" : o._count.assignedRequests >= 4 ? "moderate" : "available",
+      capacity: officerCapacity,
+      utilization: Math.round((o._count.assignedRequests / officerCapacity) * 100),
+      status: o._count.assignedRequests >= officerCapacity ? "at_capacity" : o._count.assignedRequests >= 7 ? "high" : o._count.assignedRequests >= 4 ? "moderate" : "available",
     }));
 
     res.json({

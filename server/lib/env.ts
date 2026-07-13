@@ -26,9 +26,10 @@ export function validateEnv() {
     }
   }
 
-  // Validate JWT_SECRET is not the default
-  if (process.env.JWT_SECRET === 'change-this-to-a-secure-random-string-in-production' && process.env.NODE_ENV === 'production') {
-    console.error('❌ JWT_SECRET is using the default value. Please set a secure random string in production.');
+  // Validate JWT_SECRET is not a known default
+  const insecureDefaults = ['change-this-to-a-secure-random-string-in-production', 'prrms-dev-secret-change-in-production'];
+  if (insecureDefaults.includes(process.env.JWT_SECRET || '') && process.env.NODE_ENV === 'production') {
+    console.error('❌ JWT_SECRET is using a default value. Please set a secure random string in production.');
     process.exit(1);
   }
 

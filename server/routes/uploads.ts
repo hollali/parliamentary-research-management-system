@@ -4,9 +4,7 @@ import { authenticateToken } from "../middleware/auth.js";
 import upload from "../middleware/upload.js";
 import path from "path";
 import fs from "fs";
-import jwt from "jsonwebtoken";
 import { fileURLToPath } from "url";
-import JWT_SECRET from "../lib/jwt.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "../../uploads");
@@ -31,28 +29,12 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
   }
 });
 
-// Download an attachment — accepts token from header OR query param
-router.get("/:attachmentId/download", async (req, res) => {
+// Download an attachment — requires Authorization header only
+router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
   try {
     const { attachmentId } = req.params;
-
-    // Authenticate: check header first, then query param
-    let userId: string;
-    let role: string;
-    const authHeader = req.headers.authorization;
-    const queryToken = req.query.token as string | undefined;
-
-    if (authHeader?.startsWith("Bearer ")) {
-      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as any;
-      userId = payload.userId;
-      role = payload.role;
-    } else if (queryToken) {
-      const payload = jwt.verify(queryToken, JWT_SECRET) as any;
-      userId = payload.userId;
-      role = payload.role;
-    } else {
-      return res.status(401).json({ error: "Authentication required" });
-    }
+    const userId = req.user!.userId;
+    const role = req.user!.role;
 
     const attachment = await prisma.attachment.findUnique({
       where: { id: attachmentId },

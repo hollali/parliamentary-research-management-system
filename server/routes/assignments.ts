@@ -46,14 +46,14 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
     const request = await prisma.researchRequest.findUnique({ where: { id: requestId } });
     if (!request) return res.status(404).json({ error: "Request not found" });
 
-    // Validate officers
-    const officers: any[] = [];
-    for (const oid of officerIds) {
-      const officer = await prisma.user.findUnique({ where: { id: oid } });
-      if (!officer || officer.role !== "RESEARCH_OFFICER") {
-        return res.status(400).json({ error: `Invalid research officer: ${oid}` });
-      }
-      officers.push(officer);
+    // Validate officers in a single batch query
+    const officers = await prisma.user.findMany({
+      where: { id: { in: officerIds }, role: "RESEARCH_OFFICER" },
+    });
+    if (officers.length !== officerIds.length) {
+      const foundIds = new Set(officers.map(o => o.id));
+      const invalid = officerIds.filter(id => !foundIds.has(id));
+      return res.status(400).json({ error: `Invalid research officer: ${invalid.join(", ")}` });
     }
 
     let team: any = null;

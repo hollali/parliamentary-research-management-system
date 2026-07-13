@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 
-const VALID_ROLES = ["ADMIN", "RESEARCH_OFFICER", "RESEARCH_ASSISTANT", "MP"] as const;
+const VALID_ROLES = ["ADMIN", "RESEARCH_OFFICER", "MP"] as const;
 
 const router = Router();
 
@@ -61,6 +61,13 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     if (!VALID_ROLES.includes(role as any)) {
       return res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` });
+    }
+
+    if (typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({ error: "Password must contain uppercase, lowercase, and a number" });
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -195,7 +202,7 @@ router.post("/:id/reset-password", authenticateToken, requireRole("ADMIN"), asyn
 
     res.json({ message: "Password reset successfully" });
   } catch (error) {
-    console.error("Get user error:", error);
+    console.error("Reset password error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

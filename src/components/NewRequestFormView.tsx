@@ -14,13 +14,7 @@ import {
   HelpCircle, 
   Lock, 
   ChevronDown, 
-  Bold, 
-  Italic, 
-  Link2, 
-  List, 
-  AlignLeft, 
-  RotateCcw, 
-  RotateCw, 
+
   Upload,
   Sparkles
 } from 'lucide-react';
@@ -112,7 +106,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const allErrors = [
       ...validateStep(1),
@@ -123,9 +117,8 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
     if (allErrors.length > 0) return;
     setSubmitting(true);
     
-    setTimeout(() => {
-      // call context submit
-      addRequest({
+    try {
+      await addRequest({
         title: topic || 'Legislative Inquiry: ' + committee,
         topic: topic || committee + ' Inquiry',
         category: committee,
@@ -148,10 +141,12 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
           };
         })
       });
-      
-      setSubmitting(false);
       setShowSuccess(true);
-    }, 1000);
+    } catch {
+      // Error handled by context
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (showSuccess) {
@@ -288,7 +283,9 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                     className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
                   />
                   {getFieldError('topic') && (
-                    <p className="text-[10px] text-red-600">{getFieldError('topic')}</p>
+                    <div aria-live="polite">
+                      <p className="text-[10px] text-red-600">{getFieldError('topic')}</p>
+                    </div>
                   )}
                 </div>
 
@@ -352,19 +349,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                     </span>
                   </div>
 
-                  {/* Formatting Toolbar */}
-                  <div className="border border-[#c4c5d7] rounded-lg overflow-hidden">
-                    <div className="bg-[#f3f4f5] border-b border-[#c4c5d7] px-3 py-2 flex items-center gap-1.5 flex-wrap">
-                      <button type="button" className="p-1 hover:bg-gray-200 rounded text-gray-600 transition-colors" title="Undo"><RotateCcw className="w-3.5 h-3.5" /></button>
-                      <button type="button" className="p-1 hover:bg-gray-200 rounded text-gray-600 transition-colors" title="Redo"><RotateCw className="w-3.5 h-3.5" /></button>
-                      <div className="w-px h-4 bg-[#c4c5d7] mx-1"></div>
-                      <button type="button" className="p-1 bg-gray-200 rounded text-gray-800 font-bold" title="Bold"><Bold className="w-3.5 h-3.5" /></button>
-                      <button type="button" className="p-1 hover:bg-gray-200 rounded text-gray-600 italic" title="Italic"><Italic className="w-3.5 h-3.5" /></button>
-                      <button type="button" className="p-1 hover:bg-gray-200 rounded text-gray-600" title="Add Link"><Link2 className="w-3.5 h-3.5" /></button>
-                      <div className="w-px h-4 bg-[#c4c5d7] mx-1"></div>
-                      <button type="button" className="p-1 hover:bg-gray-200 rounded text-gray-600" title="Bullet List"><List className="w-3.5 h-3.5" /></button>
-                      <button type="button" className="p-1 hover:bg-gray-200 rounded text-gray-600" title="Align Left"><AlignLeft className="w-3.5 h-3.5" /></button>
-                    </div>
+                  <div className="space-y-1.5">
                     <textarea 
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
@@ -375,10 +360,12 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                         setErrors(prev => [...prev.filter(e => e.field !== 'description'), ...fieldErrors]);
                       }}
                       placeholder="Detail the background legislative contexts, specific clauses under discussion, and exact statistical variables or historical models your office requires..."
-                      className="w-full bg-white px-4 py-3 h-48 outline-none text-sm resize-none"
+                      className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 h-48 outline-none text-sm resize-none focus:ring-2 focus:ring-[#0037b0]"
                     />
                     {getFieldError('description') && (
-                      <p className="text-[10px] text-red-600">{getFieldError('description')}</p>
+                      <div aria-live="polite">
+                        <p className="text-[10px] text-red-600">{getFieldError('description')}</p>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -430,7 +417,9 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                       className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
                     />
                     {getFieldError('deadline') && (
-                      <p className="text-[10px] text-red-600">{getFieldError('deadline')}</p>
+                      <div aria-live="polite">
+                        <p className="text-[10px] text-red-600">{getFieldError('deadline')}</p>
+                      </div>
                     )}
                   </div>
 

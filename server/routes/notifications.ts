@@ -1,14 +1,9 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken } from "../middleware/auth.js";
+import { clampPagination } from "../lib/pagination.js";
 
 const router = Router();
-
-function clampPagination(page: string, limit: string) {
-  const p = Math.max(1, parseInt(page) || 1);
-  const l = Math.min(100, Math.max(1, parseInt(limit) || 20));
-  return { page: p, limit: l, skip: (p - 1) * l };
-}
 
 // List notifications
 router.get("/", authenticateToken, async (req, res) => {

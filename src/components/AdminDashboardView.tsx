@@ -13,9 +13,7 @@ import {
   Download, 
   UserPlus, 
   Eye, 
-  RefreshCw, 
-  ChevronLeft, 
-  ChevronRight,
+  RefreshCw,
   MoreVertical,
   Activity,
   CheckCircle,
@@ -254,6 +252,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                         onClick={() => updateRequestPriority(req.id, req.priority === 'URGENT' ? 'STANDARD' : 'URGENT')}
                         className="p-1 rounded hover:bg-gray-100 transition-colors cursor-pointer"
                         title={req.priority === 'URGENT' ? 'High Priority - Click to set Standard' : 'Standard Priority - Click to set High'}
+                        aria-label="Toggle priority"
                       >
                         <Flag 
                           className={`w-4 h-4 transition-all ${
@@ -338,6 +337,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                         onClick={() => onNavigate('briefs', req.id)}
                         className="p-1.5 text-[#0037b0] hover:bg-blue-50 rounded transition-all" 
                         title="Review Progress"
+                        aria-label="Review Progress"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
@@ -345,6 +345,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                         onClick={() => { setAssignModalRequestId(req.id); setAssignModalRequestTitle(req.title); }}
                         className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-all"
                         title="Reassign Staff"
+                        aria-label="Reassign Staff"
                       >
                         <RefreshCw className="w-4 h-4" />
                       </button>
@@ -356,17 +357,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
           </table>
         </div>
 
-        {/* Table footer paging controls */}
-        <div className="px-6 py-4 bg-[#f3f4f5]/40 border-t border-[#c4c5d7] flex justify-between items-center text-sm text-[#434655]">
-          <p>Showing {filteredRequests.length} of {requests.length} active requests</p>
-          <div className="flex gap-2">
-            <button className="px-3 py-1 border border-[#c4c5d7] rounded hover:bg-gray-50 transition-colors disabled:opacity-30" disabled>
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button className="px-3 py-1 border border-[#c4c5d7] rounded hover:bg-gray-50 transition-colors">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+        <div className="px-6 py-4 bg-[#f3f4f5]/40 border-t border-[#c4c5d7] text-sm text-[#434655]">
+          Showing {filteredRequests.length} of {requests.length} active requests
         </div>
       </section>
 

@@ -86,8 +86,12 @@ function mapApiRequest(r: any): ResearchRequest {
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const savedUser = localStorage.getItem('prrms_user');
-    return savedUser ? JSON.parse(savedUser) : { id: '', name: '', role: 'MP' as Role, email: '', initials: '', title: '' };
+    try {
+      const savedUser = localStorage.getItem('prrms_user');
+      return savedUser ? JSON.parse(savedUser) : { id: '', name: '', role: 'MP' as Role, email: '', initials: '', title: '' };
+    } catch {
+      return { id: '', name: '', role: 'MP' as Role, email: '', initials: '', title: '' };
+    }
   });
 
   const [requests, setRequests] = useState<ResearchRequest[]>([]);
@@ -95,22 +99,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   const [history, setHistory] = useState<HistoryItem[]>(() => {
-    const saved = localStorage.getItem('prrms_history');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('prrms_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   const [preferences, setPreferences] = useState<AppState['preferences']>(() => {
-    const savedPrefs = localStorage.getItem('prrms_prefs');
-    return savedPrefs ? JSON.parse(savedPrefs) : {
-      pushNotifications: true,
-      emailSummaries: false,
-      triggers: {
-        newAssignments: true,
-        statusChanges: true,
-        draftMentions: false,
-        deadlineReminders: true
-      }
-    };
+    try {
+      const savedPrefs = localStorage.getItem('prrms_prefs');
+      return savedPrefs ? JSON.parse(savedPrefs) : {
+        pushNotifications: true,
+        emailSummaries: false,
+        triggers: {
+          newAssignments: true,
+          statusChanges: true,
+          draftMentions: false,
+          deadlineReminders: true
+        }
+      };
+    } catch {
+      return {
+        pushNotifications: true,
+        emailSummaries: false,
+        triggers: {
+          newAssignments: true,
+          statusChanges: true,
+          draftMentions: false,
+          deadlineReminders: true
+        }
+      };
+    }
   });
 
   const [isOnline, setIsOnline] = useState(false);

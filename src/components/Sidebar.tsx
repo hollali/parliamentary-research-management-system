@@ -116,37 +116,40 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
       )}
 
       {/* Navigation Menu Links */}
-      <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
-        {filteredMenu.map(item => {
-          const Icon = item.icon;
-          const isActive = currentView === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => handleMenuClick(item.id)}
-              className={`w-full relative flex items-center py-3 rounded-md transition-all duration-150 group text-left cursor-pointer ${
-                isCollapsed ? 'justify-center px-0' : 'px-4'
-              } ${
-                isActive 
-                  ? 'bg-[#1d4ed8] text-white font-semibold' 
-                  : 'text-gray-300 hover:text-white hover:bg-[#2b384a]/50'
-              }`}
-              title={isCollapsed ? item.label : undefined}
-            >
-              {isActive && (
-                <div className="absolute left-0 top-0 w-1 h-full bg-[#0037b0] rounded-r-md" />
-              )}
-              <Icon className={`w-5 h-5 transition-colors shrink-0 ${
-                isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'
-              } ${isCollapsed ? 'mx-auto' : 'mr-3'}`} />
-              {!isCollapsed && <span className="font-sans text-sm whitespace-nowrap overflow-hidden">{item.label}</span>}
-            </button>
-          );
-        })}
+      <nav aria-label="Main navigation" className="flex-1 px-2 space-y-1 overflow-y-auto">
+        <ul>
+          {filteredMenu.map(item => {
+            const Icon = item.icon;
+            const isActive = currentView === item.id;
+            return (
+              <li key={item.id}>
+                <button
+                  onClick={() => handleMenuClick(item.id)}
+                  className={`w-full relative flex items-center py-3 rounded-md transition-all duration-150 group text-left cursor-pointer ${
+                    isCollapsed ? 'justify-center px-0' : 'px-4'
+                  } ${
+                    isActive 
+                      ? 'bg-[#1d4ed8] text-white font-semibold' 
+                      : 'text-gray-300 hover:text-white hover:bg-[#2b384a]/50'
+                  }`}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  {isActive && (
+                    <div className="absolute left-0 top-0 w-1 h-full bg-[#0037b0] rounded-r-md" />
+                  )}
+                  <Icon className={`w-5 h-5 transition-colors shrink-0 ${
+                    isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'
+                  } ${isCollapsed ? 'mx-auto' : 'mr-3'}`} />
+                  {!isCollapsed && <span className="font-sans text-sm whitespace-nowrap overflow-hidden">{item.label}</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
 
-      {/* Role Play Tester Panel */}
-      {!isCollapsed && (
+      {/* Role Play Tester Panel (dev only) */}
+      {import.meta.env.DEV && !isCollapsed && (
         <div className="mx-4 my-2 p-3 bg-[#2a3646] rounded-lg border border-[#445468] text-white space-y-2 overflow-hidden shrink-0">
           <p className="text-[11px] font-sans font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1 whitespace-nowrap">
             <Sparkles className="w-3 h-3 text-yellow-400 shrink-0" />

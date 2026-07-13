@@ -101,8 +101,12 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" onClick={onClose}>
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Global search"
         className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       >
         {/* Search input */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">

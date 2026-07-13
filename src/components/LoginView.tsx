@@ -366,19 +366,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 </div>
               </div>
 
-              {/* Keep Logged In */}
-              <div className="flex items-center space-x-2">
-                <input 
-                  type="checkbox" 
-                  id="remember" 
-                  className="w-4 h-4 rounded border-[#c4c5d7] text-[#0037b0] focus:ring-[#0037b0]" 
-                  defaultChecked
-                />
-                <label className="text-xs text-[#434655] cursor-pointer select-none" htmlFor="remember">
-                  Keep me logged in for 8 hours
-                </label>
-              </div>
-
               {/* Submit CTA */}
               <button 
                 type="submit" 
@@ -446,15 +433,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   </p>
                 </div>
               </div>
-              <div className="flex justify-center items-center space-x-8 text-gray-400 mt-6 pt-4 border-t border-gray-100">
+              <div className="flex justify-center items-center text-gray-400 mt-6 pt-4 border-t border-gray-100">
                 <div className="flex flex-col items-center">
-                  <span className="text-lg font-bold text-gray-500">256-bit</span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider">AES Encryption</span>
-                </div>
-                <div className="w-px h-8 bg-gray-200" />
-                <div className="flex flex-col items-center">
-                  <span className="text-lg font-bold text-gray-500">MFA</span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider">Enforced</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider">Secure Session</span>
                 </div>
               </div>
             </footer>
