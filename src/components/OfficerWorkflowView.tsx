@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
-import { acceptAssignment, declineAssignment, uploadFile, getToken } from '../lib/api';
+import { acceptAssignment, declineAssignment, uploadFile, getPendingAssignments } from '../lib/api';
 import { ResearchRequest } from '../types';
 import { 
   Inbox, 
@@ -25,15 +25,13 @@ interface OfficerWorkflowViewProps {
   onNavigate: (view: string, targetId?: string) => void;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-
 export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavigate }) => {
   const { requests, updateRequestStatus } = useApp();
   const { toast } = useToast();
   
   // Officer's assigned requests — backend already filters by role (direct, assignment, or team)
   const officerRequests = requests.filter(r => 
-    r.status !== 'COMPLETED'
+    !['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)
   );
   
   const [selectedId, setSelectedId] = useState<string>(
@@ -48,11 +46,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
 
   const handleAccept = async () => {
     try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/assignments/pending`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const data = await getPendingAssignments() as any;
       const assignments = Array.isArray(data) ? data : (data?.requests || []);
       const myAssignment = Array.isArray(assignments) ? assignments.find((a: any) => a.id && a.requestId === activeRequest.id) : null;
       if (myAssignment) {
@@ -70,11 +64,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
 
   const handleDecline = async () => {
     try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/assignments/pending`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const data = await getPendingAssignments() as any;
       const assignments = Array.isArray(data) ? data : (data?.requests || []);
       const myAssignment = Array.isArray(assignments) ? assignments.find((a: any) => a.id && a.requestId === activeRequest.id) : null;
       if (myAssignment) {
@@ -224,7 +214,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
                       >
                         <option value="ASSIGNED">Assigned</option>
                         <option value="IN_PROGRESS">In Progress</option>
-                        <option value="COMPLETED">Completed</option>
+                        <option value="APPROVED">Approved</option>
                       </select>
                     </>
                   )}

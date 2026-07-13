@@ -24,13 +24,13 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  PENDING_REVIEW: 'bg-blue-100 text-blue-700 border-blue-200',
+  SUBMITTED: 'bg-blue-100 text-blue-700 border-blue-200',
   ASSIGNED: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   IN_PROGRESS: 'bg-amber-100 text-amber-700 border-amber-200',
   REVISION_REQUESTED: 'bg-orange-100 text-orange-700 border-orange-200',
-  REVISION_IN_PROGRESS: 'bg-purple-100 text-purple-700 border-purple-200',
+  REVISED: 'bg-purple-100 text-purple-700 border-purple-200',
   OVERDUE: 'bg-red-100 text-red-700 border-red-200',
-  COMPLETED: 'bg-green-100 text-green-700 border-green-200',
+  APPROVED: 'bg-green-100 text-green-700 border-green-200',
 };
 
 export const ParliamentaryCalendarView: React.FC = () => {
@@ -73,7 +73,7 @@ export const ParliamentaryCalendarView: React.FC = () => {
     const now = new Date();
     return requests.filter((r) =>
       r.deadline && new Date(r.deadline) < now &&
-      r.status !== 'COMPLETED'
+      !['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)
     );
   }, [requests]);
 

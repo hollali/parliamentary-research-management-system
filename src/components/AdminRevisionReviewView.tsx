@@ -171,7 +171,7 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
   };
 
   const handleApprove = () => {
-    updateRequestStatus(request.id, 'COMPLETED');
+    updateRequestStatus(request.id, 'APPROVED');
     onBack();
   };
 

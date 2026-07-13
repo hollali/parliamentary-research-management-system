@@ -133,14 +133,15 @@ router.get("/analytics", authenticateToken, async (req, res) => {
 router.get("/activity", authenticateToken, async (req, res) => {
   try {
     const { role, userId } = req.user!;
-    const { action, entityType, page = "1", limit = "50" } = req.query;
+    const { action, entityType, page: rawPage = "1", limit: rawLimit = "50" } = req.query;
+    const p = Math.max(1, parseInt(rawPage as string) || 1);
+    const l = Math.min(100, Math.max(1, parseInt(rawLimit as string) || 50));
+    const skip = (p - 1) * l;
 
     const where: any = {};
     if (role === "MP") where.authorId = userId;
     if (action) where.action = action;
     if (entityType) where.entityType = entityType;
-
-    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
     const [logs, total] = await Promise.all([
       prisma.activityLog.findMany({
@@ -150,12 +151,12 @@ router.get("/activity", authenticateToken, async (req, res) => {
         },
         orderBy: { createdAt: "desc" },
         skip,
-        take: parseInt(limit as string),
+        take: l,
       }),
       prisma.activityLog.count({ where }),
     ]);
 
-    res.json({ logs, total, page: parseInt(page as string), totalPages: Math.ceil(total / parseInt(limit as string)) });
+    res.json({ logs, total, page: p, totalPages: Math.ceil(total / l) });
   } catch (error) {
     console.error("Activity log error:", error);
     res.status(500).json({ error: "Internal server error" });

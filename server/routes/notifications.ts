@@ -4,24 +4,30 @@ import { authenticateToken } from "../middleware/auth.js";
 
 const router = Router();
 
+function clampPagination(page: string, limit: string) {
+  const p = Math.max(1, parseInt(page) || 1);
+  const l = Math.min(100, Math.max(1, parseInt(limit) || 20));
+  return { page: p, limit: l, skip: (p - 1) * l };
+}
+
 // List notifications
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    const { page = "1", limit = "20" } = req.query;
-    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const { page: rawPage = "1", limit: rawLimit = "20" } = req.query;
+    const { page, limit, skip } = clampPagination(rawPage as string, rawLimit as string);
 
     const [notifications, total, unreadCount] = await Promise.all([
       prisma.notification.findMany({
         where: { recipientId: req.user!.userId },
         orderBy: { createdAt: "desc" },
         skip,
-        take: parseInt(limit as string),
+        take: limit,
       }),
       prisma.notification.count({ where: { recipientId: req.user!.userId } }),
       prisma.notification.count({ where: { recipientId: req.user!.userId, isRead: false } }),
     ]);
 
-    res.json({ notifications, total, unreadCount, totalPages: Math.ceil(total / parseInt(limit as string)) });
+    res.json({ notifications, total, unreadCount, totalPages: Math.ceil(total / limit) });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }

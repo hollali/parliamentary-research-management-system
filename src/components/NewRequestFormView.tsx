@@ -132,7 +132,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
         member: currentUser.name,
         assignedOfficerId: null,
         assignedOfficerName: null,
-        status: 'PENDING_REVIEW',
+        status: 'SUBMITTED',
         priority,
         deadline: new Date(deadline).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
         description,

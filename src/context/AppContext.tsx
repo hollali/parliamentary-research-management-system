@@ -26,15 +26,15 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 function mapApiRequest(r: any): ResearchRequest {
   const statusMap: Record<string, ResearchRequest['status']> = {
-    SUBMITTED: 'PENDING_REVIEW',
+    SUBMITTED: 'SUBMITTED',
     ASSIGNED: 'ASSIGNED',
     IN_PROGRESS: 'IN_PROGRESS',
-    DRAFT_SUBMITTED: 'IN_PROGRESS',
+    DRAFT_SUBMITTED: 'DRAFT_SUBMITTED',
     REVISION_REQUESTED: 'REVISION_REQUESTED',
-    REVISED: 'REVISION_IN_PROGRESS',
-    APPROVED: 'COMPLETED',
-    DELIVERED: 'COMPLETED',
-    CLOSED: 'COMPLETED',
+    REVISED: 'REVISED',
+    APPROVED: 'APPROVED',
+    DELIVERED: 'DELIVERED',
+    CLOSED: 'CLOSED',
   };
 
   return {
@@ -53,7 +53,7 @@ function mapApiRequest(r: any): ResearchRequest {
       lastName: a.assignedTo?.lastName || '',
       initials: a.assignedTo?.initials || '',
     })),
-    status: statusMap[r.status] || 'PENDING_REVIEW',
+    status: statusMap[r.status] || 'SUBMITTED',
     priority: r.priority as ResearchRequest['priority'],
     dateSubmitted: new Date(r.dateSubmitted).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
     deadline: new Date(r.deadline).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
@@ -304,12 +304,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateRequestStatus = async (requestId: string, status: ResearchRequest['status']) => {
     // Map frontend status back to backend status
     const reverseStatusMap: Record<string, string> = {
-      PENDING_REVIEW: 'SUBMITTED',
+      SUBMITTED: 'SUBMITTED',
       ASSIGNED: 'ASSIGNED',
       IN_PROGRESS: 'IN_PROGRESS',
       REVISION_REQUESTED: 'REVISION_REQUESTED',
-      REVISION_IN_PROGRESS: 'REVISED',
-      COMPLETED: 'APPROVED',
+      REVISED: 'REVISED',
+      APPROVED: 'APPROVED',
     };
 
     // Persist to backend if online
@@ -319,7 +319,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         if (status === 'REVISION_REQUESTED' && req?.reportId) {
           await requestRevision({ reportId: req.reportId, requestId });
-        } else if (status === 'COMPLETED' && req?.reportId) {
+        } else if (status === 'APPROVED' && req?.reportId) {
           await approveReport({ reportId: req.reportId, requestId });
         } else {
           const backendStatus = reverseStatusMap[status] || status;

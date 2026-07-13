@@ -243,7 +243,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
       // Fall through to local-only
     }
     
-    updateRequestStatus(request.id, 'PENDING_REVIEW');
+    updateRequestStatus(request.id, 'SUBMITTED');
     setSubmitting(false);
     onBack();
   };

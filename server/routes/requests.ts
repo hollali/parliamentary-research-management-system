@@ -4,6 +4,12 @@ import { authenticateToken, requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
+function clampPagination(page: string, limit: string) {
+  const p = Math.max(1, parseInt(page) || 1);
+  const l = Math.min(100, Math.max(1, parseInt(limit) || 20));
+  return { page: p, limit: l, skip: (p - 1) * l };
+}
+
 function generateRequestNumber(): string {
   const year = new Date().getFullYear();
   const seq = Math.floor(Math.random() * 9000 + 1000);
@@ -20,7 +26,8 @@ function lookupByIdOrNumber(idOrNumber: string): any {
 router.get("/", authenticateToken, async (req, res) => {
   try {
     const { role, userId } = req.user!;
-    const { status, priority, categoryId, search, page = "1", limit = "20" } = req.query;
+    const { status, priority, categoryId, search, page: rawPage = "1", limit: rawLimit = "20" } = req.query;
+    const { page, limit, skip } = clampPagination(rawPage as string, rawLimit as string);
 
     const where: any = {};
 
@@ -54,8 +61,6 @@ router.get("/", authenticateToken, async (req, res) => {
       }
     }
 
-    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-
     const [requests, total] = await Promise.all([
       prisma.researchRequest.findMany({
         where,
@@ -73,12 +78,12 @@ router.get("/", authenticateToken, async (req, res) => {
         },
         orderBy: { createdAt: "desc" },
         skip,
-        take: parseInt(limit as string),
+        take: limit,
       }),
       prisma.researchRequest.count({ where }),
     ]);
 
-    res.json({ requests, total, page: parseInt(page as string), totalPages: Math.ceil(total / parseInt(limit as string)) });
+    res.json({ requests, total, page, totalPages: Math.ceil(total / limit) });
   } catch (error) {
     console.error("List requests error:", error);
     res.status(500).json({ error: "Internal server error" });

@@ -42,32 +42,32 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
   }, []);
 
   // Derive counts from requests state
-  const totalPending = requests.filter(r => r.status === 'PENDING_REVIEW' || r.status === 'ASSIGNED').length;
+  const totalPending = requests.filter(r => r.status === 'SUBMITTED' || r.status === 'ASSIGNED').length;
   const totalAssigned = requests.filter(r => r.assignedOfficerId !== null).length;
-  const inProgressCount = requests.filter(r => r.status === 'IN_PROGRESS' || r.status === 'REVISION_IN_PROGRESS').length;
+  const inProgressCount = requests.filter(r => r.status === 'IN_PROGRESS' || r.status === 'REVISED').length;
   const overdueCount = requests.filter(r => r.status === 'OVERDUE').length;
 
   // Filter requests for display
   const filteredRequests = requests.filter(req => {
     if (showHighPriorityOnly && req.priority !== 'URGENT') return false;
-    if (filterTab === 'PENDING' && req.status !== 'PENDING_REVIEW') return false;
+    if (filterTab === 'PENDING' && req.status !== 'SUBMITTED') return false;
     return true;
   });
 
   const getStatusBadge = (status: ResearchRequest['status']) => {
     switch (status) {
-      case 'PENDING_REVIEW':
+      case 'SUBMITTED':
         return <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Pending Review</span>;
       case 'ASSIGNED':
         return <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Assigned</span>;
       case 'IN_PROGRESS':
         return <span className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">In Progress</span>;
       case 'REVISION_REQUESTED':
-      case 'REVISION_IN_PROGRESS':
+      case 'REVISED':
         return <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Revision</span>;
       case 'OVERDUE':
         return <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Overdue</span>;
-      case 'COMPLETED':
+      case 'APPROVED':
         return <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Completed</span>;
       default:
         return <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">{status}</span>;

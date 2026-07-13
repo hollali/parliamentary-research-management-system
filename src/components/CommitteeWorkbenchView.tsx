@@ -87,7 +87,7 @@ export const CommitteeWorkbenchView: React.FC<CommitteeWorkbenchViewProps> = ({ 
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'COMPLETED': return 'text-emerald-700 bg-emerald-50';
+      case 'APPROVED': return 'text-emerald-700 bg-emerald-50';
       case 'IN_PROGRESS': case 'ASSIGNED': return 'text-blue-700 bg-blue-50';
       case 'REVISION_REQUESTED': return 'text-amber-700 bg-amber-50';
       case 'OVERDUE': return 'text-red-700 bg-red-50';

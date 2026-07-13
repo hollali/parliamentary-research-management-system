@@ -40,12 +40,12 @@ export const MemberDashboardView: React.FC = () => {
 
   const getStatusLabel = (status: ResearchRequest['status']) => {
     switch (status) {
-      case 'PENDING_REVIEW': return 'Under Review';
+      case 'SUBMITTED': return 'Under Review';
       case 'ASSIGNED': return 'Assigned';
       case 'IN_PROGRESS': return 'In Progress';
       case 'REVISION_REQUESTED':
-      case 'REVISION_IN_PROGRESS': return 'Under Revision';
-      case 'COMPLETED': return 'Completed';
+      case 'REVISED': return 'Under Revision';
+      case 'APPROVED': return 'Completed';
       case 'OVERDUE': return 'Overdue';
       default: return status;
     }
@@ -54,10 +54,10 @@ export const MemberDashboardView: React.FC = () => {
   // Timeline step generator based on status
   const getTimelineSteps = (req: ResearchRequest) => {
     const isSubmitted = true;
-    const isAssigned = ['ASSIGNED', 'IN_PROGRESS', 'REVISION_REQUESTED', 'REVISION_IN_PROGRESS', 'COMPLETED'].includes(req.status);
-    const isInProgress = ['IN_PROGRESS', 'REVISION_REQUESTED', 'REVISION_IN_PROGRESS', 'COMPLETED'].includes(req.status);
-    const isRevision = ['REVISION_REQUESTED', 'REVISION_IN_PROGRESS'].includes(req.status);
-    const isCompleted = req.status === 'COMPLETED';
+    const isAssigned = ['ASSIGNED', 'IN_PROGRESS', 'REVISION_REQUESTED', 'REVISED', 'APPROVED'].includes(req.status);
+    const isInProgress = ['IN_PROGRESS', 'REVISION_REQUESTED', 'REVISED', 'APPROVED'].includes(req.status);
+    const isRevision = ['REVISION_REQUESTED', 'REVISED'].includes(req.status);
+    const isCompleted = ['APPROVED', 'DELIVERED', 'CLOSED'].includes(req.status);
 
     return [
       {
@@ -112,7 +112,7 @@ export const MemberDashboardView: React.FC = () => {
         <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">Active Requests</p>
-            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">{memberRequests.filter(r => r.status !== 'COMPLETED').length}</h3>
+            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">{memberRequests.filter(r => !['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)).length}</h3>
             <p className="text-[11px] text-[#434655] mt-1">In progress</p>
           </div>
           <div className="p-3 bg-blue-50 text-[#0037b0] rounded">
@@ -123,7 +123,7 @@ export const MemberDashboardView: React.FC = () => {
         <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">Completed</p>
-            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">{memberRequests.filter(r => r.status === 'COMPLETED').length}</h3>
+            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">{memberRequests.filter(r => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)).length}</h3>
             <p className="text-[11px] text-emerald-800 font-semibold mt-1">Delivered briefs</p>
           </div>
           <div className="p-3 bg-emerald-50 text-[#006b2c] rounded">
@@ -339,7 +339,7 @@ export const MemberDashboardView: React.FC = () => {
                   </td>
                   <td className="px-6 py-3.5">
                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      req.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                      ['APPROVED', 'DELIVERED', 'CLOSED'].includes(req.status) ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
                     }`}>
                       {getStatusLabel(req.status)}
                     </span>

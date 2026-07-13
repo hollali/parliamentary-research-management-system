@@ -158,13 +158,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   }, [requests]);
 
   const statuses = [
-    { value: 'PENDING_REVIEW', label: 'Pending Review' },
+    { value: 'SUBMITTED', label: 'Submitted' },
     { value: 'ASSIGNED', label: 'Assigned' },
     { value: 'IN_PROGRESS', label: 'In Progress' },
     { value: 'REVISION_REQUESTED', label: 'Revision Requested' },
-    { value: 'REVISION_IN_PROGRESS', label: 'Revision In Progress' },
+    { value: 'REVISED', label: 'Revised' },
     { value: 'OVERDUE', label: 'Overdue' },
-    { value: 'COMPLETED', label: 'Completed' },
+    { value: 'APPROVED', label: 'Approved' },
   ];
 
   const filteredRequests = React.useMemo(() => {
@@ -216,23 +216,23 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
 
   const getProgressPercentage = (status: string): number => {
     switch (status) {
-      case 'PENDING_REVIEW': return 15;
+      case 'SUBMITTED': return 15;
       case 'ASSIGNED': return 30;
       case 'IN_PROGRESS': return 55;
       case 'REVISION_REQUESTED': return 75;
-      case 'REVISION_IN_PROGRESS': return 85;
+      case 'REVISED': return 85;
       case 'OVERDUE': return 40;
-      case 'COMPLETED': return 100;
+      case 'APPROVED': return 100;
       default: return 0;
     }
   };
 
   const getProgressColor = (status: string): string => {
     switch (status) {
-      case 'COMPLETED': return 'bg-emerald-600';
+      case 'APPROVED': return 'bg-emerald-600';
       case 'OVERDUE': return 'bg-[#ba1a1a]';
       case 'REVISION_REQUESTED':
-      case 'REVISION_IN_PROGRESS': return 'bg-amber-500';
+      case 'REVISED': return 'bg-amber-500';
       default: return 'bg-[#0037b0]';
     }
   };

@@ -65,7 +65,7 @@ export interface ResearchRequest {
   teamId?: string | null;
   teamName?: string | null;
   assignedOfficers?: { id: string; firstName: string; lastName: string; initials: string }[];
-  status: 'PENDING_REVIEW' | 'ASSIGNED' | 'IN_PROGRESS' | 'REVISION_REQUESTED' | 'REVISION_IN_PROGRESS' | 'OVERDUE' | 'COMPLETED';
+  status: 'SUBMITTED' | 'ASSIGNED' | 'IN_PROGRESS' | 'DRAFT_SUBMITTED' | 'REVISION_REQUESTED' | 'REVISED' | 'APPROVED' | 'DELIVERED' | 'CLOSED' | 'OVERDUE';
   priority: 'STANDARD' | 'URGENT';
   dateSubmitted: string;
   deadline: string;
