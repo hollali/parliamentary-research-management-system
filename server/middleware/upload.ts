@@ -1,9 +1,13 @@
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "../../uploads");
+
+// Ensure uploads directory exists
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 const ALLOWED_MIMETYPES: Record<string, string> = {
   "application/pdf": "pdf",

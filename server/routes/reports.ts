@@ -98,7 +98,7 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
         }
         if (await shouldEmail(admin.id)) {
           const email = draftSubmittedEmail(admin.firstName, request.requestNumber, request.title, nextVersion);
-          await sendEmail({ to: admin.email, ...email });
+          sendEmail({ to: admin.email, ...email }).catch(() => {});
         }
       }
     }
@@ -119,6 +119,7 @@ router.get("/:reportId/versions", authenticateToken, async (req, res) => {
     });
     res.json(versions);
   } catch (error) {
+    console.error("Get versions error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -136,6 +137,7 @@ router.get("/:reportId/versions/:v1/compare/:v2", authenticateToken, async (req,
     }
     res.json({ versionA, versionB });
   } catch (error) {
+    console.error("Compare versions error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -101,7 +101,7 @@ export async function updateUserProfile(data: { firstName?: string; lastName?: s
 export interface GetRequestsParams {
   status?: string;
   priority?: string;
-  categoryId?: string;
+  committeeId?: string;
   search?: string;
   page?: number;
   limit?: number;
@@ -132,7 +132,7 @@ export async function createRequest(data: {
   language?: string;
   priority?: string;
   deadline: string;
-  categoryId?: string;
+  committeeId?: string;
 }) {
   return request('/requests/', { method: 'POST', body: data });
 }

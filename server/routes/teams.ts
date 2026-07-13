@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { prisma } from "../lib/prisma";
-import { authenticateToken, requireRole } from "../middleware/auth";
+import prisma from "../lib/prisma.js";
+import { authenticateToken, requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -49,6 +49,7 @@ router.get("/:teamId", authenticateToken, async (req, res) => {
     if (!team) return res.status(404).json({ error: "Team not found" });
     res.json(team);
   } catch (error) {
+    console.error("Get team error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -119,6 +120,7 @@ router.put("/:teamId", authenticateToken, requireRole("ADMIN"), async (req, res)
     });
     res.json(team);
   } catch (error) {
+    console.error("Update team error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -146,6 +148,7 @@ router.post("/:teamId/members", authenticateToken, requireRole("ADMIN"), async (
     });
     res.json(team);
   } catch (error) {
+    console.error("Add member error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -158,6 +161,7 @@ router.delete("/:teamId/members/:userId", authenticateToken, requireRole("ADMIN"
     });
     res.json({ success: true });
   } catch (error) {
+    console.error("Remove member error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -171,6 +175,7 @@ router.delete("/:teamId", authenticateToken, requireRole("ADMIN"), async (req, r
     });
     res.json({ success: true });
   } catch (error) {
+    console.error("Deactivate team error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

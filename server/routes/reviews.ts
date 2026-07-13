@@ -23,6 +23,7 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
     });
     res.json(comments);
   } catch (error) {
+    console.error("List reviews error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -84,13 +85,14 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
         if (officer) {
           const sectionLabel = section || "General";
           const email = commentAddedEmail(officer.firstName, request.requestNumber, request.title, sectionLabel, text, highlightedText);
-          await sendEmail({ to: officer.email, ...email });
+          sendEmail({ to: officer.email, ...email }).catch(() => {});
         }
       }
     }
 
     res.status(201).json(comment);
   } catch (error) {
+    console.error("Create review error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -120,6 +122,7 @@ router.put("/:commentId/resolve", authenticateToken, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
+    console.error("Resolve comment error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -201,12 +204,13 @@ router.post("/request-revision", authenticateToken, requireRole("ADMIN"), async 
 
       if (await shouldEmail(recipientId)) {
         const email = revisionRequestedEmail(recipient.firstName, request!.requestNumber, request!.title, emailText);
-        await sendEmail({ to: recipient.email, ...email });
+        sendEmail({ to: recipient.email, ...email }).catch(() => {});
       }
     }
 
     res.json({ message: "Revision requested" });
   } catch (error) {
+    console.error("Request revision error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -265,6 +269,7 @@ router.post("/approve", authenticateToken, requireRole("ADMIN"), async (req, res
 
     res.json({ report: updatedReport, request: updatedRequest });
   } catch (error) {
+    console.error("Approve report error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

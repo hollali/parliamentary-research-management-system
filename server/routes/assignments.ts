@@ -19,6 +19,7 @@ router.get("/pending", authenticateToken, requireRole("ADMIN"), async (_req, res
     });
     res.json(requests);
   } catch (error) {
+    console.error("List pending error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -30,6 +31,10 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     if (!requestId || !deadline) {
       return res.status(400).json({ error: "requestId and deadline are required" });
+    }
+
+    if (new Date(deadline) <= new Date()) {
+      return res.status(400).json({ error: "Deadline must be in the future" });
     }
 
     const officerIds: string[] = assignedToIds || (assignedToId ? [assignedToId] : []);
@@ -126,7 +131,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
       }
       if (await shouldEmail(officer.id)) {
         const email = assignmentEmail(officer.firstName, request.requestNumber, request.title, deadline);
-        await sendEmail({ to: officer.email, ...email });
+        sendEmail({ to: officer.email, ...email }).catch(() => {});
       }
     }
 
@@ -184,6 +189,7 @@ router.get("/officers", authenticateToken, requireRole("ADMIN"), async (_req, re
     });
     res.json(officers);
   } catch (error) {
+    console.error("Get officers error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

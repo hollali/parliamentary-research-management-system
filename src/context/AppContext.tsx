@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, ResearchRequest, NotificationItem, HistoryItem, AppState, Comment, Attachment, Role } from '../types';
-import { loginApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile, getActivityLog, getNotificationPrefs, updateNotificationPrefs } from '../lib/api';
+import { loginApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile, getActivityLog, getNotificationPrefs, updateNotificationPrefs, createRequest, getRequest } from '../lib/api';
 
 interface AppContextType extends AppState {
   login: (email: string, password?: string) => Promise<boolean> | boolean;
@@ -254,7 +254,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Persist to backend if online
     if (isOnline) {
       try {
-        const { createRequest } = await import('../lib/api');
         await createRequest({
           title: newReqData.title,
           subject: newReqData.topic,
@@ -281,7 +280,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const assignRequest = async (requestId: string, officerIds?: string[], teamId?: string, deadline?: string, notes?: string) => {
     if (isOnline) {
       try {
-        const fullReq = await (await import('../lib/api')).getRequest(requestId);
+        const fullReq = await getRequest(requestId);
         const internalId = fullReq?.id || requestId;
         const resolvedDeadline = deadline || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         await createAssignment({
@@ -356,8 +355,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isOnline) {
       try {
         await updateRequest(requestId, { priority });
-      } catch (err) {
-        console.error('Failed to update priority:', err);
+      } catch {
         return;
       }
     }
@@ -384,8 +382,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isOnline) {
       try {
         await updateRequest(requestId, { deadline: newDeadline });
-      } catch (err) {
-        console.error('Failed to extend deadline:', err);
+      } catch {
         return;
       }
     }
@@ -526,8 +523,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isOnline) {
       try {
         await apiMarkAllRead();
-      } catch (err) {
-        console.error('Failed to mark notifications read:', err);
+      } catch {
+        // Fall through
       }
     }
   };

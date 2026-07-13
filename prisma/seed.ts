@@ -349,7 +349,7 @@ async function main() {
         deadline: new Date("2024-03-15"),
         submitterId: mps[0].id,
         assignedOfficerId: officers[0].id,
-        categoryId: committees[7].id, // Energy and Mines
+        committeeId: committees[7].id, // Energy and Mines
         draftVersion: 1,
         dateAssigned: new Date("2024-01-20"),
       },
@@ -367,7 +367,7 @@ async function main() {
         deadline: new Date("2024-04-01"),
         submitterId: mps[1].id,
         assignedOfficerId: officers[1].id,
-        categoryId: committees[12].id, // Communications and Digitalisation
+        committeeId: committees[12].id, // Communications and Digitalisation
         draftVersion: 0,
         dateAssigned: new Date("2024-01-25"),
       },
@@ -385,7 +385,7 @@ async function main() {
         deadline: new Date("2024-02-28"),
         submitterId: mps[2].id,
         assignedOfficerId: officers[1].id,
-        categoryId: committees[5].id, // Finance
+        committeeId: committees[5].id, // Finance
         draftVersion: 2,
         dateAssigned: new Date("2024-01-10"),
       },
@@ -401,7 +401,7 @@ async function main() {
         status: RequestStatus.SUBMITTED,
         deadline: new Date("2024-05-01"),
         submitterId: mps[0].id,
-        categoryId: committees[4].id, // Health
+        committeeId: committees[4].id, // Health
       },
     }),
     prisma.researchRequest.create({
@@ -417,7 +417,7 @@ async function main() {
         deadline: new Date("2024-03-20"),
         submitterId: mps[2].id,
         assignedOfficerId: officers[2].id,
-        categoryId: committees[13].id, // Environment, Science and Technology
+        committeeId: committees[13].id, // Environment, Science and Technology
         draftVersion: 1,
         dateAssigned: new Date("2024-01-15"),
       },
@@ -434,7 +434,7 @@ async function main() {
         deadline: new Date("2024-02-01"),
         submitterId: mps[1].id,
         assignedOfficerId: officers[0].id,
-        categoryId: committees[2].id, // Constitutional, Legal and Parliamentary Affairs
+        committeeId: committees[2].id, // Constitutional, Legal and Parliamentary Affairs
         draftVersion: 3,
         dateAssigned: new Date("2023-12-15"),
         dateCompleted: new Date("2024-01-30"),

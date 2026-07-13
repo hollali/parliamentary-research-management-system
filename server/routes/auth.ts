@@ -4,12 +4,13 @@ import crypto from "crypto";
 import prisma from "../lib/prisma.js";
 import { generateToken, authenticateToken } from "../middleware/auth.js";
 import { sendEmail, passwordResetEmail } from "../lib/email.js";
+import { rateLimit } from "../lib/rateLimit.js";
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 const router = Router();
 
-router.post("/login", async (req, res) => {
+router.post("/login", rateLimit(15 * 60 * 1000, 10), async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -65,7 +66,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", rateLimit(15 * 60 * 1000, 5), async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -240,6 +241,7 @@ router.get("/notification-prefs", authenticateToken, async (req, res) => {
       triggers: { newAssignments: true, statusChanges: true, draftMentions: true, deadlineReminders: true },
     });
   } catch (error) {
+    console.error("Reset password error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -254,6 +256,7 @@ router.put("/notification-prefs", authenticateToken, async (req, res) => {
     });
     res.json({ message: "Preferences updated" });
   } catch (error) {
+    console.error("Refresh token error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

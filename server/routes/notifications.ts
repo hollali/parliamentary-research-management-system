@@ -29,6 +29,7 @@ router.get("/", authenticateToken, async (req, res) => {
 
     res.json({ notifications, total, unreadCount, totalPages: Math.ceil(total / limit) });
   } catch (error) {
+    console.error("List notifications error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -51,6 +52,7 @@ router.put("/:id/read", authenticateToken, async (req, res) => {
     });
     res.json(notification);
   } catch (error) {
+    console.error("Mark read error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -64,6 +66,7 @@ router.put("/read-all", authenticateToken, async (req, res) => {
     });
     res.json({ message: "All notifications marked as read" });
   } catch (error) {
+    console.error("Mark all read error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -5,6 +5,7 @@
   "description": "Parliamentary Research Request Management System - Parliamentary Service of Ghana",
   "type": "module",
   "scripts": {
+    "prepare": "prisma generate",
     "dev": "vite --port=3000 --host=0.0.0.0",
     "dev:server": "tsx watch server/index.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import JWT_SECRET from "../lib/jwt.js";
+import JWT_SECRET, { JWT_EXPIRY } from "../lib/jwt.js";
 
 export interface AuthPayload {
   userId: string;
@@ -45,5 +45,5 @@ export function requireRole(...roles: string[]) {
 }
 
 export function generateToken(payload: AuthPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "24h" });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY as any });
 }

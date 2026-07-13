@@ -2,6 +2,8 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 
+const OFFICER_CAPACITY = parseInt(process.env.OFFICER_CAPACITY || "10", 10);
+
 const router = Router();
 
 router.get("/", authenticateToken, async (req, res) => {
@@ -94,7 +96,7 @@ router.get("/analytics", authenticateToken, async (req, res) => {
       officersWorkload,
     ] = await Promise.all([
       prisma.researchRequest.groupBy({ by: ["status"], _count: true }),
-      prisma.researchRequest.groupBy({ by: ["categoryId"], _count: true, where: { categoryId: { not: null } } }),
+      prisma.researchRequest.groupBy({ by: ["committeeId"], _count: true, where: { committeeId: { not: null } } }),
       prisma.researchRequest.groupBy({ by: ["priority"], _count: true }),
       prisma.researchRequest.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
       prisma.user.findMany({
@@ -187,9 +189,9 @@ router.get("/workload", authenticateToken, requireRole("ADMIN"), async (_req, re
     const enriched = officers.map((o) => ({
       ...o,
       activeCount: o._count.assignedRequests,
-      capacity: 10,
-      utilization: Math.round((o._count.assignedRequests / 10) * 100),
-      status: o._count.assignedRequests >= 10 ? "at_capacity" : o._count.assignedRequests >= 7 ? "high" : o._count.assignedRequests >= 4 ? "moderate" : "available",
+      capacity: OFFICER_CAPACITY,
+      utilization: Math.round((o._count.assignedRequests / OFFICER_CAPACITY) * 100),
+      status: o._count.assignedRequests >= OFFICER_CAPACITY ? "at_capacity" : o._count.assignedRequests >= 7 ? "high" : o._count.assignedRequests >= 4 ? "moderate" : "available",
     }));
 
     res.json({

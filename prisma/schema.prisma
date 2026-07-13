@@ -191,13 +191,13 @@ model ResearchRequest {
   dateDelivered       DateTime?
   dateClosed          DateTime?
   draftVersion        Int           @default(0)
-  categoryId          String?
+  committeeId         String?
   submitterId         String
   assignedOfficerId   String?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 
-  category   Committee?        @relation(fields: [categoryId], references: [id])
+  category   Committee?        @relation(fields: [committeeId], references: [id])
   submitter  User             @relation("RequestSubmitter", fields: [submitterId], references: [id])
   officer    User?            @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id])
 
@@ -214,7 +214,7 @@ model ResearchRequest {
   @@index([status])
   @@index([priority])
   @@index([deadline])
-  @@index([categoryId])
+  @@index([committeeId])
   @@index([teamId])
   @@map("research_requests")
 }
@@ -269,6 +269,7 @@ model TeamMember {
   teamId    String
   userId    String
   joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   team ResearchTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -321,6 +322,7 @@ model ReportVersion {
   fileSize   Int?
   notes      String?
   createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   report ResearchReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
@@ -368,6 +370,7 @@ model Attachment {
   filePath    String
   fileSize    Int?
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   request  ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   uploader User            @relation("AttachmentUploader", fields: [uploadedById], references: [id])
@@ -385,6 +388,7 @@ model SharedResearch {
   sharedById     String
   notes          String?
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   request    ResearchRequest @relation("SharedWith", fields: [requestId], references: [id], onDelete: Cascade)
   sharedWith Committee       @relation("SharedCommittee", fields: [sharedWithId], references: [id], onDelete: Cascade)
@@ -405,6 +409,7 @@ model Notification {
   link        String?
   isRead      Boolean          @default(false)
   createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
 

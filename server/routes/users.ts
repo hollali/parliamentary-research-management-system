@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 
+const VALID_ROLES = ["ADMIN", "RESEARCH_OFFICER", "RESEARCH_ASSISTANT", "MP"] as const;
+
 const router = Router();
 
 // List users
@@ -43,6 +45,7 @@ router.get("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     res.json(users);
   } catch (error) {
+    console.error("List users error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -54,6 +57,10 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     if (!email || !password || !firstName || !lastName || !role) {
       return res.status(400).json({ error: "email, password, firstName, lastName, and role are required" });
+    }
+
+    if (!VALID_ROLES.includes(role as any)) {
+      return res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` });
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -111,6 +118,10 @@ router.put("/:id", authenticateToken, requireRole("ADMIN"), async (req, res) => 
   try {
     const { firstName, lastName, role, title, phone, departmentId, isActive } = req.body;
 
+    if (role && !VALID_ROLES.includes(role as any)) {
+      return res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` });
+    }
+
     const user = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -147,6 +158,7 @@ router.put("/:id", authenticateToken, requireRole("ADMIN"), async (req, res) => 
 
     res.json(updated);
   } catch (error) {
+    console.error("Update user error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -183,6 +195,7 @@ router.post("/:id/reset-password", authenticateToken, requireRole("ADMIN"), asyn
 
     res.json({ message: "Password reset successfully" });
   } catch (error) {
+    console.error("Get user error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -212,6 +225,7 @@ router.post("/:id/deactivate", authenticateToken, requireRole("ADMIN"), async (r
 
     res.json({ message: "User deactivated" });
   } catch (error) {
+    console.error("Deactivate user error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

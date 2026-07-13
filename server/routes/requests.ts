@@ -16,6 +16,17 @@ function generateRequestNumber(): string {
   return `REQ-${year}-${seq}`;
 }
 
+async function generateUniqueRequestNumber(): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidate = generateRequestNumber();
+    const exists = await prisma.researchRequest.findUnique({ where: { requestNumber: candidate } });
+    if (!exists) return candidate;
+  }
+  // Fallback: use timestamp-based number
+  const ts = Date.now().toString().slice(-8);
+  return `REQ-${new Date().getFullYear()}-${ts}`;
+}
+
 function lookupByIdOrNumber(idOrNumber: string): any {
   return idOrNumber.startsWith('REQ-')
     ? { requestNumber: idOrNumber }
@@ -26,7 +37,7 @@ function lookupByIdOrNumber(idOrNumber: string): any {
 router.get("/", authenticateToken, async (req, res) => {
   try {
     const { role, userId } = req.user!;
-    const { status, priority, categoryId, search, page: rawPage = "1", limit: rawLimit = "20" } = req.query;
+    const { status, priority, committeeId, search, page: rawPage = "1", limit: rawLimit = "20" } = req.query;
     const { page, limit, skip } = clampPagination(rawPage as string, rawLimit as string);
 
     const where: any = {};
@@ -43,7 +54,7 @@ router.get("/", authenticateToken, async (req, res) => {
 
     if (status) where.status = status;
     if (priority) where.priority = priority;
-    if (categoryId) where.categoryId = categoryId;
+    if (committeeId) where.committeeId = committeeId;
     if (search) {
       const searchFilter = {
         OR: [
@@ -137,15 +148,19 @@ router.get("/:id", authenticateToken, async (req, res) => {
 // Create request
 router.post("/", authenticateToken, async (req, res) => {
   try {
-    const { title, subject, description, scope, keyStakeholders, dataSources, language, priority, deadline, categoryId, attachments } = req.body;
+    const { title, subject, description, scope, keyStakeholders, dataSources, language, priority, deadline, committeeId, attachments } = req.body;
 
     if (!title || !description || !deadline) {
       return res.status(400).json({ error: "Title, description, and deadline are required" });
     }
 
+    if (new Date(deadline) <= new Date()) {
+      return res.status(400).json({ error: "Deadline must be in the future" });
+    }
+
     const request = await prisma.researchRequest.create({
       data: {
-        requestNumber: generateRequestNumber(),
+        requestNumber: await generateUniqueRequestNumber(),
         title,
         subject,
         description,
@@ -156,7 +171,7 @@ router.post("/", authenticateToken, async (req, res) => {
         priority: priority || "STANDARD",
         deadline: new Date(deadline),
         submitterId: req.user!.userId,
-        categoryId,
+        committeeId,
       },
       include: {
         category: true,
@@ -184,7 +199,7 @@ router.post("/", authenticateToken, async (req, res) => {
 // Update request
 router.put("/:id", authenticateToken, async (req, res) => {
   try {
-    const { title, subject, description, scope, keyStakeholders, dataSources, language, priority, deadline, categoryId, status } = req.body;
+    const { title, subject, description, scope, keyStakeholders, dataSources, language, priority, deadline, committeeId, status } = req.body;
 
     const existing = await prisma.researchRequest.findUnique({ where: lookupByIdOrNumber(req.params.id) });
     if (!existing) {
@@ -217,7 +232,7 @@ router.put("/:id", authenticateToken, async (req, res) => {
         ...(language && { language }),
         ...(priority && { priority }),
         ...(deadline && { deadline: new Date(deadline) }),
-        ...(categoryId !== undefined && { categoryId }),
+        ...(committeeId !== undefined && { committeeId }),
         ...(status && { status }),
       },
       include: { category: true, submitter: { select: { id: true, firstName: true, lastName: true, initials: true } } },
@@ -288,6 +303,7 @@ router.get("/meta/committees", authenticateToken, async (_req, res) => {
     });
     res.json(committees);
   } catch (error) {
+    console.error("Analytics by committee error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -310,14 +326,14 @@ router.get("/meta/committees/stats", authenticateToken, async (_req, res) => {
     });
 
     const statusCounts = await prisma.researchRequest.groupBy({
-      by: ["categoryId", "status"],
+      by: ["committeeId", "status"],
       _count: true,
-      where: { categoryId: { not: null } },
+      where: { committeeId: { not: null } },
     });
 
     const result = stats.map((s) => {
       const statuses = statusCounts
-        .filter((sc) => sc.categoryId === s.id)
+        .filter((sc) => sc.committeeId === s.id)
         .reduce((acc, sc) => {
           acc[sc.status] = sc._count;
           return acc;
@@ -328,6 +344,7 @@ router.get("/meta/committees/stats", authenticateToken, async (_req, res) => {
 
     res.json(result);
   } catch (error) {
+    console.error("Committee stats error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -337,7 +354,7 @@ router.get("/committee/:committeeId", authenticateToken, async (req, res) => {
   try {
     const { committeeId } = req.params;
     const requests = await prisma.researchRequest.findMany({
-      where: { categoryId: committeeId },
+      where: { committeeId: committeeId },
       include: {
         category: true,
         submitter: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
@@ -348,6 +365,7 @@ router.get("/committee/:committeeId", authenticateToken, async (req, res) => {
     });
     res.json(requests);
   } catch (error) {
+    console.error("Committee requests error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -482,6 +500,7 @@ router.get("/:requestId/shared", authenticateToken, async (req, res) => {
     });
     res.json(shares);
   } catch (error) {
+    console.error("Request detail reports error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -504,6 +523,7 @@ router.get("/shared/committee/:committeeId", authenticateToken, async (req, res)
     });
     res.json(shares);
   } catch (error) {
+    console.error("Shared research error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
