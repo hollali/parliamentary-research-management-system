@@ -333,7 +333,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
 
                   {/* Actions */}
                   <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex justify-end gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex justify-end gap-1">
                       <button 
                         onClick={() => onNavigate('briefs', req.id)}
                         className="p-1.5 text-[#0037b0] hover:bg-blue-50 rounded transition-all" 
