@@ -94,6 +94,7 @@ model User {
   isActive       Boolean   @default(true)
   departmentId   String?
   constituency   String?
+  notificationPrefs Json?  @default("{\"pushNotifications\":true,\"emailSummaries\":true,\"triggers\":{\"newAssignments\":true,\"statusChanges\":true,\"draftMentions\":true,\"deadlineReminders\":true}}")
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   lastLoginAt    DateTime?
@@ -320,6 +321,7 @@ model ReviewComment {
   reportId        String
   requestId       String
   authorId        String
+  parentId        String?
   section         String?
   text            String
   highlightedText String?
@@ -329,9 +331,11 @@ model ReviewComment {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  report  ResearchReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  request ResearchRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  author  User             @relation("CommentAuthor", fields: [authorId], references: [id])
+  report   ResearchReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  request  ResearchRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author   User             @relation("CommentAuthor", fields: [authorId], references: [id])
+  parent   ReviewComment?   @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  ReviewComment[]   @relation("CommentReplies")
 
   @@map("review_comments")
 }

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, ResearchRequest, NotificationItem, HistoryItem, AppState, Comment, Attachment, Role } from '../types';
-import { loginApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile, getActivityLog } from '../lib/api';
+import { loginApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile, getActivityLog, getNotificationPrefs, updateNotificationPrefs } from '../lib/api';
 
 interface AppContextType extends AppState {
   login: (email: string, password?: string) => Promise<boolean> | boolean;
@@ -12,7 +12,7 @@ interface AppContextType extends AppState {
   updateRequestStatus: (requestId: string, status: ResearchRequest['status']) => void;
   updateRequestPriority: (requestId: string, priority: ResearchRequest['priority']) => void;
   extendRequestDeadline: (requestId: string, newDeadline: string) => void;
-  addComment: (requestId: string, text: string, section?: string, highlightedText?: string, startOffset?: number, endOffset?: number) => void;
+  addComment: (requestId: string, text: string, section?: string, highlightedText?: string, startOffset?: number, endOffset?: number, parentId?: string) => void;
   resolveComment: (requestId: string, commentId: string) => void;
   updateRequestContent: (requestId: string, content: string) => void;
   uploadAttachment: (requestId: string, attachment: Attachment) => void;
@@ -119,6 +119,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     checkHealth().then(setIsOnline);
   }, []);
+
+  // Load notification preferences from backend when online
+  useEffect(() => {
+    if (!isOnline || !getToken()) return;
+    getNotificationPrefs().then((data: any) => {
+      if (data) {
+        setPreferences(data);
+        localStorage.setItem('prrms_prefs', JSON.stringify(data));
+      }
+    }).catch(() => {});
+  }, [isOnline]);
 
   // Fetch data from API if online and token exists
   useEffect(() => {
@@ -397,7 +408,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications(prev => [newNotif, ...prev]);
   };
 
-  const addComment = async (requestId: string, text: string, section?: string, highlightedText?: string, startOffset?: number, endOffset?: number) => {
+  const addComment = async (requestId: string, text: string, section?: string, highlightedText?: string, startOffset?: number, endOffset?: number, parentId?: string) => {
     const newComment: Comment = {
       id: 'comment_' + Date.now(),
       userName: currentUser.name + (currentUser.role === 'ADMIN' ? ' (Admin)' : ''),
@@ -422,6 +433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             highlightedText,
             startOffset,
             endOffset,
+            parentId,
           });
           newComment.id = created.id || newComment.id;
         } catch {
@@ -521,11 +533,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const savePreferences = (push: boolean, email: boolean, triggers: AppState['preferences']['triggers']) => {
-    setPreferences({
+    const newPrefs = {
       pushNotifications: push,
       emailSummaries: email,
       triggers
-    });
+    };
+    setPreferences(newPrefs);
+    if (isOnline) {
+      updateNotificationPrefs(newPrefs).catch(() => {});
+    }
   };
 
   return (

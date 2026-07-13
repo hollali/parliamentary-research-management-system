@@ -153,4 +153,35 @@ router.post("/change-password", authenticateToken, async (req, res) => {
   }
 });
 
+// Get notification preferences
+router.get("/notification-prefs", authenticateToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { notificationPrefs: true },
+    });
+    res.json(user?.notificationPrefs || {
+      pushNotifications: true,
+      emailSummaries: true,
+      triggers: { newAssignments: true, statusChanges: true, draftMentions: true, deadlineReminders: true },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update notification preferences
+router.put("/notification-prefs", authenticateToken, async (req, res) => {
+  try {
+    const prefs = req.body;
+    await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: { notificationPrefs: prefs },
+    });
+    res.json({ message: "Preferences updated" });
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;

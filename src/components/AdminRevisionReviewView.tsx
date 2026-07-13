@@ -27,6 +27,8 @@ interface ReviewComment {
   section?: string;
   highlightedText?: string;
   resolved: boolean;
+  replies?: ReviewComment[];
+  parentId?: string;
 }
 
 interface ReportData {
@@ -97,6 +99,19 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
             section: c.section || undefined,
             highlightedText: c.highlightedText || undefined,
             resolved: c.resolved,
+            parentId: c.parentId || undefined,
+            replies: (c.replies || []).map((r: any) => ({
+              id: r.id,
+              userName: r.author ? `${r.author.firstName} ${r.author.lastName}` : 'Unknown',
+              userInitials: r.author?.initials || '??',
+              role: r.author?.role || 'Admin',
+              time: new Date(r.createdAt).toLocaleString(),
+              text: r.text,
+              section: r.section || undefined,
+              highlightedText: r.highlightedText || undefined,
+              resolved: r.resolved,
+              parentId: r.parentId || undefined,
+            })),
           })));
         }
       })
@@ -165,6 +180,21 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
     onBack();
   };
 
+  // Helper to wrap annotated text in <mark> tags
+  const highlightText = (text: string, comments: { highlightedText?: string }[]): string => {
+    const highlights = comments
+      .filter(c => c.highlightedText && c.highlightedText.length > 2)
+      .map(c => c.highlightedText!);
+    if (highlights.length === 0) return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    for (const h of highlights) {
+      const escaped = h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const regex = new RegExp(`(${escaped})`, 'gi');
+      html = html.replace(regex, '<mark class="bg-yellow-200 text-yellow-900 px-0.5 rounded cursor-pointer" title="Annotated by admin">$1</mark>');
+    }
+    return html;
+  };
+
   const renderDocumentContent = () => {
     const content = report?.content || request?.content || '';
     if (!content) {
@@ -210,9 +240,10 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
                 {isSelected && <Sparkles className="w-3 h-3 text-[#0037b0]" />}
               </h2>
               {body ? (
-                <div className="text-gray-700 font-serif text-sm leading-relaxed whitespace-pre-wrap select-text">
-                  {body}
-                </div>
+                <div 
+                  className="text-gray-700 font-serif text-sm leading-relaxed whitespace-pre-wrap select-text"
+                  dangerouslySetInnerHTML={{ __html: highlightText(body, allComments) }}
+                />
               ) : (
                 <p className="text-xs text-gray-400 italic">No content in this section</p>
               )}

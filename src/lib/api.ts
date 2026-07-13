@@ -283,6 +283,7 @@ export async function createReview(data: {
   highlightedText?: string;
   startOffset?: number;
   endOffset?: number;
+  parentId?: string;
 }) {
   return request('/reviews/', { method: 'POST', body: data });
 }
@@ -356,6 +357,25 @@ export async function markNotificationRead(id: string) {
 
 export async function markAllNotificationsRead() {
   return request('/notifications/read-all', { method: 'PUT' });
+}
+
+// ─── Notification Preferences ──────────────────────────
+
+export async function getNotificationPrefs() {
+  return request('/auth/notification-prefs');
+}
+
+export async function updateNotificationPrefs(prefs: {
+  pushNotifications: boolean;
+  emailSummaries: boolean;
+  triggers: {
+    newAssignments: boolean;
+    statusChanges: boolean;
+    draftMentions: boolean;
+    deadlineReminders: boolean;
+  };
+}) {
+  return request('/auth/notification-prefs', { method: 'PUT', body: prefs });
 }
 
 // ─── Dashboard ──────────────────────────────────────────

@@ -31,8 +31,10 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
   const { requests, updateRequestStatus } = useApp();
   const { toast } = useToast();
   
-  // Officer's assigned requests
-  const officerRequests = requests.filter(r => r.assignedOfficerId !== null);
+  // Officer's assigned requests — backend already filters by role (direct, assignment, or team)
+  const officerRequests = requests.filter(r => 
+    r.status !== 'COMPLETED'
+  );
   
   const [selectedId, setSelectedId] = useState<string>(
     officerRequests[0]?.id || requests[0]?.id || ''

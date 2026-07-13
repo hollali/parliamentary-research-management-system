@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { getRequest, getReviews, createReport, getAttachments, uploadFile } from '../lib/api';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Highlight from '@tiptap/extension-highlight';
 import { 
   FileText, 
   Save, 
@@ -44,6 +45,8 @@ interface ReviewComment {
   section?: string;
   highlightedText?: string;
   resolved: boolean;
+  replies?: ReviewComment[];
+  parentId?: string;
 }
 
 export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceViewProps> = ({ requestId, onBack }) => {
@@ -63,7 +66,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [StarterKit, Highlight.configure({ multicolor: true })],
     content: '',
     editorProps: {
       attributes: {
@@ -127,6 +130,19 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             section: c.section || undefined,
             highlightedText: c.highlightedText || undefined,
             resolved: c.resolved,
+            parentId: c.parentId || undefined,
+            replies: (c.replies || []).map((r: any) => ({
+              id: r.id,
+              userName: r.author ? `${r.author.firstName} ${r.author.lastName}` : 'Unknown',
+              userInitials: r.author?.initials || '??',
+              role: r.author?.role || 'Admin',
+              time: new Date(r.createdAt).toLocaleString(),
+              text: r.text,
+              section: r.section || undefined,
+              highlightedText: r.highlightedText || undefined,
+              resolved: r.resolved,
+              parentId: r.parentId || undefined,
+            })),
           })));
         }
       })
@@ -151,6 +167,33 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   }, [requestId]);
 
   const unresolvedComments = reviewComments.filter(c => !c.resolved);
+
+  // Build highlighted content by wrapping annotated text in <mark> tags
+  const highlightedContent = useMemo(() => {
+    const content = editorText;
+    if (!content || reviewComments.length === 0) return content;
+    const highlights = reviewComments
+      .filter(c => c.highlightedText && c.highlightedText.length > 2)
+      .map(c => c.highlightedText!);
+    if (highlights.length === 0) return content;
+    let html = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    for (const text of highlights) {
+      const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const regex = new RegExp(`(${escaped})`, 'gi');
+      html = html.replace(regex, '<mark class="bg-yellow-200 text-yellow-900 px-0.5 rounded">$1</mark>');
+    }
+    return html;
+  }, [editorText, reviewComments]);
+
+  // Apply highlights to editor when content or comments change
+  useEffect(() => {
+    if (editor && highlightedContent) {
+      const currentContent = editor.getHTML();
+      if (currentContent !== highlightedContent) {
+        editor.commands.setContent(highlightedContent);
+      }
+    }
+  }, [highlightedContent]);
 
   const handleSaveDraft = async () => {
     updateRequestContent(request.id, editorText);
@@ -213,20 +256,25 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     ));
   };
 
-  const handlePostReply = (commentId: string) => {
+  const handlePostReply = (parentId: string) => {
     if (!replyText.trim()) return;
-    addComment(request.id, replyText, `Reply to comment thread`);
-    // Add to local state
-    setReviewComments(prev => [...prev, {
+    addComment(request.id, replyText, undefined, undefined, undefined, undefined, parentId);
+    // Add reply nested under parent comment
+    const newReply: ReviewComment = {
       id: 'comment_' + Date.now(),
       userName: 'You',
       userInitials: request?.assignedOfficerName?.split(' ').pop()?.slice(0, 2).toUpperCase() || 'RO',
       role: 'Researcher',
       time: 'Just now',
       text: replyText,
-      section: 'Reply to comment thread',
       resolved: false,
-    }]);
+      parentId,
+    };
+    setReviewComments(prev => prev.map(c => 
+      c.id === parentId
+        ? { ...c, replies: [...(c.replies || []), newReply] }
+        : c
+    ));
     setReplyText('');
     setActiveCommentId(null);
   };
@@ -494,6 +542,26 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
                           Send
                         </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Nested Replies */}
+                  {comment.replies && comment.replies.length > 0 && (
+                    <div className="space-y-2 mt-2 pt-2 border-t border-amber-200/50">
+                      {comment.replies.map(reply => (
+                        <div key={reply.id} className="flex gap-2 items-start pl-3 border-l-2 border-amber-300">
+                          <div className="w-5 h-5 rounded-full bg-[#dce1ff] flex items-center justify-center text-[8px] font-bold text-[#001551] shrink-0 mt-0.5">
+                            {reply.userInitials}
+                          </div>
+                          <div className="space-y-0.5 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-[10px] font-bold text-gray-900">{reply.userName}</p>
+                              <span className="text-[9px] text-gray-400">{reply.time}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-700 leading-relaxed">{reply.text}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

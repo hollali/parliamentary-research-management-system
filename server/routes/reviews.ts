@@ -5,12 +5,50 @@ import { sendEmail, revisionRequestedEmail, commentAddedEmail } from "../lib/ema
 
 const router = Router();
 
+// Check if a user has a notification trigger enabled
+async function shouldNotify(userId: string, trigger: string): Promise<boolean> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { notificationPrefs: true },
+    });
+    const prefs = user?.notificationPrefs as any;
+    if (!prefs) return true;
+    if (prefs.pushNotifications === false) return false;
+    if (prefs.triggers && prefs.triggers[trigger] === false) return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+// Check if a user has email summaries enabled
+async function shouldEmail(userId: string): Promise<boolean> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { notificationPrefs: true },
+    });
+    const prefs = user?.notificationPrefs as any;
+    if (!prefs) return true;
+    return prefs.emailSummaries !== false;
+  } catch {
+    return true;
+  }
+}
+
 // List reviews for a request
 router.get("/request/:requestId", authenticateToken, async (req, res) => {
   try {
     const comments = await prisma.reviewComment.findMany({
-      where: { requestId: req.params.requestId },
-      include: { author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } } },
+      where: { requestId: req.params.requestId, parentId: null },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
+        replies: {
+          include: { author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
     res.json(comments);
@@ -22,7 +60,7 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
 // Add review comment
 router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
-    const { reportId, requestId, section, text, highlightedText, startOffset, endOffset } = req.body;
+    const { reportId, requestId, section, text, highlightedText, startOffset, endOffset, parentId } = req.body;
 
     if (!reportId || !requestId || !text) {
       return res.status(400).json({ error: "reportId, requestId, and text are required" });
@@ -38,6 +76,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
         highlightedText: highlightedText || null,
         startOffset: startOffset ?? null,
         endOffset: endOffset ?? null,
+        parentId: parentId || null,
       },
       include: { author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } } },
     });
@@ -52,27 +91,31 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
       },
     });
 
-    // Notify the assigned officer
+    // Notify the assigned officer (respecting preferences)
     const request = await prisma.researchRequest.findUnique({ where: { id: requestId } });
     if (request?.assignedOfficerId) {
-      await prisma.notification.create({
-        data: {
-          recipientId: request.assignedOfficerId,
-          type: "REPORT_UPLOADED",
-          title: "New Review Comment",
-          message: `Admin commented on "${request.title}": ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`,
-          link: `/requests/${requestId}`,
-        },
-      });
+      if (await shouldNotify(request.assignedOfficerId, 'draftMentions')) {
+        await prisma.notification.create({
+          data: {
+            recipientId: request.assignedOfficerId,
+            type: "REPORT_UPLOADED",
+            title: "New Review Comment",
+            message: `Admin commented on "${request.title}": ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`,
+            link: `/requests/${requestId}`,
+          },
+        });
+      }
 
-      const officer = await prisma.user.findUnique({
-        where: { id: request.assignedOfficerId },
-        select: { firstName: true, email: true },
-      });
-      if (officer) {
-        const sectionLabel = section || "General";
-        const email = commentAddedEmail(officer.firstName, request.requestNumber, request.title, sectionLabel, text, highlightedText);
-        await sendEmail({ to: officer.email, ...email });
+      if (await shouldEmail(request.assignedOfficerId)) {
+        const officer = await prisma.user.findUnique({
+          where: { id: request.assignedOfficerId },
+          select: { firstName: true, email: true },
+        });
+        if (officer) {
+          const sectionLabel = section || "General";
+          const email = commentAddedEmail(officer.firstName, request.requestNumber, request.title, sectionLabel, text, highlightedText);
+          await sendEmail({ to: officer.email, ...email });
+        }
       }
     }
 
@@ -136,23 +179,55 @@ router.post("/:commentId/request-revision", authenticateToken, requireRole("ADMI
       },
     });
 
-    const request = await prisma.researchRequest.findUnique({ where: { id: requestId } });
-    if (request?.assignedOfficerId) {
-      await prisma.notification.create({
-        data: {
-          recipientId: request.assignedOfficerId,
-          type: "REVISION_REQUESTED",
-          title: "Revision Requested",
-          message: `Revision requested for: ${request.title}`,
-          link: `/requests/${requestId}`,
-        },
-      });
+    const request = await prisma.researchRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        assignments: { include: { assignedTo: { select: { id: true, firstName: true, email: true } } } },
+        team: { include: { members: { include: { user: { select: { id: true, firstName: true, email: true } } } } } },
+      },
+    });
 
-      // Send email to officer
-      const officer = await prisma.user.findUnique({ where: { id: request.assignedOfficerId }, select: { firstName: true, email: true } });
-      if (officer) {
-        const email = revisionRequestedEmail(officer.firstName, request.requestNumber, request.title, comment.text || "Please review the feedback and revise your draft.");
-        await sendEmail({ to: officer.email, ...email });
+    // Collect all unique assignees: direct officer + assignments + team members
+    const recipientMap = new Map<string, { firstName: string; email: string }>();
+
+    if (request?.assignedOfficerId) {
+      const officer = await prisma.user.findUnique({
+        where: { id: request.assignedOfficerId },
+        select: { id: true, firstName: true, email: true },
+      });
+      if (officer) recipientMap.set(officer.id, { firstName: officer.firstName, email: officer.email });
+    }
+
+    for (const a of request?.assignments || []) {
+      if (a.assignedTo?.id && a.assignedTo?.email) {
+        recipientMap.set(a.assignedTo.id, { firstName: a.assignedTo.firstName, email: a.assignedTo.email });
+      }
+    }
+
+    for (const m of request?.team?.members || []) {
+      if (m.user?.id && m.user?.email) {
+        recipientMap.set(m.user.id, { firstName: m.user.firstName, email: m.user.email });
+      }
+    }
+
+    const emailText = comment.text || "Please review the feedback and revise your draft.";
+
+    for (const [recipientId, recipient] of recipientMap) {
+      if (await shouldNotify(recipientId, 'statusChanges')) {
+        await prisma.notification.create({
+          data: {
+            recipientId,
+            type: "REVISION_REQUESTED",
+            title: "Revision Requested",
+            message: `Revision requested for: ${request!.title}`,
+            link: `/requests/${requestId}`,
+          },
+        });
+      }
+
+      if (await shouldEmail(recipientId)) {
+        const email = revisionRequestedEmail(recipient.firstName, request!.requestNumber, request!.title, emailText);
+        await sendEmail({ to: recipient.email, ...email });
       }
     }
 
