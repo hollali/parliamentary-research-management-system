@@ -2,40 +2,10 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, revisionRequestedEmail, commentAddedEmail } from "../lib/email.js";
+import { shouldNotify, shouldEmail } from "../lib/notifications.js";
 
 const router = Router();
 
-// Check if a user has a notification trigger enabled
-async function shouldNotify(userId: string, trigger: string): Promise<boolean> {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { notificationPrefs: true },
-    });
-    const prefs = user?.notificationPrefs as any;
-    if (!prefs) return true;
-    if (prefs.pushNotifications === false) return false;
-    if (prefs.triggers && prefs.triggers[trigger] === false) return false;
-    return true;
-  } catch {
-    return true;
-  }
-}
-
-// Check if a user has email summaries enabled
-async function shouldEmail(userId: string): Promise<boolean> {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { notificationPrefs: true },
-    });
-    const prefs = user?.notificationPrefs as any;
-    if (!prefs) return true;
-    return prefs.emailSummaries !== false;
-  } catch {
-    return true;
-  }
-}
 
 // List reviews for a request
 router.get("/request/:requestId", authenticateToken, async (req, res) => {
@@ -280,15 +250,17 @@ router.post("/approve", authenticateToken, requireRole("ADMIN"), async (req, res
     });
 
     if (request?.submitterId) {
-      await prisma.notification.create({
-        data: {
-          recipientId: request.submitterId,
-          type: "REPORT_APPROVED",
-          title: "Report Approved",
-          message: `Your research request has been approved: ${request.title}`,
-          link: `/requests/${requestId}`,
-        },
-      });
+      if (await shouldNotify(request.submitterId, 'statusChanges')) {
+        await prisma.notification.create({
+          data: {
+            recipientId: request.submitterId,
+            type: "REPORT_APPROVED",
+            title: "Report Approved",
+            message: `Your research request has been approved: ${request.title}`,
+            link: `/requests/${requestId}`,
+          },
+        });
+      }
     }
 
     res.json({ report: updatedReport, request: updatedRequest });

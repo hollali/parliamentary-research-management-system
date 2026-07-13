@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, draftSubmittedEmail } from "../lib/email.js";
+import { shouldNotify, shouldEmail } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -80,27 +81,25 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
     if (isDraft !== false) {
       const admins = await prisma.user.findMany({
         where: { role: { in: ["ADMIN"] }, isActive: true },
-        select: { id: true },
+        select: { id: true, email: true, firstName: true },
       });
 
-      await prisma.notification.createMany({
-        data: admins.map((admin) => ({
-          recipientId: admin.id,
-          type: "REPORT_UPLOADED",
-          title: "Draft Submitted for Review",
-          message: `A new draft (v${nextVersion}) has been submitted for: ${request.title}`,
-          link: `/requests/${requestId}`,
-        })),
-      });
-
-      // Send email notifications to admins
-      const adminUsers = await prisma.user.findMany({
-        where: { role: { in: ["ADMIN"] }, isActive: true },
-        select: { email: true, firstName: true },
-      });
-      for (const admin of adminUsers) {
-        const email = draftSubmittedEmail(admin.firstName, request.requestNumber, request.title, nextVersion);
-        await sendEmail({ to: admin.email, ...email });
+      for (const admin of admins) {
+        if (await shouldNotify(admin.id, 'draftMentions')) {
+          await prisma.notification.create({
+            data: {
+              recipientId: admin.id,
+              type: "REPORT_UPLOADED",
+              title: "Draft Submitted for Review",
+              message: `A new draft (v${nextVersion}) has been submitted for: ${request.title}`,
+              link: `/requests/${requestId}`,
+            },
+          });
+        }
+        if (await shouldEmail(admin.id)) {
+          const email = draftSubmittedEmail(admin.firstName, request.requestNumber, request.title, nextVersion);
+          await sendEmail({ to: admin.email, ...email });
+        }
       }
     }
 

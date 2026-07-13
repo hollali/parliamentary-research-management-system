@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, assignmentEmail } from "../lib/email.js";
+import { shouldNotify, shouldEmail } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -112,31 +113,37 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     // Notify each officer
     for (const officer of officers) {
-      await prisma.notification.create({
-        data: {
-          recipientId: officer.id,
-          type: "REQUEST_ASSIGNED",
-          title: "New Research Assignment",
-          message: `You have been assigned: ${request.title}`,
-          link: `/requests/${requestId}`,
-        },
-      });
-      const email = assignmentEmail(officer.firstName, request.requestNumber, request.title, deadline);
-      await sendEmail({ to: officer.email, ...email });
+      if (await shouldNotify(officer.id, 'newAssignments')) {
+        await prisma.notification.create({
+          data: {
+            recipientId: officer.id,
+            type: "REQUEST_ASSIGNED",
+            title: "New Research Assignment",
+            message: `You have been assigned: ${request.title}`,
+            link: `/requests/${requestId}`,
+          },
+        });
+      }
+      if (await shouldEmail(officer.id)) {
+        const email = assignmentEmail(officer.firstName, request.requestNumber, request.title, deadline);
+        await sendEmail({ to: officer.email, ...email });
+      }
     }
 
     // Notify team members
     if (team) {
       for (const member of team.members) {
-        await prisma.notification.create({
-          data: {
-            recipientId: member.userId,
-            type: "REQUEST_ASSIGNED",
-            title: "New Team Research Assignment",
-            message: `Team "${team.name}" has been assigned: ${request.title}`,
-            link: `/requests/${requestId}`,
-          },
-        });
+        if (await shouldNotify(member.userId, 'newAssignments')) {
+          await prisma.notification.create({
+            data: {
+              recipientId: member.userId,
+              type: "REQUEST_ASSIGNED",
+              title: "New Team Research Assignment",
+              message: `Team "${team.name}" has been assigned: ${request.title}`,
+              link: `/requests/${requestId}`,
+            },
+          });
+        }
       }
     }
 
@@ -210,15 +217,17 @@ router.post("/:assignmentId/accept", authenticateToken, requireRole("RESEARCH_OF
     });
 
     // Notify the admin who assigned
-    await prisma.notification.create({
-      data: {
-        recipientId: assignment.assignedById,
-        type: "GENERAL",
-        title: "Assignment Accepted",
-        message: `Assignment for request has been accepted`,
-        link: `/requests/${assignment.requestId}`,
-      },
-    });
+    if (await shouldNotify(assignment.assignedById, 'statusChanges')) {
+      await prisma.notification.create({
+        data: {
+          recipientId: assignment.assignedById,
+          type: "GENERAL",
+          title: "Assignment Accepted",
+          message: `Assignment for request has been accepted`,
+          link: `/requests/${assignment.requestId}`,
+        },
+      });
+    }
 
     res.json(updated);
   } catch (error) {
@@ -266,15 +275,17 @@ router.post("/:assignmentId/decline", authenticateToken, requireRole("RESEARCH_O
     });
 
     // Notify the admin who assigned
-    await prisma.notification.create({
-      data: {
-        recipientId: assignment.assignedById,
-        type: "GENERAL",
-        title: "Assignment Declined",
-        message: `An assignment has been declined${reason ? `: ${reason}` : ''}`,
-        link: `/requests/${assignment.requestId}`,
-      },
-    });
+    if (await shouldNotify(assignment.assignedById, 'statusChanges')) {
+      await prisma.notification.create({
+        data: {
+          recipientId: assignment.assignedById,
+          type: "GENERAL",
+          title: "Assignment Declined",
+          message: `An assignment has been declined${reason ? `: ${reason}` : ''}`,
+          link: `/requests/${assignment.requestId}`,
+        },
+      });
+    }
 
     res.json(updated);
   } catch (error) {

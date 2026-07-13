@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { forgotPassword } from '../lib/api';
+import { forgotPassword, resetPasswordWithToken } from '../lib/api';
 import { Shield, BookOpen, Mail, Lock, Eye, EyeOff, Gavel, ArrowRight, CheckCircle2, ArrowLeft } from 'lucide-react';
 
 interface LoginViewProps {
@@ -18,6 +18,24 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+
+  // Check for reset token in URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      setResetToken(token);
+      setShowReset(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +77,32 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       setForgotSent(true);
     } finally {
       setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+    if (!resetPassword || !resetConfirm) {
+      setResetError('Please fill in all fields');
+      return;
+    }
+    if (resetPassword.length < 8) {
+      setResetError('Password must be at least 8 characters');
+      return;
+    }
+    if (resetPassword !== resetConfirm) {
+      setResetError('Passwords do not match');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await resetPasswordWithToken(resetToken, resetPassword);
+      setResetSent(true);
+    } catch (err: any) {
+      setResetError(err?.message || 'Failed to reset password. The link may have expired.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -142,11 +186,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </div>
 
             <header>
-              <h2 className="text-2xl font-bold text-[#191c1d] mb-1">{showForgot ? 'Reset Password' : 'Portal Login'}</h2>
+              <h2 className="text-2xl font-bold text-[#191c1d] mb-1">{showReset ? 'Set New Password' : showForgot ? 'Reset Password' : 'Portal Login'}</h2>
               <p className="text-sm text-[#434655]">
-                {showForgot
-                  ? 'Enter your registered email to receive a password reset link.'
-                  : 'Enter your official credentials to access the system.'}
+                {showReset
+                  ? 'Enter your new password below.'
+                  : showForgot
+                    ? 'Enter your registered email to receive a password reset link.'
+                    : 'Enter your official credentials to access the system.'}
               </p>
             </header>
 
@@ -156,7 +202,76 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               </div>
             )}
 
-            {showForgot ? (
+            {showReset ? (
+              resetSent ? (
+                <div className="space-y-4">
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-lg text-xs font-semibold space-y-1">
+                    <p className="font-bold">Password reset successful</p>
+                    <p>Your password has been updated. You can now log in with your new password.</p>
+                  </div>
+                  <button
+                    onClick={() => { setShowReset(false); setResetToken(''); setResetPassword(''); setResetConfirm(''); }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-[#0037b0] hover:underline"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back to login
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  {resetError && (
+                    <div className="bg-[#ffdad6] text-[#93000a] p-3 rounded-lg text-xs font-semibold">
+                      {resetError}
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider flex items-center gap-2" htmlFor="reset-password">
+                      <Lock className="w-4 h-4 text-[#747686]" />
+                      New Password
+                    </label>
+                    <input
+                      id="reset-password"
+                      type="password"
+                      value={resetPassword}
+                      onChange={(e) => setResetPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      className="w-full px-4 py-3 bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg focus:ring-2 focus:ring-[#0037b0] outline-none text-sm font-sans"
+                      required
+                      minLength={8}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider flex items-center gap-2" htmlFor="reset-confirm">
+                      <Lock className="w-4 h-4 text-[#747686]" />
+                      Confirm Password
+                    </label>
+                    <input
+                      id="reset-confirm"
+                      type="password"
+                      value={resetConfirm}
+                      onChange={(e) => setResetConfirm(e.target.value)}
+                      placeholder="Re-enter your new password"
+                      className="w-full px-4 py-3 bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg focus:ring-2 focus:ring-[#0037b0] outline-none text-sm font-sans"
+                      required
+                      minLength={8}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={resetLoading}
+                    className="w-full bg-[#0037b0] hover:bg-[#1d4ed8] text-white py-3.5 rounded-lg text-sm font-bold transition-all duration-200 shadow-md active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {resetLoading ? 'Resetting...' : 'Reset Password'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowReset(false); setResetToken(''); }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-[#0037b0] hover:underline"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back to login
+                  </button>
+                </form>
+              )
+            ) : showForgot ? (
               forgotSent ? (
                 <div className="space-y-4">
                   <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-lg text-xs font-semibold space-y-1">

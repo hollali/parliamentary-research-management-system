@@ -81,6 +81,10 @@ export async function forgotPassword(email: string) {
   return request('/auth/forgot-password', { method: 'POST', body: { email } });
 }
 
+export async function resetPasswordWithToken(token: string, newPassword: string) {
+  return request('/auth/reset-password', { method: 'POST', body: { token, newPassword } });
+}
+
 export async function changePassword(currentPassword: string, newPassword: string) {
   return request('/auth/change-password', {
     method: 'POST',

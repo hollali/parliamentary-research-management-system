@@ -9,8 +9,8 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
+// Always use global singleton to prevent connection pool exhaustion
 export const prisma = globalForPrisma.prisma || createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+globalForPrisma.prisma = prisma;
 
 export default prisma;
