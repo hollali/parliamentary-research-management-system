@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { honourable } from '../lib/format';
 import { Search, Bell, HelpCircle, User as UserIcon, LogOut, Menu } from 'lucide-react';
 
 interface TopbarProps {
@@ -84,7 +85,7 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
           {/* User profile dropdown and metadata */}
           <div className="flex items-center gap-3 pl-2 border-l border-gray-100">
             <div className="text-right hidden xl:block">
-              <p className="font-sans font-bold text-sm text-[#191c1d] leading-none">{currentUser.name}</p>
+              <p className="font-sans font-bold text-sm text-[#191c1d] leading-none">{currentUser.role === 'MP' ? honourable(currentUser.name) : currentUser.name}</p>
               <p className="text-[10px] text-[#434655] uppercase tracking-wider mt-1">{currentUser.title}</p>
             </div>
             
@@ -99,7 +100,7 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
               {/* Dropdown on click */}
               <div className={`absolute right-0 top-full mt-2 w-48 bg-white rounded-lg border border-[#c4c5d7] shadow-lg py-1 z-50 ${isProfileOpen ? 'block' : 'hidden'}`}>
                 <div className="px-4 py-2 border-b border-gray-100">
-                  <p className="font-sans font-bold text-xs text-gray-900">{currentUser.name}</p>
+                  <p className="font-sans font-bold text-xs text-gray-900">{currentUser.role === 'MP' ? honourable(currentUser.name) : currentUser.name}</p>
                   <p className="text-[10px] text-gray-500">{currentUser.email}</p>
                 </div>
                 <button 

@@ -57,7 +57,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const handleDemoLogin = async (demoEmail: string) => {
     setLoading(true);
     setError('');
-    const success = await login(demoEmail, 'password123');
+    const demoPassword = import.meta.env.VITE_DEMO_PASSWORD || (import.meta.env.DEV ? 'password123' : undefined);
+    if (!demoPassword) {
+      setError('Demo logins are not available in production.');
+      setLoading(false);
+      return;
+    }
+    const success = await login(demoEmail, demoPassword);
     setLoading(false);
     if (success) {
       onLoginSuccess();

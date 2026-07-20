@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { getRequest, getReviews, createReport, getAttachments, uploadFile } from '../lib/api';
+import { highlightText } from '../lib/highlight';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
@@ -80,7 +81,10 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
 
   // Fetch report content and reviews from API on mount
   useEffect(() => {
-    if (!requestId) return;
+    if (!requestId) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
 
@@ -163,26 +167,15 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
           setAttachments(data);
         }
       })
-      .catch(() => {});
+      .catch(() => console.warn('Failed to load attachments'));
   }, [requestId]);
 
   const unresolvedComments = reviewComments.filter(c => !c.resolved);
 
-  // Build highlighted content by wrapping annotated text in <mark> tags
   const highlightedContent = useMemo(() => {
     const content = editorText;
     if (!content || reviewComments.length === 0) return content;
-    const highlights = reviewComments
-      .filter(c => c.highlightedText && c.highlightedText.length > 2)
-      .map(c => c.highlightedText!);
-    if (highlights.length === 0) return content;
-    let html = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    for (const text of highlights) {
-      const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const regex = new RegExp(`(${escaped})`, 'gi');
-      html = html.replace(regex, '<mark class="bg-yellow-200 text-yellow-900 px-0.5 rounded">$1</mark>');
-    }
-    return html;
+    return highlightText(content, reviewComments);
   }, [editorText, reviewComments]);
 
   // Apply highlights to editor when content or comments change

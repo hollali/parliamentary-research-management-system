@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, ResearchRequest, NotificationItem, HistoryItem, AppState, Comment, Attachment, Role } from '../types';
-import { loginApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile, getActivityLog, getNotificationPrefs, updateNotificationPrefs, createRequest, getRequest } from '../lib/api';
+import { loginApi, logoutApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile, getActivityLog, getNotificationPrefs, updateNotificationPrefs, createRequest, getRequest, impersonateUser } from '../lib/api';
 
 interface AppContextType extends AppState {
   login: (email: string, password?: string) => Promise<boolean> | boolean;
@@ -149,7 +149,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setPreferences(data);
         localStorage.setItem('prrms_prefs', JSON.stringify(data));
       }
-    }).catch(() => {});
+    }).catch((err: any) => console.warn('Failed to load notification preferences:', err?.message));
   }, [isOnline]);
 
   // Fetch data from API if online and token exists
@@ -161,7 +161,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const mapped = data.requests.map(mapApiRequest);
         setRequests(mapped);
       }
-    }).catch(() => {});
+    }).catch((err: any) => console.warn('Failed to load requests:', err?.message));
 
     getNotifications().then((data: any) => {
       if (data?.notifications) {
@@ -185,7 +185,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
         setNotifications(mapped);
       }
-    }).catch(() => {});
+    }).catch((err: any) => console.warn('Failed to load notifications:', err?.message));
 
     getActivityLog({ limit: 20 }).then((data: any) => {
       const logs = data?.activity || [];
@@ -198,7 +198,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         type: (a.action === 'DELETE' ? 'alert' : a.action === 'UPDATE' ? 'update' : 'normal') as HistoryItem['type'],
       }));
       setHistory(mapped);
-    }).catch(() => {});
+    }).catch((err: any) => console.warn('Failed to load activity log:', err?.message));
   }, [isOnline]);
 
   useEffect(() => {
@@ -243,26 +243,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
+    logoutApi().catch((err) => console.warn('Failed to log out on server:', err?.message));
     clearToken();
     localStorage.removeItem('prrms_user');
     setCurrentUser({ id: '', name: '', role: 'MP' as Role, email: '', initials: '', title: '' });
   };
 
   const switchUser = async (role: Role) => {
-    // Fetch real user from API by role
+    // Fetch real user from API by role and re-authenticate
     if (isOnline) {
       try {
         const data = await getUsers({ role });
         if (data && Array.isArray(data) && data.length > 0) {
           const u = data[0];
-          setCurrentUser({
-            id: u.id,
-            name: `${u.firstName} ${u.lastName}`,
-            role: u.role as Role,
-            email: u.email,
-            initials: u.initials,
-            title: u.title || u.role,
-          });
+          // Get a new JWT for the target user so backend sees correct identity
+          const impersonateData = await impersonateUser(u.id);
+          const apiUser: User = {
+            id: impersonateData.user.id,
+            name: `${impersonateData.user.firstName} ${impersonateData.user.lastName}`,
+            role: impersonateData.user.role as Role,
+            email: impersonateData.user.email,
+            initials: impersonateData.user.initials,
+            title: impersonateData.user.title || impersonateData.user.role,
+          };
+          setCurrentUser(apiUser);
           return;
         }
       } catch {
@@ -285,6 +289,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           language: newReqData.language,
           priority: newReqData.priority,
           deadline: newReqData.deadline,
+          committeeId: (newReqData as any).committeeId,
         });
         // Refresh requests from API
         const data = await getRequests();
@@ -558,7 +563,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setPreferences(newPrefs);
     if (isOnline) {
-      updateNotificationPrefs(newPrefs).catch(() => {});
+      updateNotificationPrefs(newPrefs).catch((err: any) => console.warn('Failed to save notification preferences:', err?.message));
     }
   };
 

@@ -13,7 +13,7 @@ const FROM = process.env.SMTP_FROM || "PRRMS <noreply@parliament.gov.gh>";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 // Escape HTML entities to prevent injection in email templates
-function esc(str: string | number | null | undefined): string {
+export function esc(str: string | number | null | undefined): string {
   if (str == null) return '';
   return String(str)
     .replace(/&/g, '&amp;')
@@ -28,6 +28,10 @@ interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+}
+
+export function isSmtpConfigured(): boolean {
+  return !!process.env.SMTP_HOST;
 }
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -70,7 +71,7 @@ router.get("/", authenticateToken, async (req, res) => {
       upcomingDeadlines,
     });
   } catch (error) {
-    console.error("Dashboard error:", error);
+    logger.requestError("GET", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -124,7 +125,7 @@ router.get("/analytics", authenticateToken, async (req, res) => {
       officersWorkload,
     });
   } catch (error) {
-    console.error("Analytics error:", error);
+    logger.requestError("GET", "/analytics", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -158,7 +159,7 @@ router.get("/activity", authenticateToken, async (req, res) => {
 
     res.json({ logs, total, page: p, totalPages: Math.ceil(total / l) });
   } catch (error) {
-    console.error("Activity log error:", error);
+    logger.requestError("GET", "/activity", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -204,7 +205,7 @@ router.get("/workload", authenticateToken, requireRole("ADMIN"), async (_req, re
       },
     });
   } catch (error) {
-    console.error("Workload error:", error);
+    logger.requestError("GET", "/workload", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

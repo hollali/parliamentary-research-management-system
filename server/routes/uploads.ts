@@ -5,6 +5,7 @@ import upload from "../middleware/upload.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { logger } from "../lib/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "../../uploads");
@@ -24,7 +25,7 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
     });
     res.json(attachments);
   } catch (error) {
-    console.error("List attachments error:", error);
+    logger.requestError("GET", "/request/:requestId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -76,7 +77,7 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
     const stream = fs.createReadStream(filePath);
     stream.pipe(res);
   } catch (error) {
-    console.error("Download error:", error);
+    logger.requestError("GET", "/:attachmentId/download", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -139,7 +140,7 @@ router.post(
 
       res.status(201).json(attachment);
     } catch (error) {
-      console.error("Upload error:", error);
+      logger.requestError("POST", "/:requestId", error);
       res.status(500).json({ error: "Internal server error" });
     }
   }

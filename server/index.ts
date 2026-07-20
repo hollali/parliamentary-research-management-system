@@ -5,6 +5,8 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
+import { logger } from "./lib/logger.js";
+import { isSmtpConfigured } from "./lib/email.js";
 
 import authRoutes from "./routes/auth.js";
 import requestRoutes from "./routes/requests.js";
@@ -44,7 +46,12 @@ app.use("/api/teams", teamRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString(), service: "PRRMS API" });
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    service: "PRRMS API",
+    smtp: isSmtpConfigured() ? "configured" : "not_configured",
+  });
 });
 
 // Serve frontend in production
@@ -56,7 +63,10 @@ if (process.env.NODE_ENV === "production") {
 }
 
 app.listen(PORT, () => {
-  console.log(`PRRMS API server running on port ${PORT}`);
+  logger.info(`PRRMS API server running on port ${PORT}`, { route: `/`, method: 'START' });
+  if (!isSmtpConfigured()) {
+    logger.warn('SMTP not configured — emails will be logged to console only', { route: '/', method: 'START' });
+  }
   checkOverdueRequests();
   setInterval(() => checkOverdueRequests(), 60 * 60 * 1000).unref();
 });

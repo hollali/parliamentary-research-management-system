@@ -13,7 +13,7 @@ export const StatisticsView: React.FC = () => {
         setAnalytics(data);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setLoading(false); console.warn('Failed to load analytics'); });
   }, []);
 
   const totalRequests = analytics?.requestsByStatus?.reduce((sum: number, s: any) => sum + s._count, 0) || 0;

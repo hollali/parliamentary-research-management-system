@@ -3,6 +3,7 @@ import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, revisionRequestedEmail, commentAddedEmail } from "../lib/email.js";
 import { shouldNotify, shouldEmail } from "../lib/notifications.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
     });
     res.json(comments);
   } catch (error) {
-    console.error("List reviews error:", error);
+    logger.requestError("GET", "/request/:requestId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -85,14 +86,14 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
         if (officer) {
           const sectionLabel = section || "General";
           const email = commentAddedEmail(officer.firstName, request.requestNumber, request.title, sectionLabel, text, highlightedText);
-          sendEmail({ to: officer.email, ...email }).catch(() => {});
+          sendEmail({ to: officer.email, ...email }).catch((err) => logger.requestError("POST", "/ (email)", err));
         }
       }
     }
 
     res.status(201).json(comment);
   } catch (error) {
-    console.error("Create review error:", error);
+    logger.requestError("POST", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -122,7 +123,7 @@ router.put("/:commentId/resolve", authenticateToken, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Resolve comment error:", error);
+    logger.requestError("PUT", "/:commentId/resolve", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -204,13 +205,13 @@ router.post("/request-revision", authenticateToken, requireRole("ADMIN"), async 
 
       if (await shouldEmail(recipientId)) {
         const email = revisionRequestedEmail(recipient.firstName, request!.requestNumber, request!.title, emailText);
-        sendEmail({ to: recipient.email, ...email }).catch(() => {});
+        sendEmail({ to: recipient.email, ...email }).catch((err) => logger.requestError("POST", "/request-revision (email)", err));
       }
     }
 
     res.json({ message: "Revision requested" });
   } catch (error) {
-    console.error("Request revision error:", error);
+    logger.requestError("POST", "/request-revision", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -269,7 +270,7 @@ router.post("/approve", authenticateToken, requireRole("ADMIN"), async (req, res
 
     res.json({ report: updatedReport, request: updatedRequest });
   } catch (error) {
-    console.error("Approve report error:", error);
+    logger.requestError("POST", "/approve", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

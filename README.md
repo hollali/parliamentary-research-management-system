@@ -229,6 +229,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | `Notification` | In-app notifications |
 | `ActivityLog` | System-wide audit trail |
 | `Setting` | Key-value application settings |
+| `PasswordResetToken` | Secure password reset tokens |
 
 ### Enums
 

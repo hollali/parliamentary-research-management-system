@@ -81,12 +81,25 @@ export async function loginApi(email: string, password: string) {
   return data;
 }
 
+export async function impersonateUser(userId: string) {
+  const data = await request<{ token: string; user: any }>('/auth/impersonate', {
+    method: 'POST',
+    body: { userId },
+  });
+  setToken(data.token);
+  return data;
+}
+
 export async function forgotPassword(email: string) {
   return request('/auth/forgot-password', { method: 'POST', body: { email } });
 }
 
 export async function resetPasswordWithToken(token: string, newPassword: string) {
   return request('/auth/reset-password', { method: 'POST', body: { token, newPassword } });
+}
+
+export async function logoutApi() {
+  return request('/auth/logout', { method: 'POST' });
 }
 
 export async function changePassword(currentPassword: string, newPassword: string) {

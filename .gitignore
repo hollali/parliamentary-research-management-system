@@ -7,5 +7,6 @@ uploads/
 *.log
 .env*
 !.env.example
+credentials.md
 
 /src/generated/prisma

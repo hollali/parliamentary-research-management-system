@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { getDownloadUrl, getAttachments, getWorkloadStats } from '../lib/api';
+import { honourable } from '../lib/format';
 import { AssignModal } from './AssignModal';
 import { 
   Search, 
@@ -52,14 +53,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   React.useEffect(() => {
     getWorkloadStats()
       .then((data) => setWorkload(data))
-      .catch(() => {});
+      .catch(() => console.warn('Failed to load workload stats'));
   }, []);
 
   const parsedSections = React.useMemo(() => {
     if (!previewRequest) return [];
     
     const text: string = previewRequest.content || `
-      1. Executive Summary: This research document was commissioned by ${previewRequest.member} to assess the statutory framework of ${previewRequest.title}.
+      1. Executive Summary: This research document was commissioned by ${honourable(previewRequest.member)} to assess the statutory framework of ${previewRequest.title}.
       
       The analysis explores regulatory blockages, regional implementation histories, and the administrative feasibility of proposed adjustments.
       
@@ -607,7 +608,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-1 text-[9px]">
                           <span className="text-gray-500 font-medium">MP:</span>
-                          <span className="text-gray-700 font-bold">{req.member}</span>
+                          <span className="text-gray-700 font-bold">{honourable(req.member)}</span>
                         </div>
                         <div className="flex items-center gap-1 text-[9px]">
                           <span className="text-gray-500 font-medium">Officer:</span>

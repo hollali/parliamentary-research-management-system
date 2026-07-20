@@ -1,6 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -22,7 +23,7 @@ router.get("/", authenticateToken, async (_req, res) => {
     });
     res.json(teams);
   } catch (error) {
-    console.error("Error fetching teams:", error);
+    logger.requestError("GET", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -49,7 +50,7 @@ router.get("/:teamId", authenticateToken, async (req, res) => {
     if (!team) return res.status(404).json({ error: "Team not found" });
     res.json(team);
   } catch (error) {
-    console.error("Get team error:", error);
+    logger.requestError("GET", "/:teamId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -93,7 +94,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     res.json(team);
   } catch (error) {
-    console.error("Error creating team:", error);
+    logger.requestError("POST", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -120,7 +121,7 @@ router.put("/:teamId", authenticateToken, requireRole("ADMIN"), async (req, res)
     });
     res.json(team);
   } catch (error) {
-    console.error("Update team error:", error);
+    logger.requestError("PUT", "/:teamId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -148,7 +149,7 @@ router.post("/:teamId/members", authenticateToken, requireRole("ADMIN"), async (
     });
     res.json(team);
   } catch (error) {
-    console.error("Add member error:", error);
+    logger.requestError("POST", "/:teamId/members", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -161,7 +162,7 @@ router.delete("/:teamId/members/:userId", authenticateToken, requireRole("ADMIN"
     });
     res.json({ success: true });
   } catch (error) {
-    console.error("Remove member error:", error);
+    logger.requestError("DELETE", "/:teamId/members/:userId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -175,7 +176,7 @@ router.delete("/:teamId", authenticateToken, requireRole("ADMIN"), async (req, r
     });
     res.json({ success: true });
   } catch (error) {
-    console.error("Deactivate team error:", error);
+    logger.requestError("DELETE", "/:teamId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

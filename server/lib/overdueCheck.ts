@@ -1,4 +1,5 @@
 import prisma from "./prisma.js";
+import { logger } from "./logger.js";
 
 export async function checkOverdueRequests(): Promise<void> {
   try {
@@ -52,6 +53,6 @@ export async function checkOverdueRequests(): Promise<void> {
       }
     }
   } catch (error) {
-    console.error("Overdue check error:", error);
+    logger.requestError("SYSTEM", "checkOverdueRequests", error);
   }
 }

@@ -2,31 +2,10 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { clampPagination } from "../lib/pagination.js";
+import { logger } from "../lib/logger.js";
+import { generateUniqueRequestNumber, lookupByIdOrNumber } from "../lib/requestUtils.js";
 
 const router = Router();
-
-function generateRequestNumber(): string {
-  const year = new Date().getFullYear();
-  const seq = Math.floor(Math.random() * 9000 + 1000);
-  return `REQ-${year}-${seq}`;
-}
-
-async function generateUniqueRequestNumber(): Promise<string> {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const candidate = generateRequestNumber();
-    const exists = await prisma.researchRequest.findUnique({ where: { requestNumber: candidate } });
-    if (!exists) return candidate;
-  }
-  // Fallback: use timestamp-based number
-  const ts = Date.now().toString().slice(-8);
-  return `REQ-${new Date().getFullYear()}-${ts}`;
-}
-
-function lookupByIdOrNumber(idOrNumber: string): { requestNumber: string } | { id: string } {
-  return idOrNumber.startsWith('REQ-')
-    ? { requestNumber: idOrNumber }
-    : { id: idOrNumber };
-}
 
 const VALID_STATUSES = ["SUBMITTED","ASSIGNED","IN_PROGRESS","DRAFT_SUBMITTED","REVISION_REQUESTED","REVISED","APPROVED","DELIVERED","CLOSED"];
 const VALID_PRIORITIES = ["STANDARD","URGENT"];
@@ -94,7 +73,7 @@ router.get("/", authenticateToken, async (req, res) => {
 
     res.json({ requests, total, page, totalPages: Math.ceil(total / limit) });
   } catch (error) {
-    console.error("List requests error:", error);
+    logger.requestError("GET", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -138,7 +117,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
 
     res.json(request);
   } catch (error) {
-    console.error("Get request error:", error);
+    logger.requestError("GET", "/:id", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -189,7 +168,7 @@ router.post("/", authenticateToken, async (req, res) => {
 
     res.status(201).json(request);
   } catch (error) {
-    console.error("Create request error:", error);
+    logger.requestError("POST", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -249,7 +228,7 @@ router.put("/:id", authenticateToken, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Update request error:", error);
+    logger.requestError("PUT", "/:id", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -287,21 +266,26 @@ router.post("/:id/cancel", authenticateToken, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Cancel request error:", error);
+    logger.requestError("POST", "/:id/cancel", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Get committees
-router.get("/meta/committees", authenticateToken, async (_req, res) => {
+router.get("/meta/committees", authenticateToken, async (req, res) => {
   try {
+    const { committeeType } = req.query;
+    const where: any = { isActive: true };
+    if (committeeType && ["STANDING", "SELECT", "JOINT", "AD_HOC"].includes(committeeType as string)) {
+      where.committeeType = committeeType;
+    }
     const committees = await prisma.committee.findMany({
-      where: { isActive: true },
+      where,
       orderBy: { name: "asc" },
     });
     res.json(committees);
   } catch (error) {
-    console.error("Analytics by committee error:", error);
+    logger.requestError("GET", "/meta/committees", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -342,7 +326,7 @@ router.get("/meta/committees/stats", authenticateToken, async (_req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error("Committee stats error:", error);
+    logger.requestError("GET", "/meta/committees/stats", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -363,7 +347,7 @@ router.get("/committee/:committeeId", authenticateToken, async (req, res) => {
     });
     res.json(requests);
   } catch (error) {
-    console.error("Committee requests error:", error);
+    logger.requestError("GET", "/committee/:committeeId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -373,6 +357,7 @@ router.get("/committee/:committeeId", authenticateToken, async (req, res) => {
 // Global search
 router.get("/search/global", authenticateToken, async (req, res) => {
   try {
+    const { role, userId } = req.user!;
     const { q } = req.query;
     if (!q || String(q).length < 2) {
       return res.json({ requests: [], users: [], reports: [] });
@@ -380,16 +365,39 @@ router.get("/search/global", authenticateToken, async (req, res) => {
     const query = String(q);
     const mode = { contains: query, mode: "insensitive" as const };
 
-    const [requests, users, reports] = await Promise.all([
-      prisma.researchRequest.findMany({
-        where: {
+    // Build role-based request filter
+    const requestWhere: any = {
+      OR: [
+        { title: mode },
+        { subject: mode },
+        { requestNumber: mode },
+        { description: mode },
+      ],
+    };
+
+    if (role === "MP") {
+      requestWhere.submitterId = userId;
+    } else if (role === "RESEARCH_OFFICER" || role === "RESEARCH_ASSISTANT") {
+      requestWhere.OR = [
+        { title: mode },
+        { subject: mode },
+        { requestNumber: mode },
+        { description: mode },
+      ];
+      requestWhere.AND = [
+        {
           OR: [
-            { title: mode },
-            { subject: mode },
-            { requestNumber: mode },
-            { description: mode },
+            { assignedOfficerId: userId },
+            { assignments: { some: { assignedToId: userId } } },
+            { team: { members: { some: { userId } } } },
           ],
         },
+      ];
+    }
+
+    const [requests, users, reports] = await Promise.all([
+      prisma.researchRequest.findMany({
+        where: requestWhere,
         select: {
           id: true,
           requestNumber: true,
@@ -435,7 +443,7 @@ router.get("/search/global", authenticateToken, async (req, res) => {
 
     res.json({ requests, users, reports });
   } catch (error) {
-    console.error("Global search error:", error);
+    logger.requestError("GET", "/search/global", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -480,7 +488,7 @@ router.post("/:requestId/share", authenticateToken, requireRole("ADMIN"), async 
 
     res.status(201).json(shared);
   } catch (error) {
-    console.error("Share request error:", error);
+    logger.requestError("POST", "/:requestId/share", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -498,7 +506,7 @@ router.get("/:requestId/shared", authenticateToken, async (req, res) => {
     });
     res.json(shares);
   } catch (error) {
-    console.error("Request detail reports error:", error);
+    logger.requestError("GET", "/:requestId/shared", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -521,7 +529,7 @@ router.get("/shared/committee/:committeeId", authenticateToken, async (req, res)
     });
     res.json(shares);
   } catch (error) {
-    console.error("Shared research error:", error);
+    logger.requestError("GET", "/shared/committee/:committeeId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

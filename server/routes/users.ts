@@ -2,8 +2,9 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { logger } from "../lib/logger.js";
 
-const VALID_ROLES = ["ADMIN", "RESEARCH_OFFICER", "MP"] as const;
+const VALID_ROLES = ["ADMIN", "RESEARCH_OFFICER", "RESEARCH_ASSISTANT", "MP"] as const;
 
 const router = Router();
 
@@ -45,7 +46,7 @@ router.get("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     res.json(users);
   } catch (error) {
-    console.error("List users error:", error);
+    logger.requestError("GET", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -115,7 +116,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     res.status(201).json(user);
   } catch (error) {
-    console.error("Create user error:", error);
+    logger.requestError("POST", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -165,7 +166,7 @@ router.put("/:id", authenticateToken, requireRole("ADMIN"), async (req, res) => 
 
     res.json(updated);
   } catch (error) {
-    console.error("Update user error:", error);
+    logger.requestError("PUT", "/:id", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -202,7 +203,7 @@ router.post("/:id/reset-password", authenticateToken, requireRole("ADMIN"), asyn
 
     res.json({ message: "Password reset successfully" });
   } catch (error) {
-    console.error("Reset password error:", error);
+    logger.requestError("POST", "/:id/reset-password", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -232,7 +233,7 @@ router.post("/:id/deactivate", authenticateToken, requireRole("ADMIN"), async (r
 
     res.json({ message: "User deactivated" });
   } catch (error) {
-    console.error("Deactivate user error:", error);
+    logger.requestError("POST", "/:id/deactivate", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

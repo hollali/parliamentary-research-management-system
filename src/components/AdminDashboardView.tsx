@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { getOfficers } from '../lib/api';
+import { honourable } from '../lib/format';
 import { ResearchRequest } from '../types';
 import { AssignModal } from './AssignModal';
 import { 
@@ -36,7 +37,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
   useEffect(() => {
     getOfficers().then((data) => {
       if (Array.isArray(data)) setOfficers(data);
-    }).catch(() => {});
+    }).catch(() => console.warn('Failed to load officers'));
   }, []);
 
   // Derive counts from requests state
@@ -77,7 +78,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
       ...requests.map(req => [
         req.id,
         `"${req.title.replace(/"/g, '""')}"`,
-        `"${req.member}"`,
+        `"${honourable(req.member)}"`,
         `"${req.assignedOfficerName || 'Unassigned'}"`,
         req.status,
         req.deadline
@@ -279,7 +280,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                   </td>
 
                   {/* MP / Member */}
-                  <td className="px-6 py-4 text-sm text-[#191c1d]">{req.member}</td>
+                  <td className="px-6 py-4 text-sm text-[#191c1d]">{honourable(req.member)}</td>
 
                   {/* Assigned Officer */}
                   <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>

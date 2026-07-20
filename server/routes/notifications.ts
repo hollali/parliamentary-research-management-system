@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { clampPagination } from "../lib/pagination.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get("/", authenticateToken, async (req, res) => {
 
     res.json({ notifications, total, unreadCount, totalPages: Math.ceil(total / limit) });
   } catch (error) {
-    console.error("List notifications error:", error);
+    logger.requestError("GET", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -47,7 +48,7 @@ router.put("/:id/read", authenticateToken, async (req, res) => {
     });
     res.json(notification);
   } catch (error) {
-    console.error("Mark read error:", error);
+    logger.requestError("PUT", "/:id/read", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -61,7 +62,7 @@ router.put("/read-all", authenticateToken, async (req, res) => {
     });
     res.json({ message: "All notifications marked as read" });
   } catch (error) {
-    console.error("Mark all read error:", error);
+    logger.requestError("PUT", "/read-all", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

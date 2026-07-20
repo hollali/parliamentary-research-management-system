@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
 import { getCommitteeStats, getRequestsByCommittee, shareWithCommittee } from '../lib/api';
+import { honourable } from '../lib/format';
 import type { Committee } from '../types';
 import { 
   Users, 
@@ -45,7 +46,7 @@ export const CommitteeWorkbenchView: React.FC<CommitteeWorkbenchViewProps> = ({ 
         if (Array.isArray(data)) setCommittees(data);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setLoading(false); toast.error('Failed to load committee data'); });
   }, []);
 
   const handleSelectCommittee = async (committee: CommitteeWithStats) => {
@@ -174,7 +175,7 @@ export const CommitteeWorkbenchView: React.FC<CommitteeWorkbenchViewProps> = ({ 
                         </div>
                         <h4 className="text-xs font-bold text-gray-900">{r.title}</h4>
                         <p className="text-[10px] text-gray-500">
-                          Submitted by {r.submitter ? `${r.submitter.firstName} ${r.submitter.lastName}` : 'Unknown'} • 
+                          Submitted by {r.submitter ? `${r.submitter.role === 'MP' ? 'Hon. ' : ''}${r.submitter.firstName} ${r.submitter.lastName}` : 'Unknown'} • 
                           {r.officer ? ` Assigned to ${r.officer.firstName} ${r.officer.lastName}` : ' Unassigned'}
                         </p>
                       </div>

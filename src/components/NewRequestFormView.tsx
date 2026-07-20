@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { getCommittees } from '../lib/api';
+import { honourable } from '../lib/format';
 import type { Committee } from '../types';
 import { validateForm, validateRequired, validateMinLength, validateDeadline, type ValidationError } from '../lib/validation';
 import { 
@@ -35,7 +36,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
     getCommittees().then((data) => {
       setCommittees(Array.isArray(data) ? data : []);
       setLoadingCommittees(false);
-    }).catch(() => setLoadingCommittees(false));
+    }).catch(() => { setLoadingCommittees(false); console.warn('Failed to load committees'); });
   }, []);
   
   const getDefaultDeadline = () => {
@@ -106,8 +107,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     const allErrors = [
       ...validateStep(1),
       ...validateStep(2),
@@ -127,9 +127,10 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
         assignedOfficerName: null,
         status: 'SUBMITTED',
         priority,
-        deadline: new Date(deadline).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+        deadline,
         description,
         language,
+        committeeId: committees.find(c => c.name === committee)?.id || null,
         attachments: uploadedFiles.map(f => {
           let type: 'pdf' | 'xlsx' | 'docx' = 'pdf';
           if (f.name.toLowerCase().endsWith('.xlsx')) type = 'xlsx';
@@ -140,7 +141,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
             type
           };
         })
-      });
+      } as any);
       setShowSuccess(true);
     } catch {
       // Error handled by context
@@ -218,7 +219,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
         
         {/* Left Column: Form Panels */}
         <div className="lg:col-span-2 bg-white border border-[#c4c5d7] rounded-lg p-8 shadow-sm">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} className="space-y-6">
             
             {/* STEP 1: BASIC INFORMATION */}
             {step === 1 && (
@@ -259,7 +260,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                   <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Requestor Name</label>
                   <input 
                     type="text" 
-                    value={currentUser.name} 
+                    value={currentUser.role === 'MP' ? honourable(currentUser.name) : currentUser.name} 
                     disabled
                     className="w-full bg-gray-100 border border-[#c4c5d7] rounded-lg px-4 py-3 text-sm text-[#434655] outline-none"
                   />
@@ -289,49 +290,6 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                   )}
                 </div>
 
-                {/* Drag and Drop Zone */}
-                <div className="space-y-1.5 pt-2">
-                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider flex items-center gap-1">
-                    <Paperclip className="w-3.5 h-3.5 text-gray-500" /> Reference Bills / Appendices (Optional)
-                  </label>
-                  
-                  <div 
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => document.getElementById('file-upload-input')?.click()}
-                    className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 ${
-                      isDragOver ? 'border-[#0037b0] bg-blue-50/50' : 'border-[#c4c5d7] bg-gray-50 hover:bg-gray-100/50'
-                    }`}
-                  >
-                    <input 
-                      id="file-upload-input"
-                      type="file" 
-                      multiple 
-                      onChange={handleFileInput}
-                      className="hidden" 
-                    />
-                    <div className="w-12 h-12 bg-white text-gray-400 border border-gray-200 shadow-sm rounded-lg flex items-center justify-center">
-                      <Upload className="w-6 h-6 text-[#0037b0]" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-gray-900">Drag & drop files here, or click to browse</p>
-                      <p className="text-[10px] text-gray-500 mt-1">Supports PDF, DOCX, XLSX up to 30MB</p>
-                    </div>
-                  </div>
-
-                  {uploadedFiles.length > 0 && (
-                    <div className="space-y-2 mt-4">
-                      <p className="text-xs font-bold text-[#191c1d]">Uploaded Attachments ({uploadedFiles.length}):</p>
-                      {uploadedFiles.map((file, idx) => (
-                        <div key={idx} className="bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 flex justify-between items-center text-xs">
-                          <span className="font-semibold text-[#191c1d] truncate max-w-[300px]">{file.name}</span>
-                          <span className="text-gray-500 font-bold">{file.size}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 
@@ -452,6 +410,50 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                     </div>
                   </div>
                 </div>
+
+                {/* Drag and Drop Zone */}
+                <div className="space-y-1.5 pt-2">
+                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider flex items-center gap-1">
+                    <Paperclip className="w-3.5 h-3.5 text-gray-500" /> Reference Bills / Appendices (Optional)
+                  </label>
+                  
+                  <div 
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => document.getElementById('file-upload-input')?.click()}
+                    className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 ${
+                      isDragOver ? 'border-[#0037b0] bg-blue-50/50' : 'border-[#c4c5d7] bg-gray-50 hover:bg-gray-100/50'
+                    }`}
+                  >
+                    <input 
+                      id="file-upload-input"
+                      type="file" 
+                      multiple 
+                      onChange={handleFileInput}
+                      className="hidden" 
+                    />
+                    <div className="w-12 h-12 bg-white text-gray-400 border border-gray-200 shadow-sm rounded-lg flex items-center justify-center">
+                      <Upload className="w-6 h-6 text-[#0037b0]" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-900">Drag & drop files here, or click to browse</p>
+                      <p className="text-[10px] text-gray-500 mt-1">Supports PDF, DOCX, XLSX up to 30MB</p>
+                    </div>
+                  </div>
+
+                  {uploadedFiles.length > 0 && (
+                    <div className="space-y-2 mt-4">
+                      <p className="text-xs font-bold text-[#191c1d]">Uploaded Attachments ({uploadedFiles.length}):</p>
+                      {uploadedFiles.map((file, idx) => (
+                        <div key={idx} className="bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 flex justify-between items-center text-xs">
+                          <span className="font-semibold text-[#191c1d] truncate max-w-[300px]">{file.name}</span>
+                          <span className="text-gray-500 font-bold">{file.size}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -486,8 +488,9 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                 </button>
               ) : (
                 <button
-                  type="submit"
+                  type="button"
                   disabled={submitting}
+                  onClick={handleSubmit}
                   className="px-6 py-2 bg-[#0037b0] hover:bg-[#1d4ed8] text-white font-semibold text-sm rounded-lg flex items-center gap-1.5 transition-all shadow-md disabled:opacity-50 ml-auto"
                 >
                   <span>{submitting ? 'Submitting...' : 'Submit Inquiry'}</span>

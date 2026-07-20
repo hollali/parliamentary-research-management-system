@@ -2,9 +2,10 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import prisma from "../lib/prisma.js";
-import { generateToken, authenticateToken } from "../middleware/auth.js";
+import { generateToken, authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, passwordResetEmail } from "../lib/email.js";
 import { rateLimit } from "../lib/rateLimit.js";
+import { logger } from "../lib/logger.js";
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
@@ -61,7 +62,7 @@ router.post("/login", rateLimit(15 * 60 * 1000, 10), async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
+    logger.requestError("POST", "/login", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -105,7 +106,7 @@ router.post("/forgot-password", rateLimit(15 * 60 * 1000, 5), async (req, res) =
 
     res.json(successMessage);
   } catch (error) {
-    console.error("Forgot password error:", error);
+    logger.requestError("POST", "/forgot-password", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -153,7 +154,7 @@ router.post("/reset-password", rateLimit(15 * 60 * 1000, 10), async (req, res) =
 
     res.json({ message: "Password has been reset successfully" });
   } catch (error) {
-    console.error("Reset password error:", error);
+    logger.requestError("POST", "/reset-password", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -177,7 +178,7 @@ router.put("/profile", authenticateToken, async (req, res) => {
 
     res.json(user);
   } catch (error) {
-    console.error("Profile update error:", error);
+    logger.requestError("PUT", "/profile", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -223,7 +224,7 @@ router.post("/change-password", authenticateToken, async (req, res) => {
 
     res.json({ message: "Password updated successfully" });
   } catch (error) {
-    console.error("Change password error:", error);
+    logger.requestError("POST", "/change-password", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -241,7 +242,72 @@ router.get("/notification-prefs", authenticateToken, async (req, res) => {
       triggers: { newAssignments: true, statusChanges: true, draftMentions: true, deadlineReminders: true },
     });
   } catch (error) {
-    console.error("Get notification prefs error:", error);
+    logger.requestError("GET", "/notification-prefs", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Impersonate a user (admin only) — issues a new JWT for the target user
+router.post("/impersonate", authenticateToken, requireRole("ADMIN"), async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      return res.status(404).json({ error: "User not found or inactive" });
+    }
+
+    await prisma.activityLog.create({
+      data: {
+        authorId: req.user!.userId,
+        action: "LOGIN",
+        entityType: "User",
+        entityId: user.id,
+        description: `${user.firstName} ${user.lastName} impersonated by admin`,
+      },
+    });
+
+    const token = generateToken({ userId: user.id, role: user.role });
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        title: user.title,
+        initials: user.initials,
+        avatarUrl: user.avatarUrl,
+        departmentId: user.departmentId,
+      },
+    });
+  } catch (error) {
+    logger.requestError("POST", "/impersonate", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Logout
+router.post("/logout", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.user!;
+    await prisma.activityLog.create({
+      data: {
+        authorId: userId,
+        action: "LOGOUT",
+        entityType: "User",
+        entityId: userId,
+        description: "User logged out",
+      },
+    });
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    logger.requestError("POST", "/logout", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -263,7 +329,7 @@ router.put("/notification-prefs", authenticateToken, async (req, res) => {
     });
     res.json({ message: "Preferences updated" });
   } catch (error) {
-    console.error("Update notification prefs error:", error);
+    logger.requestError("PUT", "/notification-prefs", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

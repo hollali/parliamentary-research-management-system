@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
 import { getOfficers, getTeams } from '../lib/api';
@@ -25,11 +25,37 @@ export const AssignModal: React.FC<AssignModalProps> = ({ requestId, requestTitl
   });
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    getOfficers().then(d => { if (Array.isArray(d)) setOfficers(d); }).catch(() => {});
-    getTeams().then(d => { if (Array.isArray(d)) setTeams(d); }).catch(() => {});
+    getOfficers().then(d => { if (Array.isArray(d)) setOfficers(d); }).catch(() => toast.error('Failed to load officers'));
+    getTeams().then(d => { if (Array.isArray(d)) setTeams(d); }).catch(() => toast.error('Failed to load teams'));
   }, []);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+    return () => { document.body.style.overflow = prev ?? ''; };
+  }, []);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab' || !overlayRef.current) return;
+      const focusable = overlayRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
   const toggleOfficer = (id: string) => {
     setSelectedOfficerIds(prev =>
@@ -76,7 +102,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({ requestId, requestTitl
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={overlayRef} className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-[8vh] sm:pt-[12vh] px-4 overflow-y-auto" onClick={onClose} role="dialog" aria-modal="true" aria-label={`Assign research officer for ${requestTitle}`}>
       <div
         className="bg-white rounded-xl shadow-2xl w-full max-w-lg animate-fadeIn"
         onClick={e => e.stopPropagation()}
@@ -89,7 +115,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({ requestId, requestTitl
             </h3>
             <p className="text-xs text-gray-500 mt-0.5 truncate max-w-xs">{requestTitle}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer">
+          <button ref={closeButtonRef} onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>

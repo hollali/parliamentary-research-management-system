@@ -92,7 +92,7 @@ export const DocumentVersionDiffView: React.FC<DocumentVersionDiffProps> = ({ re
         }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setLoading(false); console.warn('Failed to load report versions'); });
   }, [reportId]);
 
   useEffect(() => {
@@ -113,7 +113,7 @@ export const DocumentVersionDiffView: React.FC<DocumentVersionDiffProps> = ({ re
           }
           setComparing(false);
         })
-        .catch(() => setComparing(false));
+        .catch(() => { setComparing(false); console.warn('Failed to compare versions'); });
     }
   }, [reportId, v1, v2]);
 

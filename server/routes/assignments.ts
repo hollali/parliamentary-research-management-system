@@ -3,6 +3,7 @@ import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, assignmentEmail } from "../lib/email.js";
 import { shouldNotify, shouldEmail } from "../lib/notifications.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ router.get("/pending", authenticateToken, requireRole("ADMIN"), async (_req, res
     });
     res.json(requests);
   } catch (error) {
-    console.error("List pending error:", error);
+    logger.requestError("GET", "/pending", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -48,7 +49,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     // Validate officers in a single batch query
     const officers = await prisma.user.findMany({
-      where: { id: { in: officerIds }, role: "RESEARCH_OFFICER" },
+      where: { id: { in: officerIds }, role: { in: ["RESEARCH_OFFICER", "RESEARCH_ASSISTANT"] } },
     });
     if (officers.length !== officerIds.length) {
       const foundIds = new Set(officers.map(o => o.id));
@@ -131,7 +132,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
       }
       if (await shouldEmail(officer.id)) {
         const email = assignmentEmail(officer.firstName, request.requestNumber, request.title, deadline);
-        sendEmail({ to: officer.email, ...email }).catch(() => {});
+        sendEmail({ to: officer.email, ...email }).catch((err) => logger.requestError("POST", "/ (email)", err));
       }
     }
 
@@ -166,7 +167,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     res.json({ assignments, request: updatedRequest });
   } catch (error) {
-    console.error("Assignment error:", error);
+    logger.requestError("POST", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -175,7 +176,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 router.get("/officers", authenticateToken, requireRole("ADMIN"), async (_req, res) => {
   try {
     const officers = await prisma.user.findMany({
-      where: { role: "RESEARCH_OFFICER", isActive: true },
+      where: { role: { in: ["RESEARCH_OFFICER", "RESEARCH_ASSISTANT"] }, isActive: true },
       select: {
         id: true,
         firstName: true,
@@ -189,7 +190,7 @@ router.get("/officers", authenticateToken, requireRole("ADMIN"), async (_req, re
     });
     res.json(officers);
   } catch (error) {
-    console.error("Get officers error:", error);
+    logger.requestError("GET", "/officers", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -237,7 +238,7 @@ router.post("/:assignmentId/accept", authenticateToken, requireRole("RESEARCH_OF
 
     res.json(updated);
   } catch (error) {
-    console.error("Accept assignment error:", error);
+    logger.requestError("POST", "/:assignmentId/accept", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -295,7 +296,7 @@ router.post("/:assignmentId/decline", authenticateToken, requireRole("RESEARCH_O
 
     res.json(updated);
   } catch (error) {
-    console.error("Decline assignment error:", error);
+    logger.requestError("POST", "/:assignmentId/decline", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -18,7 +18,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
         setArchived(requests.filter((r: any) => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)));
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setLoading(false); console.warn('Failed to load archived requests'); });
   }, []);
 
   const filtered = archived.filter(r => {

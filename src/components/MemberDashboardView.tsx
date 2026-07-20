@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
 import { getDownloadUrl, uploadFile } from '../lib/api';
+import { honourable } from '../lib/format';
 import { ResearchRequest } from '../types';
 import { 
   BarChart3, 
@@ -100,7 +101,7 @@ export const MemberDashboardView: React.FC = () => {
       {/* Page Header */}
       <div>
         <h2 className="font-sans font-bold text-2xl text-[#191c1d]">
-          Welcome back, {currentUser.name}
+          Welcome back, {currentUser.role === 'MP' ? honourable(currentUser.name) : currentUser.name}
         </h2>
         <p className="font-sans text-sm text-[#434655] mt-1">
           Track legislative requests and access delivered research briefs.

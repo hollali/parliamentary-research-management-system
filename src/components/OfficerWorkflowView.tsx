@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
 import { acceptAssignment, declineAssignment, uploadFile, getPendingAssignments } from '../lib/api';
+import { honourable } from '../lib/format';
 import { ResearchRequest } from '../types';
 import { 
   Inbox, 
@@ -183,7 +184,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({ onNavi
                   </span>
                   <h3 className="text-lg font-bold text-gray-900 mt-1">{activeRequest.title}</h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Requested by: <span className="font-bold text-gray-700">{activeRequest.member}</span>
+                    Requested by: <span className="font-bold text-gray-700">{honourable(activeRequest.member)}</span>
                   </p>
                 </div>
 

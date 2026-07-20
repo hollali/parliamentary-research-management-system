@@ -3,6 +3,7 @@ import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, draftSubmittedEmail } from "../lib/email.js";
 import { shouldNotify, shouldEmail } from "../lib/notifications.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -98,14 +99,14 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
         }
         if (await shouldEmail(admin.id)) {
           const email = draftSubmittedEmail(admin.firstName, request.requestNumber, request.title, nextVersion);
-          sendEmail({ to: admin.email, ...email }).catch(() => {});
+          sendEmail({ to: admin.email, ...email }).catch((err) => logger.requestError("POST", "/ (email)", err));
         }
       }
     }
 
     res.status(201).json(report);
   } catch (error) {
-    console.error("Upload report error:", error);
+    logger.requestError("POST", "/", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -119,7 +120,7 @@ router.get("/:reportId/versions", authenticateToken, async (req, res) => {
     });
     res.json(versions);
   } catch (error) {
-    console.error("Get versions error:", error);
+    logger.requestError("GET", "/:reportId/versions", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -137,7 +138,7 @@ router.get("/:reportId/versions/:v1/compare/:v2", authenticateToken, async (req,
     }
     res.json({ versionA, versionB });
   } catch (error) {
-    console.error("Compare versions error:", error);
+    logger.requestError("GET", "/:reportId/versions/:v1/compare/:v2", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,4 +1,5 @@
 import { useState, useEffect, Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { ToastProvider } from './lib/toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -28,31 +29,47 @@ const ResearchTemplatesView = lazy(() => import('./components/ResearchTemplatesV
 const DocumentVersionDiffView = lazy(() => import('./components/DocumentVersionDiffView').then(m => ({ default: m.DocumentVersionDiffView })));
 const ActivityLogView = lazy(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })));
 
+const VIEW_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  briefs: 'Review Legislative Briefs',
+  new_request: 'Inquiry Intake System',
+  notifications: 'Activity & Alert Center',
+  workspace: 'Revision Workspace Editor',
+  settings: 'System Configuration',
+  statistics: 'Legislative Intelligence & Analytics',
+  projects: 'Inquiry Pipeline Directory',
+  members: 'Parliamentary Directories',
+  archive: 'Document Archival Vault',
+  committees: 'Committee Workbench',
+  calendar: 'Parliamentary Calendar',
+  templates: 'Research Templates',
+  'version-diff': 'Version Diff',
+  audit: 'Activity Audit Log',
+  support: 'Support',
+};
+
 function AppContent() {
-  const { currentUser, requests } = useApp();
+  const { currentUser, logout } = useApp();
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!getToken());
-  const [currentView, setCurrentView] = useState('dashboard');
-  const [selectedRequestId, setSelectedRequestId] = useState('');
-  const [selectedReportId, setSelectedReportId] = useState('');
   const [isSidebarMobileOpen, setIsSidebarMobileOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const currentPath = location.pathname;
+  const currentView = currentPath === '/' ? 'dashboard' : currentPath.slice(1).split('/')[0];
 
   const handleNavigate = (view: string, targetId?: string) => {
-    setCurrentView(view);
     if (targetId) {
-      if (view === 'version-diff') {
-        setSelectedReportId(targetId);
-      } else {
-        setSelectedRequestId(targetId);
-      }
+      navigate(`/${view}/${targetId}`);
+    } else {
+      navigate(`/${view}`);
     }
     setIsSidebarMobileOpen(false);
   };
 
-  // Global search shortcut (Ctrl/Cmd + K)
   useEffect(() => {
-    if (!isLoggedIn) return;
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -63,52 +80,22 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handler);
   }, [isLoggedIn]);
 
-  const getPageTitle = () => {
-    switch (currentView) {
-      case 'dashboard':
-        return currentUser.role === 'ADMIN' 
-          ? 'Admin Overview' 
-          : currentUser.role === 'RESEARCH_OFFICER' 
-            ? 'Officer Workspace' 
-            : 'Parliamentary Member Portal';
-      case 'briefs':
-        return 'Review Legislative Briefs';
-      case 'new_request':
-        return 'Inquiry Intake System';
-      case 'notifications':
-        return 'Activity & Alert Center';
-      case 'workspace':
-        return 'Revision Workspace Editor';
-      case 'settings':
-        return 'System Configuration';
-      case 'statistics':
-        return 'Legislative Intelligence & Analytics';
-      case 'projects':
-        return 'Inquiry Pipeline Directory';
-      case 'members':
-        return 'Parliamentary Directories';
-      case 'archive':
-        return 'Document Archival Vault';
-      case 'committees':
-        return 'Committee Workbench';
-      case 'calendar':
-        return 'Parliamentary Calendar';
-      case 'templates':
-        return 'Research Templates';
-      case 'version-diff':
-        return 'Version Diff';
-      case 'audit':
-        return 'Activity Audit Log';
-      default:
-        return 'PRRMS Platform';
-    }
-  };
-
   if (!isLoggedIn) {
     return <LoginView onLoginSuccess={() => setIsLoggedIn(true)} />;
   }
 
-  // Render sub views based on currentView and role
+  const getPageTitle = () => {
+    const base = VIEW_TITLES[currentView] || 'PRRMS Platform';
+    if (currentView === 'dashboard') {
+      return currentUser.role === 'ADMIN'
+        ? 'Admin Overview'
+        : currentUser.role === 'RESEARCH_OFFICER'
+          ? 'Officer Workspace'
+          : 'Parliamentary Member Portal';
+    }
+    return base;
+  };
+
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
@@ -122,36 +109,33 @@ function AppContent() {
 
       case 'briefs':
         if (currentUser.role === 'ADMIN') {
+          const requestId = currentPath.split('/')[2] || '';
           return (
-            <AdminRevisionReviewView 
-              requestId={selectedRequestId} 
-              onBack={() => handleNavigate('dashboard')} 
+            <AdminRevisionReviewView
+              requestId={requestId}
+              onBack={() => handleNavigate('dashboard')}
             />
           );
-        } else {
-          // If member or officer, direct them to workflow or view
-          return (
-            <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center space-y-4">
-              <FileText className="w-12 h-12 text-[#0037b0] mx-auto" />
-              <h3 className="text-lg font-bold text-gray-900">Legislative Briefs Catalog</h3>
-              <p className="text-sm text-[#434655] max-w-md mx-auto">
-                Review available peer-reviewed legal briefing documents compiled by the legislative services. Select active drafts from your workflow pipeline.
-              </p>
-              <button 
-                onClick={() => handleNavigate('dashboard')}
-                className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded"
-              >
-                Go to Active Workspace
-              </button>
-            </div>
-          );
         }
+        return (
+          <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center space-y-4">
+            <FileText className="w-12 h-12 text-[#0037b0] mx-auto" />
+            <h3 className="text-lg font-bold text-gray-900">Legislative Briefs Catalog</h3>
+            <p className="text-sm text-[#434655] max-w-md mx-auto">
+              Review available peer-reviewed legal briefing documents compiled by the legislative services.
+            </p>
+            <button onClick={() => handleNavigate('dashboard')} className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded">
+              Go to Active Workspace
+            </button>
+          </div>
+        );
 
       case 'workspace':
+        const wsRequestId = currentPath.split('/')[2] || '';
         return (
-          <OfficerRevisionWorkspaceView 
-            requestId={selectedRequestId} 
-            onBack={() => handleNavigate('dashboard')} 
+          <OfficerRevisionWorkspaceView
+            requestId={wsRequestId}
+            onBack={() => handleNavigate('dashboard')}
           />
         );
 
@@ -164,10 +148,7 @@ function AppContent() {
               <p className="text-sm text-[#434655] max-w-md mx-auto">
                 Only administrators and members of parliament may submit research requests.
               </p>
-              <button 
-                onClick={() => handleNavigate('dashboard')}
-                className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded"
-              >
+              <button onClick={() => handleNavigate('dashboard')} className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded">
                 Back to Dashboard
               </button>
             </div>
@@ -206,8 +187,9 @@ function AppContent() {
         return <ResearchTemplatesView />;
 
       case 'version-diff':
-        return selectedReportId ? (
-          <DocumentVersionDiffView reportId={selectedReportId} onBack={() => handleNavigate('projects')} />
+        const reportId = currentPath.split('/')[2] || '';
+        return reportId ? (
+          <DocumentVersionDiffView reportId={reportId} onBack={() => handleNavigate('projects')} />
         ) : (
           <div className="text-center text-gray-400 py-20">
             <p className="text-sm">No report selected.</p>
@@ -221,12 +203,9 @@ function AppContent() {
       default:
         return (
           <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center">
-            <h3 className="text-lg font-bold text-gray-900">Module Under Active Commissioning</h3>
-            <p className="text-xs text-gray-500 mt-1">This module is being optimized for security and will be active in future sessions.</p>
-            <button 
-              onClick={() => handleNavigate('dashboard')}
-              className="mt-4 bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded"
-            >
+            <h3 className="text-lg font-bold text-gray-900">Page Not Found</h3>
+            <p className="text-xs text-gray-500 mt-1">The page you are looking for does not exist.</p>
+            <button onClick={() => handleNavigate('dashboard')} className="mt-4 bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded">
               Back to Dashboard
             </button>
           </div>
@@ -236,30 +215,27 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] flex font-sans overflow-x-hidden">
-      {/* Persistent / Toggleable Sidebar */}
-      <Sidebar 
-        currentView={currentView} 
-        onNavigate={handleNavigate} 
+      <Sidebar
+        currentView={currentView}
+        onNavigate={handleNavigate}
         isOpenMobile={isSidebarMobileOpen}
         onCloseMobile={() => setIsSidebarMobileOpen(false)}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
-      {/* Backdrop overlay for mobile sidebar */}
       {isSidebarMobileOpen && (
-        <div 
-          onClick={() => setIsSidebarMobileOpen(false)} 
+        <div
+          onClick={() => setIsSidebarMobileOpen(false)}
           className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-45 lg:hidden transition-opacity duration-300"
         />
       )}
 
-      {/* Top Header and Main Content */}
       <div className={`flex-1 pl-0 ${isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-70'} flex flex-col min-h-screen min-w-0 transition-all duration-300 ease-in-out`}>
-        <Topbar 
-          currentView={currentView} 
-          onNavigate={handleNavigate} 
-          title={getPageTitle()} 
+        <Topbar
+          currentView={currentView}
+          onNavigate={handleNavigate}
+          title={getPageTitle()}
           onMenuClick={() => setIsSidebarMobileOpen(true)}
           onSignOut={() => setIsLoggedIn(false)}
           onSearchClick={() => setIsSearchOpen(true)}
@@ -270,8 +246,7 @@ function AppContent() {
           isOpen={isSearchOpen}
           onClose={() => setIsSearchOpen(false)}
         />
-        
-        {/* Dynamic page context */}
+
         <main className="flex-1 pt-24 px-4 sm:px-6 lg:px-10 pb-12 overflow-y-auto max-w-350 mx-auto w-full min-w-0">
           <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-[#0037b0]" /></div>}>
             {renderView()}
@@ -282,15 +257,14 @@ function AppContent() {
   );
 }
 
-// All view components have been extracted to separate files in src/components/
-// This file is intentionally left clean — see src/components/ for individual view files.
-
 export default function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
         <ToastProvider>
-          <AppContent />
+          <BrowserRouter>
+            <AppContent />
+          </BrowserRouter>
         </ToastProvider>
       </AppProvider>
     </ErrorBoundary>

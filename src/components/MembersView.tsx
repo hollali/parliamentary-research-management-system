@@ -12,7 +12,7 @@ export const MembersView: React.FC = () => {
         if (Array.isArray(data)) setUsers(data);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setLoading(false); console.warn('Failed to load users'); });
   }, []);
 
   return (
