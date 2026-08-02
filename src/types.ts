@@ -25,7 +25,7 @@ export interface User {
 export interface Attachment {
   id?: string;
   name: string;
-  type: 'pdf' | 'xlsx' | 'docx';
+  type: 'pdf' | 'xlsx' | 'docx' | 'zip';
   size: string;
   url?: string;
 }
@@ -60,6 +60,7 @@ export interface ResearchRequest {
   committeeName?: string | null;
   reportId?: string | null;
   member: string; // Member who requested
+  submitterId?: string | null; // Authenticated submitter id for role-based filtering
   assignedOfficerId: string | null; // ID of Officer
   assignedOfficerName: string | null;
   teamId?: string | null;
@@ -78,6 +79,7 @@ export interface ResearchRequest {
   content: string; // The text content of the report draft (if active)
   keyStakeholders?: string;
   dataSources?: string;
+  templateId?: string | null;
 }
 
 export interface NotificationItem {
@@ -88,6 +90,18 @@ export interface NotificationItem {
   type: 'CRITICAL' | 'RESEARCH' | 'COLLABORATION' | 'WARNING';
   read: boolean;
   link?: string;
+  createdAt: string;
+}
+
+export interface TemplateItem {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  sections: { heading: string; prompt: string }[];
+  isBuiltIn: boolean;
+  createdById: string | null;
+  createdAt: string;
 }
 
 export interface AppState {
@@ -95,6 +109,7 @@ export interface AppState {
   requests: ResearchRequest[];
   notifications: NotificationItem[];
   history: HistoryItem[];
+  templates: TemplateItem[];
   preferences: {
     pushNotifications: boolean;
     emailSummaries: boolean;

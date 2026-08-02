@@ -41,12 +41,28 @@ async function request<T = any>(endpoint: string, options: ApiOptions = {}): Pro
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(error.message || `API error: ${res.status}`);
+    let errorBody: any = { message: res.statusText };
+    if (text) {
+      try {
+        errorBody = JSON.parse(text);
+      } catch {
+        errorBody = { message: text };
+      }
+    }
+    throw new Error(errorBody.message || errorBody.error || `API error: ${res.status}`);
   }
 
-  return res.json();
+  if (!text) {
+    return null as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as unknown as T;
+  }
 }
 
 async function uploadRequest<T = any>(endpoint: string, formData: FormData): Promise<T> {
@@ -139,6 +155,10 @@ export async function getRequest(id: string) {
   return request(`/requests/${id}`);
 }
 
+export async function getRequestActivity(id: string) {
+  return request(`/requests/${id}/activity`);
+}
+
 export async function createRequest(data: {
   title: string;
   subject?: string;
@@ -150,6 +170,7 @@ export async function createRequest(data: {
   priority?: string;
   deadline: string;
   committeeId?: string;
+  templateId?: string;
 }) {
   return request('/requests/', { method: 'POST', body: data });
 }
@@ -240,6 +261,10 @@ export async function createReport(data: {
   return request('/reports/', { method: 'POST', body: data });
 }
 
+export async function updateReport(reportId: string, data: { content?: string; isDraft?: boolean; notes?: string }) {
+  return request(`/reports/${reportId}`, { method: 'PUT', body: data });
+}
+
 export async function getReportVersions(reportId: string) {
   return request(`/reports/${reportId}/versions`);
 }
@@ -272,6 +297,10 @@ export async function globalSearch(query: string) {
 }
 
 // ─── Assignment Accept/Decline ──────────────────────────
+
+export async function getMyAssignments() {
+  return request('/assignments/mine');
+}
 
 export async function acceptAssignment(assignmentId: string) {
   return request(`/assignments/${assignmentId}/accept`, { method: 'POST' });
@@ -420,6 +449,29 @@ export async function getActivityLog(params?: { action?: string; entityType?: st
   return request(`/dashboard/activity${qs ? `?${qs}` : ''}`);
 }
 
+// ─── Templates ─────────────────────────────────────────
+
+export async function getTemplates() {
+  return request('/templates/');
+}
+
+export async function getTemplate(id: string) {
+  return request(`/templates/${id}`);
+}
+
+export async function createTemplate(data: {
+  name: string;
+  description?: string;
+  category: string;
+  sections: { heading: string; prompt: string }[];
+}) {
+  return request('/templates/', { method: 'POST', body: data });
+}
+
+export async function deleteTemplate(id: string) {
+  return request(`/templates/${id}`, { method: 'DELETE' });
+}
+
 // ─── File Uploads ───────────────────────────────────────
 
 export async function getAttachments(requestId: string) {
@@ -437,6 +489,58 @@ export async function uploadFile(requestId: string, file: File, onUploaded?: (at
 
 export function getDownloadUrl(attachmentId: string) {
   return `${API_BASE}/uploads/${attachmentId}/download`;
+}
+
+export async function downloadFile(attachmentId: string, fileName: string): Promise<void> {
+  const token = getToken();
+  const url = `${API_BASE}/uploads/${attachmentId}/download`;
+  console.log(`[downloadFile] Requesting: ${url}`);
+  console.log(`[downloadFile] Token present: ${!!token}`);
+
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  console.log(`[downloadFile] Response status: ${res.status} ${res.statusText}`);
+  console.log(`[downloadFile] Content-Type: ${res.headers.get("content-type")}`);
+  console.log(`[downloadFile] Content-Length: ${res.headers.get("content-length")}`);
+  console.log(`[downloadFile] Content-Disposition: ${res.headers.get("content-disposition")}`);
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    let errorBody: any = { error: `Download failed (${res.status})` };
+    if (errorText) {
+      try {
+        errorBody = JSON.parse(errorText);
+      } catch {
+        errorBody = { error: errorText };
+      }
+    }
+    console.error(`[downloadFile] Error body:`, errorBody);
+    throw new Error(errorBody.error || errorBody.message || `Download failed (${res.status})`);
+  }
+
+  const blob = await res.blob();
+  console.log(`[downloadFile] Blob size: ${blob.size}, type: ${blob.type}`);
+
+  const blobUrl = URL.createObjectURL(blob);
+  console.log(`[downloadFile] Blob URL created: ${blobUrl.substring(0, 60)}...`);
+
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.appendChild(link);
+
+  console.log(`[downloadFile] Triggering click with download="${fileName}"`);
+  link.click();
+
+  // Revoke after the browser has started the download
+  setTimeout(() => {
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+    console.log(`[downloadFile] Cleaned up link and blob URL`);
+  }, 500);
 }
 
 // ─── Utility ────────────────────────────────────────────

@@ -641,6 +641,100 @@ async function main() {
 
   console.log("Teams created");
 
+  // ─── Built-in Templates ─────────────────────────────
+  const builtInTemplates = [
+    {
+      name: "Legislative Brief",
+      description: "Standard format for briefings on proposed or enacted legislation, covering legal context, implications, and recommendations.",
+      category: "Legislation",
+      sections: [
+        { heading: "Executive Summary", prompt: "Provide a concise overview of the legislative brief, key findings, and recommendations in 2-3 paragraphs." },
+        { heading: "Background & Legislative Context", prompt: "Describe the existing legal framework, the proposed or enacted bill, its sponsors, and the parliamentary stage it has reached." },
+        { heading: "Key Provisions Analysis", prompt: "Break down the main clauses of the legislation. What do they change? What are the practical implications for the relevant sector?" },
+        { heading: "Stakeholder Impact Assessment", prompt: "Identify who is affected (government agencies, civil society, private sector, citizens). How do different groups stand to gain or lose?" },
+        { heading: "Comparative Analysis", prompt: "How do other jurisdictions (regional or international) handle similar legislation? What lessons can Ghana draw?" },
+        { heading: "Constitutional Considerations", prompt: "Are there any constitutional issues, human rights implications, or alignment concerns with Ghana's 1992 Constitution?" },
+        { heading: "Fiscal & Economic Impact", prompt: "Estimate the cost of implementation, funding sources, and potential economic effects (positive and negative)." },
+        { heading: "Recommendations", prompt: "Provide 3-5 clear, actionable recommendations for the committee or Parliament. Prioritise them by urgency." },
+      ],
+    },
+    {
+      name: "Policy Brief",
+      description: "Analytical brief addressing a specific policy question, suitable for committee deliberation or ministerial consideration.",
+      category: "Policy",
+      sections: [
+        { heading: "Policy Issue Summary", prompt: "State the policy problem clearly in 2-3 sentences. What is the question Parliament needs to answer?" },
+        { heading: "Current Policy Landscape", prompt: "Describe the existing policies, programmes, and institutional arrangements related to this issue." },
+        { heading: "Data & Evidence", prompt: "Present the key statistics, research findings, and data that inform this policy area. Cite credible sources." },
+        { heading: "Policy Options", prompt: "Outline 2-3 policy options (including the status quo). For each, describe the approach, feasibility, and trade-offs." },
+        { heading: "Stakeholder Perspectives", prompt: "Summarise the positions of key stakeholders (ministries, CSOs, private sector, affected communities) on each option." },
+        { heading: "Risk Assessment", prompt: "For each policy option, identify the main risks, implementation challenges, and unintended consequences." },
+        { heading: "Recommendation & Next Steps", prompt: "Recommend the preferred option with justification. Outline implementation steps and a monitoring framework." },
+      ],
+    },
+    {
+      name: "Committee Report",
+      description: "Structured report template for committee inquiries, investigations, or oversight activities.",
+      category: "Committee",
+      sections: [
+        { heading: "Committee Mandate", prompt: "State the committee's terms of reference for this inquiry. What was the scope and timeline?" },
+        { heading: "Methodology", prompt: "Describe how the committee gathered evidence: hearings, site visits, written submissions, expert consultations." },
+        { heading: "Background & Context", prompt: "Provide the broader context for the inquiry. Why was it initiated? What triggered the investigation?" },
+        { heading: "Key Findings", prompt: "Present the main findings organised by theme. Each finding should be supported by evidence cited in hearings or submissions." },
+        { heading: "Analysis & Discussion", prompt: "Interpret the findings. What patterns emerge? How do they compare to expectations or previous reports?" },
+        { heading: "Government Response Summary", prompt: "Summarise any official responses received from ministries, agencies, or other bodies during the inquiry." },
+        { heading: "Recommendations", prompt: "List specific, actionable recommendations directed at responsible entities. Include target dates and responsible parties." },
+        { heading: "Dissenting Views", prompt: "Record any minority opinions or dissenting views expressed by committee members, if applicable." },
+      ],
+    },
+    {
+      name: "Research Summary",
+      description: "Condensed research output summarising findings from a detailed investigation or data analysis.",
+      category: "Research",
+      sections: [
+        { heading: "Research Objective", prompt: "State the research question or objective. What gap in knowledge or practice was this research intended to address?" },
+        { heading: "Methodology", prompt: "Briefly describe the research methods: literature review, surveys, interviews, data analysis, case studies." },
+        { heading: "Key Findings", prompt: "Present the 3-5 most important findings. Use clear, non-technical language suitable for parliamentary audience." },
+        { heading: "Data Highlights", prompt: "Include 2-3 key statistics, charts, or data points that best illustrate the findings." },
+        { heading: "Implications for Parliament", prompt: "What do these findings mean for legislative or policy action? How should Parliament respond?" },
+        { heading: "Limitations", prompt: "Acknowledge any limitations in the research scope, data quality, or methodology that readers should consider." },
+        { heading: "Conclusion & Recommendations", prompt: "Summarise the main takeaway and provide 2-3 prioritised recommendations for parliamentary action." },
+      ],
+    },
+    {
+      name: "Hansard Summary",
+      description: "Template for summarising parliamentary proceedings, debates, and decisions from a specific sitting or session.",
+      category: "Proceedings",
+      sections: [
+        { heading: "Sitting Details", prompt: "Date, time, session number, presiding officer, and quorum status." },
+        { heading: "Order Paper Summary", prompt: "List the items on the order paper and indicate which were debated, deferred, or withdrawn." },
+        { heading: "Key Debates & Arguments", prompt: "Summarise the main debates, including positions expressed by the majority and minority sides." },
+        { heading: "Motions & Resolutions", prompt: "Record all motions moved, seconded, and the outcomes (carried, defeated, withdrawn)." },
+        { heading: "Questions & Answers", prompt: "Summarise notable oral and written questions posed to ministers and the responses given." },
+        { heading: "Votes & Divisions", prompt: "Record any recorded votes, the numbers on each side, and the final decision." },
+        { heading: "Committee Reports Presented", prompt: "List any committee reports tabled during the sitting and their key recommendations." },
+        { heading: "Next Sitting & Action Items", prompt: "Note the date of the next sitting and any action items or referrals resulting from this sitting." },
+      ],
+    },
+  ];
+
+  for (const tpl of builtInTemplates) {
+    await prisma.template.upsert({
+      where: { id: `builtin-${tpl.category.toLowerCase().replace(/\s+/g, "-")}` },
+      update: { name: tpl.name, description: tpl.description, sections: tpl.sections },
+      create: {
+        id: `builtin-${tpl.category.toLowerCase().replace(/\s+/g, "-")}`,
+        name: tpl.name,
+        description: tpl.description,
+        category: tpl.category,
+        sections: tpl.sections,
+        isBuiltIn: true,
+      },
+    });
+  }
+
+  console.log("Built-in templates seeded");
+
   console.log("Seeding complete!");
   console.log("\nTest credentials:");
   console.log("Super Admin: admin@parliament.gh / password123");

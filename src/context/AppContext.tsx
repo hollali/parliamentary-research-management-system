@@ -1,96 +1,227 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { User, ResearchRequest, NotificationItem, HistoryItem, AppState, Comment, Attachment, Role } from '../types';
-import { loginApi, logoutApi, getRequests, getNotifications, checkHealth, getToken, clearToken, createReview, resolveReviewComment, requestRevision, approveReport, createReport, getUsers, createAssignment, updateRequest, markAllNotificationsRead as apiMarkAllRead, updateUserProfile, getActivityLog, getNotificationPrefs, updateNotificationPrefs, createRequest, getRequest, impersonateUser } from '../lib/api';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
+import {
+  User,
+  ResearchRequest,
+  NotificationItem,
+  HistoryItem,
+  TemplateItem,
+  AppState,
+  Comment,
+  Attachment,
+  Role,
+} from "../types";
+import {
+  loginApi,
+  logoutApi,
+  getRequests,
+  getNotifications,
+  checkHealth,
+  getToken,
+  clearToken,
+  createReview,
+  resolveReviewComment,
+  requestRevision,
+  approveReport,
+  createReport,
+  getUsers,
+  createAssignment,
+  updateRequest,
+  markAllNotificationsRead as apiMarkAllRead,
+  markNotificationRead as apiMarkNotificationRead,
+  updateUserProfile,
+  getActivityLog,
+  getNotificationPrefs,
+  updateNotificationPrefs,
+  createRequest,
+  getRequest,
+  impersonateUser,
+  getTemplates,
+  createTemplate as apiCreateTemplate,
+  deleteTemplate as apiDeleteTemplate,
+} from "../lib/api";
 
 interface AppContextType extends AppState {
   login: (email: string, password?: string) => Promise<boolean> | boolean;
   logout: () => void;
   switchUser: (role: Role) => Promise<void> | void;
   isOnline: boolean;
-  addRequest: (request: Omit<ResearchRequest, 'id' | 'dateSubmitted' | 'draftVersion' | 'comments' | 'content'>) => Promise<void> | void;
-  assignRequest: (requestId: string, officerIds?: string[], teamId?: string, deadline?: string, notes?: string) => Promise<void> | void;
-  updateRequestStatus: (requestId: string, status: ResearchRequest['status']) => void;
-  updateRequestPriority: (requestId: string, priority: ResearchRequest['priority']) => void;
+  addRequest: (
+    request: Omit<
+      ResearchRequest,
+      "id" | "dateSubmitted" | "draftVersion" | "comments" | "content"
+    >,
+  ) => Promise<void> | void;
+  assignRequest: (
+    requestId: string,
+    officerIds?: string[],
+    teamId?: string,
+    deadline?: string,
+    notes?: string,
+  ) => Promise<void> | void;
+  updateRequestStatus: (
+    requestId: string,
+    status: ResearchRequest["status"],
+  ) => void;
+  updateRequestPriority: (
+    requestId: string,
+    priority: ResearchRequest["priority"],
+  ) => void;
   extendRequestDeadline: (requestId: string, newDeadline: string) => void;
-  addComment: (requestId: string, text: string, section?: string, highlightedText?: string, startOffset?: number, endOffset?: number, parentId?: string) => void;
+  addComment: (
+    requestId: string,
+    text: string,
+    section?: string,
+    highlightedText?: string,
+    startOffset?: number,
+    endOffset?: number,
+    parentId?: string,
+  ) => void;
   resolveComment: (requestId: string, commentId: string) => void;
   updateRequestContent: (requestId: string, content: string) => void;
   uploadAttachment: (requestId: string, attachment: Attachment) => void;
   deleteAttachment: (requestId: string, name: string) => void;
   markAllNotificationsRead: () => void;
-  savePreferences: (push: boolean, email: boolean, triggers: AppState['preferences']['triggers']) => void;
-  updateProfile: (updates: { firstName?: string; lastName?: string; title?: string; phone?: string; constituency?: string }) => Promise<void>;
+  markNotificationRead: (id: string) => void;
+  savePreferences: (
+    push: boolean,
+    email: boolean,
+    triggers: AppState["preferences"]["triggers"],
+  ) => void;
+  addTemplate: (
+    name: string,
+    description: string | undefined,
+    category: string,
+    sections: { heading: string; prompt: string }[],
+  ) => Promise<any>;
+  removeTemplate: (id: string) => Promise<void>;
+  updateProfile: (updates: {
+    firstName?: string;
+    lastName?: string;
+    title?: string;
+    phone?: string;
+    constituency?: string;
+  }) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+function formatDisplayDate(value: unknown): string {
+  if (!value) return "Not set";
+
+  const date = new Date(value as string);
+  if (Number.isNaN(date.getTime())) {
+    return "Not set";
+  }
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
+}
+
 function mapApiRequest(r: any): ResearchRequest {
-  const statusMap: Record<string, ResearchRequest['status']> = {
-    SUBMITTED: 'SUBMITTED',
-    ASSIGNED: 'ASSIGNED',
-    IN_PROGRESS: 'IN_PROGRESS',
-    DRAFT_SUBMITTED: 'DRAFT_SUBMITTED',
-    REVISION_REQUESTED: 'REVISION_REQUESTED',
-    REVISED: 'REVISED',
-    APPROVED: 'APPROVED',
-    DELIVERED: 'DELIVERED',
-    CLOSED: 'CLOSED',
+  const statusMap: Record<string, ResearchRequest["status"]> = {
+    SUBMITTED: "SUBMITTED",
+    ASSIGNED: "ASSIGNED",
+    IN_PROGRESS: "IN_PROGRESS",
+    DRAFT_SUBMITTED: "DRAFT_SUBMITTED",
+    REVISION_REQUESTED: "REVISION_REQUESTED",
+    REVISED: "REVISED",
+    APPROVED: "APPROVED",
+    DELIVERED: "DELIVERED",
+    CLOSED: "CLOSED",
   };
 
   return {
     id: r.requestNumber || r.id,
     title: r.title,
     topic: r.subject || r.title,
-    category: r.category?.name || '',
-    member: r.submitter ? `${r.submitter.firstName} ${r.submitter.lastName}` : '',
+    category: r.category?.name || r.category || "",
+    member: r.submitter
+      ? `${r.submitter.firstName} ${r.submitter.lastName}`
+      : "",
+    submitterId: r.submitterId || r.submitter?.id || null,
     assignedOfficerId: r.assignedOfficerId || null,
-    assignedOfficerName: r.officer ? `${r.officer.firstName} ${r.officer.lastName}` : null,
+    assignedOfficerName: r.officer
+      ? `${r.officer.firstName} ${r.officer.lastName}`
+      : null,
     teamId: r.teamId || null,
     teamName: r.team?.name || null,
     assignedOfficers: (r.assignments || []).map((a: any) => ({
-      id: a.assignedTo?.id || '',
-      firstName: a.assignedTo?.firstName || '',
-      lastName: a.assignedTo?.lastName || '',
-      initials: a.assignedTo?.initials || '',
+      id: a.assignedTo?.id || "",
+      firstName: a.assignedTo?.firstName || "",
+      lastName: a.assignedTo?.lastName || "",
+      initials: a.assignedTo?.initials || "",
     })),
-    status: statusMap[r.status] || 'SUBMITTED',
-    priority: r.priority as ResearchRequest['priority'],
-    dateSubmitted: new Date(r.dateSubmitted).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-    deadline: new Date(r.deadline).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+    status: statusMap[r.status] || "SUBMITTED",
+    priority: r.priority as ResearchRequest["priority"],
+    dateSubmitted: formatDisplayDate(r.dateSubmitted),
+    deadline: formatDisplayDate(r.deadline),
     description: r.description,
     scope: r.scope || undefined,
-    language: r.language || 'English',
+    language: r.language || "English",
     draftVersion: r.draftVersion || 1,
     attachments: (r.attachments || []).map((a: any) => ({
+      id: a.id,
       name: a.name,
-      type: a.fileType?.toLowerCase() || 'pdf',
-      size: a.fileSize ? `${(a.fileSize / 1024 / 1024).toFixed(1)} MB` : 'Unknown',
+      type: a.fileType?.toLowerCase() || "pdf",
+      size: a.fileSize
+        ? `${(a.fileSize / 1024 / 1024).toFixed(1)} MB`
+        : "Unknown",
       url: a.filePath,
     })),
     comments: (r.comments || []).map((c: any) => ({
       id: c.id,
-      userName: c.author ? `${c.author.firstName} ${c.author.lastName}` : 'Unknown',
-      userInitials: c.author?.initials || '??',
-      role: c.author?.role || 'Unknown',
+      userName: c.author
+        ? `${c.author.firstName} ${c.author.lastName}`
+        : "Unknown",
+      userInitials: c.author?.initials || "??",
+      role: c.author?.role || "Unknown",
       time: new Date(c.createdAt).toLocaleString(),
       text: c.text,
       section: c.section || undefined,
       resolved: c.resolved,
     })),
     reportId: r.reports?.[0]?.id || null,
-    content: r.reports?.[0]?.content || '',
+    content: r.reports?.[0]?.content || "",
     keyStakeholders: r.keyStakeholders || undefined,
     dataSources: r.dataSources || undefined,
+    templateId: r.templateId || null,
   };
 }
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [currentUser, setCurrentUser] = useState<User>(() => {
     try {
-      const savedUser = localStorage.getItem('prrms_user');
-      return savedUser ? JSON.parse(savedUser) : { id: '', name: '', role: 'MP' as Role, email: '', initials: '', title: '' };
+      const savedUser = localStorage.getItem("prrms_user");
+      return savedUser
+        ? JSON.parse(savedUser)
+        : {
+            id: "",
+            name: "",
+            role: "MP" as Role,
+            email: "",
+            initials: "",
+            title: "",
+          };
     } catch {
-      return { id: '', name: '', role: 'MP' as Role, email: '', initials: '', title: '' };
+      return {
+        id: "",
+        name: "",
+        role: "MP" as Role,
+        email: "",
+        initials: "",
+        title: "",
+      };
     }
   });
 
@@ -100,39 +231,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
-      const saved = localStorage.getItem('prrms_history');
+      const saved = localStorage.getItem("prrms_history");
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }
   });
 
-  const [preferences, setPreferences] = useState<AppState['preferences']>(() => {
-    try {
-      const savedPrefs = localStorage.getItem('prrms_prefs');
-      return savedPrefs ? JSON.parse(savedPrefs) : {
-        pushNotifications: true,
-        emailSummaries: false,
-        triggers: {
-          newAssignments: true,
-          statusChanges: true,
-          draftMentions: false,
-          deadlineReminders: true
-        }
-      };
-    } catch {
-      return {
-        pushNotifications: true,
-        emailSummaries: false,
-        triggers: {
-          newAssignments: true,
-          statusChanges: true,
-          draftMentions: false,
-          deadlineReminders: true
-        }
-      };
-    }
-  });
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+
+  const [preferences, setPreferences] = useState<AppState["preferences"]>(
+    () => {
+      try {
+        const savedPrefs = localStorage.getItem("prrms_prefs");
+        return savedPrefs
+          ? JSON.parse(savedPrefs)
+          : {
+              pushNotifications: true,
+              emailSummaries: false,
+              triggers: {
+                newAssignments: true,
+                statusChanges: true,
+                draftMentions: false,
+                deadlineReminders: true,
+              },
+            };
+      } catch {
+        return {
+          pushNotifications: true,
+          emailSummaries: false,
+          triggers: {
+            newAssignments: true,
+            statusChanges: true,
+            draftMentions: false,
+            deadlineReminders: true,
+          },
+        };
+      }
+    },
+  );
 
   const [isOnline, setIsOnline] = useState(false);
 
@@ -144,81 +281,129 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load notification preferences from backend when online
   useEffect(() => {
     if (!isOnline || !getToken()) return;
-    getNotificationPrefs().then((data: any) => {
-      if (data) {
-        setPreferences(data);
-        localStorage.setItem('prrms_prefs', JSON.stringify(data));
-      }
-    }).catch((err: any) => console.warn('Failed to load notification preferences:', err?.message));
+    getNotificationPrefs()
+      .then((data: any) => {
+        if (data) {
+          setPreferences(data);
+          localStorage.setItem("prrms_prefs", JSON.stringify(data));
+        }
+      })
+      .catch((err: any) =>
+        console.warn("Failed to load notification preferences:", err?.message),
+      );
+  }, [isOnline]);
+
+  const mapNotification = (n: any): NotificationItem => {
+    const typeMap: Record<string, NotificationItem["type"]> = {
+      REQUEST_SUBMITTED: "RESEARCH",
+      REQUEST_ASSIGNED: "COLLABORATION",
+      REPORT_UPLOADED: "RESEARCH",
+      REVISION_REQUESTED: "WARNING",
+      REPORT_APPROVED: "CRITICAL",
+      REPORT_DELIVERED: "CRITICAL",
+      GENERAL: "RESEARCH",
+    };
+    return {
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      time: new Date(n.createdAt).toLocaleString(),
+      type: typeMap[n.type] || "RESEARCH",
+      read: n.isRead,
+      link: n.link,
+      createdAt: n.createdAt,
+    };
+  };
+
+  const fetchNotifications = useCallback(() => {
+    if (!isOnline || !getToken()) return;
+    getNotifications()
+      .then((data: any) => {
+        if (data?.notifications) {
+          setNotifications(data.notifications.map(mapNotification));
+        }
+      })
+      .catch((err: any) =>
+        console.warn("Failed to load notifications:", err?.message),
+      );
   }, [isOnline]);
 
   // Fetch data from API if online and token exists
   useEffect(() => {
     if (!isOnline || !getToken()) return;
 
-    getRequests().then((data: any) => {
-      if (data?.requests) {
-        const mapped = data.requests.map(mapApiRequest);
-        setRequests(mapped);
-      }
-    }).catch((err: any) => console.warn('Failed to load requests:', err?.message));
+    getRequests()
+      .then((data: any) => {
+        if (data?.requests) {
+          const mapped = data.requests.map(mapApiRequest);
+          setRequests(mapped);
+        }
+      })
+      .catch((err: any) =>
+        console.warn("Failed to load requests:", err?.message),
+      );
 
-    getNotifications().then((data: any) => {
-      if (data?.notifications) {
-        const typeMap: Record<string, NotificationItem['type']> = {
-          REQUEST_SUBMITTED: 'RESEARCH',
-          REQUEST_ASSIGNED: 'COLLABORATION',
-          REPORT_UPLOADED: 'RESEARCH',
-          REVISION_REQUESTED: 'WARNING',
-          REPORT_APPROVED: 'CRITICAL',
-          REPORT_DELIVERED: 'CRITICAL',
-          GENERAL: 'RESEARCH',
-        };
-        const mapped = data.notifications.map((n: any) => ({
-          id: n.id,
-          title: n.title,
-          message: n.message,
-          time: new Date(n.createdAt).toLocaleString(),
-          type: typeMap[n.type] || 'RESEARCH',
-          read: n.isRead,
-          link: n.link,
+    fetchNotifications();
+
+    getActivityLog({ limit: 20 })
+      .then((data: any) => {
+        const logs = data?.activity || [];
+        const mapped: HistoryItem[] = logs.map((a: any) => ({
+          id: a.id,
+          userName: a.author
+            ? `${a.author.firstName} ${a.author.lastName}`
+            : "System",
+          text: a.description || `${a.action} ${a.entityType}`,
+          time: new Date(a.createdAt).toLocaleString(),
+          sector: a.entityType,
+          type: (a.action === "DELETE"
+            ? "alert"
+            : a.action === "UPDATE"
+              ? "update"
+              : "normal") as HistoryItem["type"],
         }));
-        setNotifications(mapped);
-      }
-    }).catch((err: any) => console.warn('Failed to load notifications:', err?.message));
+        setHistory(mapped);
+      })
+      .catch((err: any) =>
+        console.warn("Failed to load activity log:", err?.message),
+      );
 
-    getActivityLog({ limit: 20 }).then((data: any) => {
-      const logs = data?.activity || [];
-      const mapped: HistoryItem[] = logs.map((a: any) => ({
-        id: a.id,
-        userName: a.author ? `${a.author.firstName} ${a.author.lastName}` : 'System',
-        text: a.description || `${a.action} ${a.entityType}`,
-        time: new Date(a.createdAt).toLocaleString(),
-        sector: a.entityType,
-        type: (a.action === 'DELETE' ? 'alert' : a.action === 'UPDATE' ? 'update' : 'normal') as HistoryItem['type'],
-      }));
-      setHistory(mapped);
-    }).catch((err: any) => console.warn('Failed to load activity log:', err?.message));
+    getTemplates()
+      .then((data: any) => {
+        if (Array.isArray(data)) {
+          setTemplates(data);
+        }
+      })
+      .catch((err: any) =>
+        console.warn("Failed to load templates:", err?.message),
+      );
   }, [isOnline]);
 
+  // Poll for new notifications every 30 seconds
   useEffect(() => {
-    localStorage.setItem('prrms_user', JSON.stringify(currentUser));
+    if (!isOnline || !getToken()) return;
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [isOnline, fetchNotifications]);
+
+  useEffect(() => {
+    localStorage.setItem("prrms_user", JSON.stringify(currentUser));
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('prrms_requests', JSON.stringify(requests));
+    localStorage.setItem("prrms_requests", JSON.stringify(requests));
   }, [requests]);
 
   useEffect(() => {
-    localStorage.setItem('prrms_notifications', JSON.stringify(notifications));
+    localStorage.setItem("prrms_notifications", JSON.stringify(notifications));
   }, [notifications]);
 
   useEffect(() => {
-    localStorage.setItem('prrms_history', JSON.stringify(history));
+    localStorage.setItem("prrms_history", JSON.stringify(history));
   }, [history]);
 
   useEffect(() => {
-    localStorage.setItem('prrms_prefs', JSON.stringify(preferences));
+    localStorage.setItem("prrms_prefs", JSON.stringify(preferences));
   }, [preferences]);
 
   const login = async (email: string, password?: string): Promise<boolean> => {
@@ -243,10 +428,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
-    logoutApi().catch((err) => console.warn('Failed to log out on server:', err?.message));
+    logoutApi().catch((err) =>
+      console.warn("Failed to log out on server:", err?.message),
+    );
     clearToken();
-    localStorage.removeItem('prrms_user');
-    setCurrentUser({ id: '', name: '', role: 'MP' as Role, email: '', initials: '', title: '' });
+    localStorage.removeItem("prrms_user");
+    localStorage.removeItem("prrms_requests");
+    localStorage.removeItem("prrms_notifications");
+    localStorage.removeItem("prrms_history");
+    setRequests([]);
+    setNotifications([]);
+    setHistory([]);
+    setCurrentUser({
+      id: "",
+      name: "",
+      role: "MP" as Role,
+      email: "",
+      initials: "",
+      title: "",
+    });
   };
 
   const switchUser = async (role: Role) => {
@@ -275,14 +475,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addRequest = async (newReqData: Omit<ResearchRequest, 'id' | 'dateSubmitted' | 'draftVersion' | 'comments' | 'content'>) => {
+  const addRequest = async (
+    newReqData: Omit<
+      ResearchRequest,
+      "id" | "dateSubmitted" | "draftVersion" | "comments" | "content"
+    >,
+  ) => {
     // Persist to backend if online
     if (isOnline) {
       try {
         await createRequest({
           title: newReqData.title,
           subject: newReqData.topic,
-          description: newReqData.description || '',
+          description: newReqData.description || "",
           scope: newReqData.scope,
           keyStakeholders: newReqData.keyStakeholders,
           dataSources: newReqData.dataSources,
@@ -290,11 +495,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           priority: newReqData.priority,
           deadline: newReqData.deadline,
           committeeId: (newReqData as any).committeeId,
+          templateId: newReqData.templateId || undefined,
         });
         // Refresh requests from API
         const data = await getRequests();
-        if (data?.requests) {
-          setRequests(data.requests.map(mapApiRequest));
+        const requestList = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.requests)
+            ? data.requests
+            : [];
+
+        if (requestList.length > 0) {
+          setRequests(requestList.map(mapApiRequest));
+        } else {
+          setRequests([]);
         }
         return;
       } catch {
@@ -303,12 +517,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const assignRequest = async (requestId: string, officerIds?: string[], teamId?: string, deadline?: string, notes?: string) => {
+  const assignRequest = async (
+    requestId: string,
+    officerIds?: string[],
+    teamId?: string,
+    deadline?: string,
+    notes?: string,
+  ) => {
     if (isOnline) {
       try {
         const fullReq = await getRequest(requestId);
         const internalId = fullReq?.id || requestId;
-        const resolvedDeadline = deadline || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const resolvedDeadline =
+          deadline ||
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         await createAssignment({
           requestId: internalId,
           assignedToIds: officerIds?.length ? officerIds : undefined,
@@ -317,8 +539,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           notes,
         });
         const data = await getRequests();
-        if (data?.requests) {
-          setRequests(data.requests.map(mapApiRequest));
+        const requestList = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.requests)
+            ? data.requests
+            : [];
+
+        if (requestList.length > 0) {
+          setRequests(requestList.map(mapApiRequest));
+        } else {
+          setRequests([]);
         }
       } catch (err: any) {
         throw err;
@@ -326,25 +556,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateRequestStatus = async (requestId: string, status: ResearchRequest['status']) => {
+  const updateRequestStatus = async (
+    requestId: string,
+    status: ResearchRequest["status"],
+  ) => {
     // Map frontend status back to backend status
     const reverseStatusMap: Record<string, string> = {
-      SUBMITTED: 'SUBMITTED',
-      ASSIGNED: 'ASSIGNED',
-      IN_PROGRESS: 'IN_PROGRESS',
-      REVISION_REQUESTED: 'REVISION_REQUESTED',
-      REVISED: 'REVISED',
-      APPROVED: 'APPROVED',
+      SUBMITTED: "SUBMITTED",
+      ASSIGNED: "ASSIGNED",
+      IN_PROGRESS: "IN_PROGRESS",
+      REVISION_REQUESTED: "REVISION_REQUESTED",
+      REVISED: "REVISED",
+      APPROVED: "APPROVED",
     };
 
     // Persist to backend if online
     let apiFailed = false;
     if (isOnline) {
-      const req = requests.find(r => r.id === requestId);
+      const req = requests.find((r) => r.id === requestId);
       try {
-        if (status === 'REVISION_REQUESTED' && req?.reportId) {
+        if (status === "REVISION_REQUESTED" && req?.reportId) {
           await requestRevision({ reportId: req.reportId, requestId });
-        } else if (status === 'APPROVED' && req?.reportId) {
+        } else if (status === "APPROVED" && req?.reportId) {
           await approveReport({ reportId: req.reportId, requestId });
         } else {
           const backendStatus = reverseStatusMap[status] || status;
@@ -355,29 +588,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    if (!apiFailed) {
-      setRequests(prev => prev.map(req => {
+    setRequests((prev) =>
+      prev.map((req) => {
         if (req.id === requestId) {
           return { ...req, status };
         }
         return req;
-      }));
+      }),
+    );
 
-      // Notify relevant parties
-      const reqTitle = requests.find(r => r.id === requestId)?.title || 'Request';
-      const newNotif: NotificationItem = {
-        id: 'notif_' + Date.now(),
-        title: `Status Update: ${requestId}`,
-        message: `"${reqTitle}" status changed to ${status.replace('_', ' ')}`,
-        time: 'Just now',
-        type: 'RESEARCH',
-        read: false
-      };
-      setNotifications(prev => [newNotif, ...prev]);
+    if (!apiFailed) {
+      fetchNotifications();
     }
   };
 
-  const updateRequestPriority = async (requestId: string, priority: ResearchRequest['priority']) => {
+  const updateRequestPriority = async (
+    requestId: string,
+    priority: ResearchRequest["priority"],
+  ) => {
     if (isOnline) {
       try {
         await updateRequest(requestId, { priority });
@@ -386,25 +614,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    setRequests(prev => prev.map(req => {
-      if (req.id === requestId) {
-        return { ...req, priority };
-      }
-      return req;
-    }));
+    setRequests((prev) =>
+      prev.map((req) => {
+        if (req.id === requestId) {
+          return { ...req, priority };
+        }
+        return req;
+      }),
+    );
 
-    const newNotif: NotificationItem = {
-      id: 'notif_' + Date.now(),
-      title: `Priority Updated: ${requestId}`,
-      message: `Priority set to ${priority}`,
-      time: 'Just now',
-      type: 'RESEARCH',
-      read: false
-    };
-    setNotifications(prev => [newNotif, ...prev]);
+    if (isOnline) {
+      fetchNotifications();
+    }
   };
 
-  const extendRequestDeadline = async (requestId: string, newDeadline: string) => {
+  const extendRequestDeadline = async (
+    requestId: string,
+    newDeadline: string,
+  ) => {
     if (isOnline) {
       try {
         await updateRequest(requestId, { deadline: newDeadline });
@@ -413,45 +640,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    setRequests(prev => prev.map(req => {
-      if (req.id === requestId) {
-        return { ...req, deadline: newDeadline };
-      }
-      return req;
-    }));
+    setRequests((prev) =>
+      prev.map((req) => {
+        if (req.id === requestId) {
+          return { ...req, deadline: newDeadline };
+        }
+        return req;
+      }),
+    );
 
-    const newNotif: NotificationItem = {
-      id: 'notif_' + Date.now(),
-      title: `Deadline Extended: ${requestId}`,
-      message: `Deadline extended to ${newDeadline}`,
-      time: 'Just now',
-      type: 'RESEARCH',
-      read: false
-    };
-    setNotifications(prev => [newNotif, ...prev]);
+    if (isOnline) {
+      fetchNotifications();
+    }
   };
 
-  const addComment = async (requestId: string, text: string, section?: string, highlightedText?: string, startOffset?: number, endOffset?: number, parentId?: string) => {
+  const addComment = async (
+    requestId: string,
+    text: string,
+    section?: string,
+    highlightedText?: string,
+    startOffset?: number,
+    endOffset?: number,
+    parentId?: string,
+  ) => {
     const newComment: Comment = {
-      id: 'comment_' + Date.now(),
-      userName: currentUser.name + (currentUser.role === 'ADMIN' ? ' (Admin)' : ''),
+      id: "comment_" + Date.now(),
+      userName:
+        currentUser.name + (currentUser.role === "ADMIN" ? " (Admin)" : ""),
       userInitials: currentUser.initials,
-      role: currentUser.role === 'ADMIN' ? 'Admin' : currentUser.role === 'RESEARCH_OFFICER' ? 'Researcher' : 'Member',
-      time: 'Just now',
+      role:
+        currentUser.role === "ADMIN"
+          ? "Admin"
+          : currentUser.role === "RESEARCH_OFFICER"
+            ? "Researcher"
+            : "Member",
+      time: "Just now",
       text,
       section,
-      resolved: false
+      resolved: false,
     };
 
     // Persist to backend if online
     if (isOnline) {
-      const req = requests.find(r => r.id === requestId);
+      const req = requests.find((r) => r.id === requestId);
       if (req?.reportId) {
         try {
           const created = await createReview({
             reportId: req.reportId,
             requestId,
-            section: section || '',
+            section: section || "",
             text,
             highlightedText,
             startOffset,
@@ -465,28 +702,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    setRequests(prev => prev.map(req => {
-      if (req.id === requestId) {
-        return {
-          ...req,
-          comments: [...req.comments, newComment]
-        };
-      }
-      return req;
-    }));
+    setRequests((prev) =>
+      prev.map((req) => {
+        if (req.id === requestId) {
+          return {
+            ...req,
+            comments: [...req.comments, newComment],
+          };
+        }
+        return req;
+      }),
+    );
 
-    // Trigger notification
-    const req = requests.find(r => r.id === requestId);
-    if (req) {
-      const newNotif: NotificationItem = {
-        id: 'notif_' + Date.now(),
-        title: 'New Collaboration Comment',
-        message: `${currentUser.name} commented on ${requestId}: "${text.slice(0, 40)}..."`,
-        time: 'Just now',
-        type: 'COLLABORATION',
-        read: false
-      };
-      setNotifications(prev => [newNotif, ...prev]);
+    if (isOnline) {
+      fetchNotifications();
     }
   };
 
@@ -500,109 +729,165 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    setRequests(prev => prev.map(req => {
-      if (req.id === requestId) {
-        return {
-          ...req,
-          comments: req.comments.map(c => c.id === commentId ? { ...c, resolved: true } : c)
-        };
-      }
-      return req;
-    }));
+    setRequests((prev) =>
+      prev.map((req) => {
+        if (req.id === requestId) {
+          return {
+            ...req,
+            comments: req.comments.map((c) =>
+              c.id === commentId ? { ...c, resolved: true } : c,
+            ),
+          };
+        }
+        return req;
+      }),
+    );
   };
 
   const updateRequestContent = (requestId: string, content: string) => {
-    setRequests(prev => prev.map(req => {
-      if (req.id === requestId) {
-        return { ...req, content };
-      }
-      return req;
-    }));
+    setRequests((prev) =>
+      prev.map((req) => {
+        if (req.id === requestId) {
+          return { ...req, content };
+        }
+        return req;
+      }),
+    );
   };
 
   const uploadAttachment = (requestId: string, attachment: Attachment) => {
-    setRequests(prev => prev.map(req => {
-      if (req.id === requestId) {
-        return {
-          ...req,
-          attachments: [...req.attachments, attachment]
-        };
-      }
-      return req;
-    }));
+    setRequests((prev) =>
+      prev.map((req) => {
+        if (req.id === requestId) {
+          return {
+            ...req,
+            attachments: [...req.attachments, attachment],
+          };
+        }
+        return req;
+      }),
+    );
   };
 
   const deleteAttachment = (requestId: string, name: string) => {
-    setRequests(prev => prev.map(req => {
-      if (req.id === requestId) {
-        return {
-          ...req,
-          attachments: req.attachments.filter(a => a.name !== name)
-        };
-      }
-      return req;
-    }));
+    setRequests((prev) =>
+      prev.map((req) => {
+        if (req.id === requestId) {
+          return {
+            ...req,
+            attachments: req.attachments.filter((a) => a.name !== name),
+          };
+        }
+        return req;
+      }),
+    );
   };
 
   const markAllNotificationsRead = async () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    const prev = notifications;
+    setNotifications((n) => n.map((x) => ({ ...x, read: true })));
     if (isOnline) {
       try {
         await apiMarkAllRead();
       } catch {
-        // Fall through
+        setNotifications(prev);
       }
     }
   };
 
-  const savePreferences = (push: boolean, email: boolean, triggers: AppState['preferences']['triggers']) => {
+  const markNotificationRead = (id: string) => {
+    const prev = notifications;
+    setNotifications((n) =>
+      n.map((x) => (x.id === id ? { ...x, read: true } : x)),
+    );
+    if (isOnline) {
+      apiMarkNotificationRead(id).catch(() => {
+        setNotifications(prev);
+      });
+    }
+  };
+
+  const savePreferences = (
+    push: boolean,
+    email: boolean,
+    triggers: AppState["preferences"]["triggers"],
+  ) => {
     const newPrefs = {
       pushNotifications: push,
       emailSummaries: email,
-      triggers
+      triggers,
     };
     setPreferences(newPrefs);
     if (isOnline) {
-      updateNotificationPrefs(newPrefs).catch((err: any) => console.warn('Failed to save notification preferences:', err?.message));
+      updateNotificationPrefs(newPrefs).catch((err: any) =>
+        console.warn("Failed to save notification preferences:", err?.message),
+      );
     }
   };
 
+  const addTemplate = async (
+    name: string,
+    description: string | undefined,
+    category: string,
+    sections: { heading: string; prompt: string }[],
+  ) => {
+    const created = await apiCreateTemplate({
+      name,
+      description,
+      category,
+      sections,
+    });
+    setTemplates((prev) => [created, ...prev]);
+    return created;
+  };
+
+  const removeTemplate = async (id: string) => {
+    await apiDeleteTemplate(id);
+    setTemplates((prev) => prev.filter((t) => t.id !== id));
+  };
+
   return (
-    <AppContext.Provider value={{
-      currentUser,
-      requests,
-      notifications,
-      history,
-      preferences,
-      isOnline,
-      login,
-      logout,
-      switchUser,
-      addRequest,
-      assignRequest,
-      updateRequestStatus,
-      updateRequestPriority,
-      extendRequestDeadline,
-      addComment,
-      resolveComment,
-      updateRequestContent,
-      uploadAttachment,
-      deleteAttachment,
-      markAllNotificationsRead,
-      savePreferences,
-      updateProfile: async (updates) => {
-        const data = await updateUserProfile(updates);
-        if (data) {
-          setCurrentUser((prev) => ({
-            ...prev,
-            name: `${data.firstName} ${data.lastName}`,
-            initials: data.initials || prev.initials,
-            title: data.title || prev.title,
-            email: data.email || prev.email,
-          }));
-        }
-      }
-    }}>
+    <AppContext.Provider
+      value={{
+        currentUser,
+        requests,
+        notifications,
+        history,
+        templates,
+        preferences,
+        isOnline,
+        login,
+        logout,
+        switchUser,
+        addRequest,
+        assignRequest,
+        updateRequestStatus,
+        updateRequestPriority,
+        extendRequestDeadline,
+        addComment,
+        resolveComment,
+        updateRequestContent,
+        uploadAttachment,
+        deleteAttachment,
+        markAllNotificationsRead,
+        markNotificationRead,
+        savePreferences,
+        addTemplate,
+        removeTemplate,
+        updateProfile: async (updates) => {
+          const data = await updateUserProfile(updates);
+          if (data) {
+            setCurrentUser((prev) => ({
+              ...prev,
+              name: `${data.firstName} ${data.lastName}`,
+              initials: data.initials || prev.initials,
+              title: data.title || prev.title,
+              email: data.email || prev.email,
+            }));
+          }
+        },
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
@@ -611,7 +896,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 export const useApp = () => {
   const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
+    throw new Error("useApp must be used within an AppProvider");
   }
   return context;
 };

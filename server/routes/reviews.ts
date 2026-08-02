@@ -2,7 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, revisionRequestedEmail, commentAddedEmail } from "../lib/email.js";
-import { shouldNotify, shouldEmail } from "../lib/notifications.js";
+import { shouldNotify, shouldEmail, createNotification } from "../lib/notifications.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -67,14 +67,12 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
     const request = await prisma.researchRequest.findUnique({ where: { id: requestId } });
     if (request?.assignedOfficerId) {
       if (await shouldNotify(request.assignedOfficerId, 'draftMentions')) {
-        await prisma.notification.create({
-          data: {
-            recipientId: request.assignedOfficerId,
-            type: "REPORT_UPLOADED",
-            title: "New Review Comment",
-            message: `Admin commented on "${request.title}": ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`,
-            link: `/requests/${requestId}`,
-          },
+        await createNotification({
+          recipientId: request.assignedOfficerId,
+          type: "REPORT_UPLOADED",
+          title: "New Review Comment",
+          message: `Admin commented on "${request.title}": ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`,
+          requestId,
         });
       }
 
@@ -192,14 +190,12 @@ router.post("/request-revision", authenticateToken, requireRole("ADMIN"), async 
 
     for (const [recipientId, recipient] of recipientMap) {
       if (await shouldNotify(recipientId, 'statusChanges')) {
-        await prisma.notification.create({
-          data: {
-            recipientId,
-            type: "REVISION_REQUESTED",
-            title: "Revision Requested",
-            message: `Revision requested for: ${request!.title}`,
-            link: `/requests/${requestId}`,
-          },
+        await createNotification({
+          recipientId,
+          type: "REVISION_REQUESTED",
+          title: "Revision Requested",
+          message: `Revision requested for: ${request!.title}`,
+          requestId,
         });
       }
 
@@ -238,7 +234,7 @@ router.post("/approve", authenticateToken, requireRole("ADMIN"), async (req, res
       }),
       prisma.researchRequest.update({
         where: { id: requestId },
-        data: { status: "APPROVED" },
+        data: { status: "APPROVED", dateCompleted: new Date() },
       }),
     ]);
 
@@ -256,14 +252,12 @@ router.post("/approve", authenticateToken, requireRole("ADMIN"), async (req, res
 
     if (request?.submitterId) {
       if (await shouldNotify(request.submitterId, 'statusChanges')) {
-        await prisma.notification.create({
-          data: {
-            recipientId: request.submitterId,
-            type: "REPORT_APPROVED",
-            title: "Report Approved",
-            message: `Your research request has been approved: ${request.title}`,
-            link: `/requests/${requestId}`,
-          },
+        await createNotification({
+          recipientId: request.submitterId,
+          type: "REPORT_APPROVED",
+          title: "Report Approved",
+          message: `Your research request has been approved: ${request.title}`,
+          requestId,
         });
       }
     }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { clampPagination } from "../lib/pagination.js";
+import { shouldNotify, createNotification } from "../lib/notifications.js";
 import { logger } from "../lib/logger.js";
 import { generateUniqueRequestNumber, lookupByIdOrNumber } from "../lib/requestUtils.js";
 
@@ -57,11 +58,13 @@ router.get("/", authenticateToken, async (req, res) => {
           submitter: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
           officer: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
           team: { select: { id: true, name: true } },
+          template: { select: { id: true, name: true, category: true, sections: true } },
           assignments: {
             include: {
               assignedTo: { select: { id: true, firstName: true, lastName: true, initials: true } },
             },
           },
+          reports: { select: { id: true }, orderBy: { createdAt: "desc" }, take: 1 },
           _count: { select: { reports: true, comments: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -122,10 +125,43 @@ router.get("/:id", authenticateToken, async (req, res) => {
   }
 });
 
+// Get activity log for a specific request
+router.get("/:id/activity", authenticateToken, async (req, res) => {
+  try {
+    const request = await prisma.researchRequest.findUnique({
+      where: lookupByIdOrNumber(req.params.id),
+      select: { id: true, submitterId: true },
+    });
+    if (!request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    const logs = await prisma.activityLog.findMany({
+      where: {
+        OR: [
+          { entityType: "ResearchRequest", entityId: request.id },
+          { entityType: "ResearchReport", entityId: request.id },
+          { entityType: "ReviewComment", entityId: request.id },
+        ],
+      },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true, initials: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    res.json(logs);
+  } catch (error) {
+    logger.requestError("GET", "/:id/activity", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Create request
 router.post("/", authenticateToken, async (req, res) => {
   try {
-    const { title, subject, description, scope, keyStakeholders, dataSources, language, priority, deadline, committeeId, attachments } = req.body;
+    const { title, subject, description, scope, keyStakeholders, dataSources, language, priority, deadline, committeeId, templateId, attachments } = req.body;
 
     if (!title || !description || !deadline) {
       return res.status(400).json({ error: "Title, description, and deadline are required" });
@@ -149,6 +185,7 @@ router.post("/", authenticateToken, async (req, res) => {
         deadline: new Date(deadline),
         submitterId: req.user!.userId,
         committeeId,
+        templateId: templateId || null,
       },
       include: {
         category: true,
@@ -197,6 +234,16 @@ router.put("/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "Cannot change status" });
     }
 
+    // Populate milestone timestamps on status transitions
+    const now = new Date();
+    const milestoneDates: Record<string, any> = {};
+    if (status && status !== existing.status) {
+      if (status === "ASSIGNED" && !existing.dateAssigned) milestoneDates.dateAssigned = now;
+      if (status === "APPROVED" && !existing.dateCompleted) milestoneDates.dateCompleted = now;
+      if (status === "DELIVERED" && !existing.dateDelivered) milestoneDates.dateDelivered = now;
+      if (status === "CLOSED" && !existing.dateClosed) milestoneDates.dateClosed = now;
+    }
+
     const updated = await prisma.researchRequest.update({
       where: { id: existing.id },
       data: {
@@ -211,6 +258,7 @@ router.put("/:id", authenticateToken, async (req, res) => {
         ...(deadline && { deadline: new Date(deadline) }),
         ...(committeeId !== undefined && { committeeId }),
         ...(status && { status }),
+        ...milestoneDates,
       },
       include: { category: true, submitter: { select: { id: true, firstName: true, lastName: true, initials: true } } },
     });
@@ -225,6 +273,19 @@ router.put("/:id", authenticateToken, async (req, res) => {
         metadata: { changes: req.body },
       },
     });
+
+    // Notify MP when research is delivered
+    if (status && status === "DELIVERED" && existing.status !== "DELIVERED" && existing.submitterId) {
+      if (await shouldNotify(existing.submitterId, 'statusChanges')) {
+        await createNotification({
+          recipientId: existing.submitterId,
+          type: "REPORT_DELIVERED",
+          title: "Research Brief Delivered",
+          message: `Your research brief has been delivered: ${existing.title}`,
+          requestId: existing.id,
+        });
+      }
+    }
 
     res.json(updated);
   } catch (error) {

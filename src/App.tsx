@@ -15,6 +15,7 @@ const AdminDashboardView = lazy(() => import('./components/AdminDashboardView').
 const MemberDashboardView = lazy(() => import('./components/MemberDashboardView').then(m => ({ default: m.MemberDashboardView })));
 const NewRequestFormView = lazy(() => import('./components/NewRequestFormView').then(m => ({ default: m.NewRequestFormView })));
 const AdminRevisionReviewView = lazy(() => import('./components/AdminRevisionReviewView').then(m => ({ default: m.AdminRevisionReviewView })));
+const LegislativeBriefsView = lazy(() => import('./components/LegislativeBriefsView').then(m => ({ default: m.LegislativeBriefsView })));
 const OfficerRevisionWorkspaceView = lazy(() => import('./components/OfficerRevisionWorkspaceView').then(m => ({ default: m.OfficerRevisionWorkspaceView })));
 const NotificationsView = lazy(() => import('./components/NotificationsView').then(m => ({ default: m.NotificationsView })));
 const OfficerWorkflowView = lazy(() => import('./components/OfficerWorkflowView').then(m => ({ default: m.OfficerWorkflowView })));
@@ -110,12 +111,15 @@ function AppContent() {
       case 'briefs':
         if (currentUser.role === 'ADMIN') {
           const requestId = currentPath.split('/')[2] || '';
-          return (
-            <AdminRevisionReviewView
-              requestId={requestId}
-              onBack={() => handleNavigate('dashboard')}
-            />
-          );
+          if (requestId) {
+            return (
+              <AdminRevisionReviewView
+                requestId={requestId}
+                onBack={() => handleNavigate('briefs')}
+              />
+            );
+          }
+          return <LegislativeBriefsView onNavigate={handleNavigate} />;
         }
         return (
           <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center space-y-4">
@@ -157,7 +161,7 @@ function AppContent() {
         return <NewRequestFormView onSuccess={() => handleNavigate('dashboard')} />;
 
       case 'notifications':
-        return <NotificationsView />;
+        return <NotificationsView onNavigate={handleNavigate} />;
 
       case 'support':
         return <SupportView />;

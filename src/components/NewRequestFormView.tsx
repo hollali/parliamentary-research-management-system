@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { getCommittees } from '../lib/api';
+import { getCommittees, getUsers } from '../lib/api';
 import { honourable } from '../lib/format';
-import type { Committee } from '../types';
+import type { Committee, TemplateItem } from '../types';
 import { validateForm, validateRequired, validateMinLength, validateDeadline, type ValidationError } from '../lib/validation';
 import { 
   FileText, 
@@ -17,7 +17,8 @@ import {
   ChevronDown, 
 
   Upload,
-  Sparkles
+  Sparkles,
+  LayoutTemplate
 } from 'lucide-react';
 
 interface NewRequestFormViewProps {
@@ -25,12 +26,17 @@ interface NewRequestFormViewProps {
 }
 
 export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSuccess }) => {
-  const { currentUser, addRequest } = useApp();
+  const { currentUser, addRequest, templates } = useApp();
   const [step, setStep] = useState(1);
   
   // Committees from API
   const [committees, setCommittees] = useState<Committee[]>([]);
   const [loadingCommittees, setLoadingCommittees] = useState(true);
+
+  // Members list (admin only)
+  const [members, setMembers] = useState<Array<{ id: string; firstName: string; lastName: string }>>([]);
+  const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
 
   useEffect(() => {
     getCommittees().then((data) => {
@@ -38,6 +44,15 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
       setLoadingCommittees(false);
     }).catch(() => { setLoadingCommittees(false); console.warn('Failed to load committees'); });
   }, []);
+
+  useEffect(() => {
+    if (currentUser.role === 'ADMIN') {
+      getUsers({ role: 'MP' }).then((data) => {
+        const list = Array.isArray(data) ? data : (data?.users || []);
+        setMembers(list.filter((u: any) => u.isActive !== false));
+      }).catch(() => console.warn('Failed to load members'));
+    }
+  }, [currentUser.role]);
   
   const getDefaultDeadline = () => {
     const d = new Date();
@@ -66,6 +81,9 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
     const fieldsToValidate: Record<string, { value: string; validators: ((val: string) => string | null)[] }> = {};
     if (stepToValidate === 1) {
       fieldsToValidate.topic = { value: topic, validators: [v => validateRequired(v, 'Inquiry topic'), v => validateMinLength(v, 5, 'Inquiry topic')] };
+      if (currentUser.role === 'ADMIN') {
+        fieldsToValidate.selectedMemberId = { value: selectedMemberId, validators: [v => validateRequired(v, 'Requesting on behalf of')] };
+      }
     }
     if (stepToValidate === 2) {
       fieldsToValidate.description = { value: description, validators: [v => validateRequired(v, 'Inquiry scope'), v => validateMinLength(v, 10, 'Inquiry scope')] };
@@ -118,11 +136,15 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
     setSubmitting(true);
     
     try {
+      const memberName = currentUser.role === 'ADMIN' && selectedMemberId
+        ? members.find(m => m.id === selectedMemberId)?.firstName + ' ' + members.find(m => m.id === selectedMemberId)?.lastName
+        : currentUser.name;
+
       await addRequest({
         title: topic || 'Legislative Inquiry: ' + committee,
         topic: topic || committee + ' Inquiry',
         category: committee,
-        member: currentUser.name,
+        member: memberName,
         assignedOfficerId: null,
         assignedOfficerName: null,
         status: 'SUBMITTED',
@@ -131,6 +153,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
         description,
         language,
         committeeId: committees.find(c => c.name === committee)?.id || null,
+        templateId: selectedTemplateId || null,
         attachments: uploadedFiles.map(f => {
           let type: 'pdf' | 'xlsx' | 'docx' = 'pdf';
           if (f.name.toLowerCase().endsWith('.xlsx')) type = 'xlsx';
@@ -267,6 +290,36 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                   <p className="text-[10px] text-gray-500">Automatically populated from your authenticated session.</p>
                 </div>
 
+                {/* Admin: On Behalf Of */}
+                {currentUser.role === 'ADMIN' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">
+                      On Behalf Of <span className="text-[#ba1a1a]">*</span>
+                    </label>
+                    <div className="relative">
+                      <select 
+                        value={selectedMemberId}
+                        onChange={(e) => setSelectedMemberId(e.target.value)}
+                        className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 appearance-none text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
+                      >
+                        <option value="">Select an MP...</option>
+                        {members.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            Hon. {m.firstName} {m.lastName}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#747686]" />
+                    </div>
+                    {getFieldError('selectedMemberId') && (
+                      <div aria-live="polite">
+                        <p className="text-[10px] text-red-600">{getFieldError('selectedMemberId')}</p>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-gray-500">Choose the member this research is being requested for.</p>
+                  </div>
+                )}
+
                 {/* Specific Topic / Title */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Specific inquiry topic</label>
@@ -302,9 +355,6 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Inquiry Scope & Key Research Questions</label>
-                    <span className="text-[10px] text-[#0037b0] font-semibold flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-[#0037b0]" /> Use official brief layout
-                    </span>
                   </div>
 
                   <div className="space-y-1.5">
@@ -327,6 +377,49 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                     )}
                   </div>
                 </div>
+
+                {/* Template Selection (Optional) */}
+                {templates.length > 0 && (
+                  <div className="space-y-1.5 pt-2">
+                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider flex items-center gap-1.5">
+                      <LayoutTemplate className="w-3.5 h-3.5 text-[#0037b0]" />
+                      Research Template
+                      <span className="text-gray-400 normal-case tracking-normal">(Optional)</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={selectedTemplateId}
+                        onChange={(e) => setSelectedTemplateId(e.target.value)}
+                        className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 appearance-none text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
+                      >
+                        <option value="">No template — start from scratch</option>
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.category})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#747686]" />
+                    </div>
+                    {selectedTemplateId && (() => {
+                      const tpl = templates.find((t) => t.id === selectedTemplateId);
+                      if (!tpl) return null;
+                      const sections = tpl.sections as { heading: string; prompt: string }[];
+                      return (
+                        <div className="mt-2 bg-blue-50/50 border border-blue-100 rounded-lg p-3 space-y-1.5">
+                          <p className="text-[10px] font-bold text-[#0037b0] uppercase tracking-wider">{tpl.name} — {sections.length} sections</p>
+                          {sections.map((s, i) => (
+                            <div key={i} className="flex items-start gap-2 text-[11px] text-gray-600">
+                              <span className="font-bold text-[#0037b0] shrink-0">{i + 1}.</span>
+                              <span className="font-semibold text-gray-800">{s.heading}</span>
+                            </div>
+                          ))}
+                          <p className="text-[10px] text-gray-400 italic pt-1">The officer will use this structure when drafting the report.</p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* Language of Delivery */}
                 <div className="space-y-1.5">
@@ -438,7 +531,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                     </div>
                     <div>
                       <p className="text-xs font-bold text-gray-900">Drag & drop files here, or click to browse</p>
-                      <p className="text-[10px] text-gray-500 mt-1">Supports PDF, DOCX, XLSX up to 30MB</p>
+                      <p className="text-[10px] text-gray-500 mt-1">Supports PDF, DOCX, XLSX, ZIP up to 50MB</p>
                     </div>
                   </div>
 

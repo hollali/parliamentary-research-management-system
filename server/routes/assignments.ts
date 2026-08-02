@@ -2,7 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, assignmentEmail } from "../lib/email.js";
-import { shouldNotify, shouldEmail } from "../lib/notifications.js";
+import { shouldNotify, shouldEmail, createNotification } from "../lib/notifications.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -120,14 +120,12 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
     // Notify each officer
     for (const officer of officers) {
       if (await shouldNotify(officer.id, 'newAssignments')) {
-        await prisma.notification.create({
-          data: {
-            recipientId: officer.id,
-            type: "REQUEST_ASSIGNED",
-            title: "New Research Assignment",
-            message: `You have been assigned: ${request.title}`,
-            link: `/requests/${requestId}`,
-          },
+        await createNotification({
+          recipientId: officer.id,
+          type: "REQUEST_ASSIGNED",
+          title: "New Research Assignment",
+          message: `You have been assigned: ${request.title}`,
+          requestId,
         });
       }
       if (await shouldEmail(officer.id)) {
@@ -140,14 +138,12 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
     if (team) {
       for (const member of team.members) {
         if (await shouldNotify(member.userId, 'newAssignments')) {
-          await prisma.notification.create({
-            data: {
-              recipientId: member.userId,
-              type: "REQUEST_ASSIGNED",
-              title: "New Team Research Assignment",
-              message: `Team "${team.name}" has been assigned: ${request.title}`,
-              link: `/requests/${requestId}`,
-            },
+          await createNotification({
+            recipientId: member.userId,
+            type: "REQUEST_ASSIGNED",
+            title: "New Team Research Assignment",
+            message: `Team "${team.name}" has been assigned: ${request.title}`,
+            requestId,
           });
         }
       }
@@ -195,6 +191,29 @@ router.get("/officers", authenticateToken, requireRole("ADMIN"), async (_req, re
   }
 });
 
+// Get my assignments (officer)
+router.get("/mine", authenticateToken, requireRole("RESEARCH_OFFICER", "RESEARCH_ASSISTANT"), async (req, res) => {
+  try {
+    const assignments = await prisma.assignment.findMany({
+      where: { assignedToId: req.user!.userId },
+      include: {
+        request: {
+          include: {
+            category: true,
+            submitter: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
+          },
+        },
+        assignedBy: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(assignments);
+  } catch (error) {
+    logger.requestError("GET", "/mine", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Accept assignment
 router.post("/:assignmentId/accept", authenticateToken, requireRole("RESEARCH_OFFICER"), async (req, res) => {
   try {
@@ -204,14 +223,20 @@ router.post("/:assignmentId/accept", authenticateToken, requireRole("RESEARCH_OF
       return res.status(403).json({ error: "Not your assignment" });
     }
 
-    const updated = await prisma.assignment.update({
-      where: { id: req.params.assignmentId },
-      data: { acceptedAt: new Date() },
-      include: {
-        assignedBy: { select: { firstName: true, lastName: true } },
-        assignedTo: { select: { firstName: true, lastName: true } },
-      },
-    });
+    const [updated] = await prisma.$transaction([
+      prisma.assignment.update({
+        where: { id: req.params.assignmentId },
+        data: { acceptedAt: new Date() },
+        include: {
+          assignedBy: { select: { firstName: true, lastName: true } },
+          assignedTo: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      prisma.researchRequest.update({
+        where: { id: assignment.requestId },
+        data: { status: "IN_PROGRESS" },
+      }),
+    ]);
 
     await prisma.activityLog.create({
       data: {
@@ -225,14 +250,12 @@ router.post("/:assignmentId/accept", authenticateToken, requireRole("RESEARCH_OF
 
     // Notify the admin who assigned
     if (await shouldNotify(assignment.assignedById, 'statusChanges')) {
-      await prisma.notification.create({
-        data: {
-          recipientId: assignment.assignedById,
-          type: "GENERAL",
-          title: "Assignment Accepted",
-          message: `Assignment for request has been accepted`,
-          link: `/requests/${assignment.requestId}`,
-        },
+      await createNotification({
+        recipientId: assignment.assignedById,
+        type: "GENERAL",
+        title: "Assignment Accepted",
+        message: `Assignment for request has been accepted`,
+        requestId: assignment.requestId,
       });
     }
 
@@ -283,14 +306,12 @@ router.post("/:assignmentId/decline", authenticateToken, requireRole("RESEARCH_O
 
     // Notify the admin who assigned
     if (await shouldNotify(assignment.assignedById, 'statusChanges')) {
-      await prisma.notification.create({
-        data: {
-          recipientId: assignment.assignedById,
-          type: "GENERAL",
-          title: "Assignment Declined",
-          message: `An assignment has been declined${reason ? `: ${reason}` : ''}`,
-          link: `/requests/${assignment.requestId}`,
-        },
+      await createNotification({
+        recipientId: assignment.assignedById,
+        type: "GENERAL",
+        title: "Assignment Declined",
+        message: `An assignment has been declined${reason ? `: ${reason}` : ''}`,
+        requestId: assignment.requestId,
       });
     }
 

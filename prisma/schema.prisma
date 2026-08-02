@@ -81,23 +81,23 @@ model Department {
 // ─── User ───────────────────────────────────────────────
 
 model User {
-  id             String    @id @default(uuid())
-  email          String    @unique
-  passwordHash   String
-  firstName      String
-  lastName       String
-  role           Role
-  title          String?
-  phone          String?
-  avatarUrl      String?
-  initials       String
-  isActive       Boolean   @default(true)
-  departmentId   String?
-  constituency   String?
-  notificationPrefs Json?  @default("{\"pushNotifications\":true,\"emailSummaries\":true,\"triggers\":{\"newAssignments\":true,\"statusChanges\":true,\"draftMentions\":true,\"deadlineReminders\":true}}")
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  lastLoginAt    DateTime?
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  role              Role
+  title             String?
+  phone             String?
+  avatarUrl         String?
+  initials          String
+  isActive          Boolean   @default(true)
+  departmentId      String?
+  constituency      String?
+  notificationPrefs Json?     @default("{\"pushNotifications\":true,\"emailSummaries\":true,\"triggers\":{\"newAssignments\":true,\"statusChanges\":true,\"draftMentions\":true,\"deadlineReminders\":true}}")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLoginAt       DateTime?
 
   department Department? @relation(fields: [departmentId], references: [id])
 
@@ -105,7 +105,7 @@ model User {
   submittedRequests ResearchRequest[] @relation("RequestSubmitter")
 
   // Research requests assigned to this user (as Officer)
-  assignedRequests  ResearchRequest[] @relation("AssignedOfficer")
+  assignedRequests ResearchRequest[] @relation("AssignedOfficer")
 
   // Research reports authored by this user
   authoredReports ResearchReport[] @relation("ReportAuthor")
@@ -123,8 +123,8 @@ model User {
   uploadedReports ResearchReport[] @relation("ReportUploader")
 
   // Assignments
-  assignmentsMade   Assignment[] @relation("AssignmentAssigner")
-  assignmentsTaken  Assignment[] @relation("AssignmentAssignee")
+  assignmentsMade  Assignment[] @relation("AssignmentAssigner")
+  assignmentsTaken Assignment[] @relation("AssignmentAssignee")
 
   // Attachments uploaded by this user
   uploadedAttachments Attachment[] @relation("AttachmentUploader")
@@ -133,11 +133,14 @@ model User {
   sharedResearch SharedResearch[] @relation("SharedBy")
 
   // Teams
-  ledTeams      ResearchTeam[] @relation("TeamLead")
+  ledTeams        ResearchTeam[] @relation("TeamLead")
   teamMemberships TeamMember[]
 
   // Password reset tokens
   passwordResetTokens PasswordResetToken[]
+
+  // Custom templates created by this user
+  createdTemplates Template[] @relation("TemplateCreator")
 
   @@map("users")
 }
@@ -164,8 +167,8 @@ model Committee {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  requests ResearchRequest[]
-  sharedResearch SharedResearch[] @relation("SharedCommittee")
+  requests       ResearchRequest[]
+  sharedResearch SharedResearch[]  @relation("SharedCommittee")
 
   @@map("committees")
 }
@@ -173,33 +176,35 @@ model Committee {
 // ─── Research Request ───────────────────────────────────
 
 model ResearchRequest {
-  id                  String        @id @default(uuid())
-  requestNumber       String        @unique
-  title               String
-  subject             String?
-  description         String
-  scope               String?
-  keyStakeholders     String?
-  dataSources         String?
-  language            String        @default("English")
-  priority            Priority      @default(STANDARD)
-  status              RequestStatus @default(SUBMITTED)
-  deadline            DateTime
-  dateSubmitted       DateTime      @default(now())
-  dateAssigned        DateTime?
-  dateCompleted       DateTime?
-  dateDelivered       DateTime?
-  dateClosed          DateTime?
-  draftVersion        Int           @default(0)
-  committeeId         String?
-  submitterId         String
-  assignedOfficerId   String?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  id                String        @id @default(uuid())
+  requestNumber     String        @unique
+  title             String
+  subject           String?
+  description       String
+  scope             String?
+  keyStakeholders   String?
+  dataSources       String?
+  language          String        @default("English")
+  priority          Priority      @default(STANDARD)
+  status            RequestStatus @default(SUBMITTED)
+  deadline          DateTime
+  dateSubmitted     DateTime      @default(now())
+  dateAssigned      DateTime?
+  dateCompleted     DateTime?
+  dateDelivered     DateTime?
+  dateClosed        DateTime?
+  draftVersion      Int           @default(0)
+  committeeId       String?
+  templateId        String?
+  submitterId       String
+  assignedOfficerId String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
-  category   Committee?        @relation(fields: [committeeId], references: [id])
-  submitter  User             @relation("RequestSubmitter", fields: [submitterId], references: [id])
-  officer    User?            @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id])
+  category  Committee? @relation(fields: [committeeId], references: [id])
+  template  Template?  @relation(fields: [templateId], references: [id])
+  submitter User       @relation("RequestSubmitter", fields: [submitterId], references: [id])
+  officer   User?      @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id])
 
   reports     ResearchReport[]
   comments    ReviewComment[]
@@ -207,7 +212,7 @@ model ResearchRequest {
   assignments Assignment[]
   sharedWith  SharedResearch[] @relation("SharedWith")
   teamId      String?
-  team        ResearchTeam? @relation(fields: [teamId], references: [id])
+  team        ResearchTeam?    @relation(fields: [teamId], references: [id])
 
   @@index([submitterId])
   @@index([assignedOfficerId])
@@ -222,23 +227,23 @@ model ResearchRequest {
 // ─── Assignment ─────────────────────────────────────────
 
 model Assignment {
-  id              String    @id @default(uuid())
-  requestId       String
-  assignedById    String
-  assignedToId    String?
-  teamId          String?
-  deadline        DateTime
-  notes           String?
-  acceptedAt      DateTime?
-  declinedAt      DateTime?
-  declineReason   String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  requestId     String
+  assignedById  String
+  assignedToId  String?
+  teamId        String?
+  deadline      DateTime
+  notes         String?
+  acceptedAt    DateTime?
+  declinedAt    DateTime?
+  declineReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  request   ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  assignedBy User           @relation("AssignmentAssigner", fields: [assignedById], references: [id])
-  assignedTo User?          @relation("AssignmentAssignee", fields: [assignedToId], references: [id])
-  team      ResearchTeam?   @relation(fields: [teamId], references: [id])
+  request    ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  assignedBy User            @relation("AssignmentAssigner", fields: [assignedById], references: [id])
+  assignedTo User?           @relation("AssignmentAssignee", fields: [assignedToId], references: [id])
+  team       ResearchTeam?   @relation(fields: [teamId], references: [id])
 
   @@index([requestId])
   @@index([assignedToId])
@@ -256,10 +261,10 @@ model ResearchTeam {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  lead            User?           @relation("TeamLead", fields: [leadId], references: [id])
-  members         TeamMember[]
-  assignments     Assignment[]
-  requests        ResearchRequest[]
+  lead        User?             @relation("TeamLead", fields: [leadId], references: [id])
+  members     TeamMember[]
+  assignments Assignment[]
+  requests    ResearchRequest[]
 
   @@map("research_teams")
 }
@@ -281,29 +286,29 @@ model TeamMember {
 // ─── Research Report ────────────────────────────────────
 
 model ResearchReport {
-  id            String    @id @default(uuid())
-  requestId     String
-  authorId      String
-  uploadedById  String?
-  title         String
-  content       String?
-  filePath      String?
-  fileType      FileType?
-  fileSize      Int?
-  version       Int       @default(1)
-  isDraft       Boolean   @default(true)
-  isApproved    Boolean   @default(false)
-  approvedAt    DateTime?
-  approvedById  String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(uuid())
+  requestId    String
+  authorId     String
+  uploadedById String?
+  title        String
+  content      String?
+  filePath     String?
+  fileType     FileType?
+  fileSize     Int?
+  version      Int       @default(1)
+  isDraft      Boolean   @default(true)
+  isApproved   Boolean   @default(false)
+  approvedAt   DateTime?
+  approvedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  request    ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  author     User            @relation("ReportAuthor", fields: [authorId], references: [id])
-  uploader   User?           @relation("ReportUploader", fields: [uploadedById], references: [id])
+  request  ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author   User            @relation("ReportAuthor", fields: [authorId], references: [id])
+  uploader User?           @relation("ReportUploader", fields: [uploadedById], references: [id])
 
-  versions    ReportVersion[]
-  comments    ReviewComment[]
+  versions ReportVersion[]
+  comments ReviewComment[]
 
   @@index([requestId])
   @@index([authorId])
@@ -313,16 +318,16 @@ model ResearchReport {
 // ─── Report Version ─────────────────────────────────────
 
 model ReportVersion {
-  id         String    @id @default(uuid())
-  reportId   String
-  version    Int
-  content    String?
-  filePath   String?
-  fileType   FileType?
-  fileSize   Int?
-  notes      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id        String    @id @default(uuid())
+  reportId  String
+  version   Int
+  content   String?
+  filePath  String?
+  fileType  FileType?
+  fileSize  Int?
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   report ResearchReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
@@ -333,7 +338,7 @@ model ReportVersion {
 // ─── Review Comment ─────────────────────────────────────
 
 model ReviewComment {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
   reportId        String
   requestId       String
   authorId        String
@@ -343,15 +348,15 @@ model ReviewComment {
   highlightedText String?
   startOffset     Int?
   endOffset       Int?
-  resolved        Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  resolved        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  report   ResearchReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  request  ResearchRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  author   User             @relation("CommentAuthor", fields: [authorId], references: [id])
-  parent   ReviewComment?   @relation("CommentReplies", fields: [parentId], references: [id])
-  replies  ReviewComment[]   @relation("CommentReplies")
+  report  ResearchReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  request ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author  User            @relation("CommentAuthor", fields: [authorId], references: [id])
+  parent  ReviewComment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies ReviewComment[] @relation("CommentReplies")
 
   @@index([reportId])
   @@index([requestId])
@@ -362,15 +367,15 @@ model ReviewComment {
 // ─── Attachment ─────────────────────────────────────────
 
 model Attachment {
-  id          String    @id @default(uuid())
-  requestId   String
+  id           String   @id @default(uuid())
+  requestId    String
   uploadedById String
-  name        String
-  fileType    FileType
-  filePath    String
-  fileSize    Int?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  name         String
+  fileType     FileType
+  filePath     String
+  fileSize     Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   request  ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   uploader User            @relation("AttachmentUploader", fields: [uploadedById], references: [id])
@@ -382,13 +387,13 @@ model Attachment {
 // ─── Cross-Committee Sharing ─────────────────────────────
 
 model SharedResearch {
-  id             String   @id @default(uuid())
-  requestId      String
-  sharedWithId   String
-  sharedById     String
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id           String   @id @default(uuid())
+  requestId    String
+  sharedWithId String
+  sharedById   String
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   request    ResearchRequest @relation("SharedWith", fields: [requestId], references: [id], onDelete: Cascade)
   sharedWith Committee       @relation("SharedCommittee", fields: [sharedWithId], references: [id], onDelete: Cascade)
@@ -440,9 +445,9 @@ model ActivityLog {
 // ─── Settings ───────────────────────────────────────────
 
 model Setting {
-  id    String @id @default(uuid())
-  key   String @unique
-  value Json
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
   updatedAt DateTime @updatedAt
 
   @@map("settings")
@@ -451,16 +456,37 @@ model Setting {
 // ─── Password Reset Token ──────────────────────────────
 
 model PasswordResetToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+// ─── Template ─────────────────────────────────────────
+
+model Template {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  category    String
+  sections    Json
+  isBuiltIn   Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  creator User? @relation("TemplateCreator", fields: [createdById], references: [id])
+
+  requests ResearchRequest[]
+
+  @@index([createdById])
+  @@map("templates")
 }

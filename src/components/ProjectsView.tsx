@@ -1,46 +1,70 @@
-import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { getDownloadUrl, getAttachments, getWorkloadStats } from '../lib/api';
-import { honourable } from '../lib/format';
-import { AssignModal } from './AssignModal';
-import { 
-  Search, 
-  MoreVertical, 
-  UserPlus, 
-  Clock, 
-  AlertTriangle, 
-  ChevronDown, 
-  Zap, 
-  Filter, 
-  X, 
-  Eye, 
-  Paperclip, 
+import React, { useState, useEffect } from "react";
+import { useApp } from "../context/AppContext";
+import { downloadFile, getAttachments, getWorkloadStats } from "../lib/api";
+import { honourable } from "../lib/format";
+import { useToast } from "../lib/toast";
+import { AssignModal } from "./AssignModal";
+import {
+  Search,
+  UserPlus,
+  Clock,
+  ChevronDown,
+  Filter,
+  X,
+  Eye,
   FileSpreadsheet,
   FileText,
   Download,
   ShieldCheck,
-  GitCompare
-} from 'lucide-react';
+  Flag,
+  RefreshCw,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Paperclip,
+  AlertTriangle,
+} from "lucide-react";
+import { ExportButton } from "./ExportButton";
+import { Pagination } from "./Pagination";
 
 interface ProjectsViewProps {
   onNavigate: (view: string, id: string) => void;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
-  const { requests, assignRequest, updateRequestPriority, extendRequestDeadline } = useApp();
+  const {
+    requests,
+    assignRequest,
+    updateRequestPriority,
+    extendRequestDeadline,
+    currentUser,
+  } = useApp();
+  const { toast } = useToast();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [downloadStep, setDownloadStep] = useState<string>('');
-  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
-  const [assignModalRequestId, setAssignModalRequestId] = useState<string | null>(null);
-  const [assignModalRequestTitle, setAssignModalRequestTitle] = useState<string>('');
+  const [assignModalRequestId, setAssignModalRequestId] = useState<
+    string | null
+  >(null);
+  const [assignModalRequestTitle, setAssignModalRequestTitle] =
+    useState<string>("");
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("");
+
+  const [sortField, setSortField] = useState<string>("id");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  const [viewRequest, setViewRequest] = useState<any | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const [previewRequest, setPreviewRequest] = useState<any | null>(null);
-  const [previewType, setPreviewType] = useState<'draft' | 'attachment'>('draft');
-  const [previewAttachmentName, setPreviewAttachmentName] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<"draft" | "attachment">(
+    "draft",
+  );
+  const [previewAttachmentName, setPreviewAttachmentName] = useState<
+    string | null
+  >(null);
   const [activePreviewTab, setActivePreviewTab] = useState<number>(0);
 
   // Reset active tab whenever preview selection changes
@@ -53,13 +77,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   React.useEffect(() => {
     getWorkloadStats()
       .then((data) => setWorkload(data))
-      .catch(() => console.warn('Failed to load workload stats'));
+      .catch(() => console.warn("Failed to load workload stats"));
   }, []);
 
   const parsedSections = React.useMemo(() => {
     if (!previewRequest) return [];
-    
-    const text: string = previewRequest.content || `
+
+    const text: string =
+      previewRequest.content ||
+      `
       1. Executive Summary: This research document was commissioned by ${honourable(previewRequest.member)} to assess the statutory framework of ${previewRequest.title}.
       
       The analysis explores regulatory blockages, regional implementation histories, and the administrative feasibility of proposed adjustments.
@@ -75,22 +101,32 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
 
     // Try to parse sections dynamically
     const sections: { title: string; content: string[] }[] = [];
-    const lines = text.split('\n');
+    const lines = text.split("\n");
     let currentSection: { title: string; content: string[] } | null = null;
 
-    lines.forEach(line => {
+    lines.forEach((line) => {
       const trimmed = line.trim();
       if (!trimmed) return;
 
       // Check if line looks like a header
-      if (/^\d+\.\s+\w+/.test(trimmed) || trimmed.startsWith('I.') || trimmed.startsWith('II.') || trimmed.startsWith('III.') || trimmed.startsWith('IV.') || trimmed.startsWith('V.')) {
+      if (
+        /^\d+\.\s+\w+/.test(trimmed) ||
+        trimmed.startsWith("I.") ||
+        trimmed.startsWith("II.") ||
+        trimmed.startsWith("III.") ||
+        trimmed.startsWith("IV.") ||
+        trimmed.startsWith("V.")
+      ) {
         if (currentSection) {
           sections.push(currentSection);
         }
         currentSection = { title: trimmed, content: [] };
       } else {
         if (!currentSection) {
-          currentSection = { title: 'General Information & Brief Overview', content: [] };
+          currentSection = {
+            title: "General Information & Brief Overview",
+            content: [],
+          };
         }
         currentSection.content.push(trimmed);
       }
@@ -105,98 +141,109 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
 
   const spreadsheetData = React.useMemo(() => {
     if (!previewRequest || !previewRequest.attachments) return null;
-    
-    const xlsxFile = previewRequest.attachments.find((a: any) => a.name?.endsWith('.xlsx'));
+
+    const xlsxFile = previewRequest.attachments.find((a: any) =>
+      a.name?.endsWith(".xlsx"),
+    );
     if (!xlsxFile) return null;
 
     return {
       title: xlsxFile.name,
       headers: ["File Name", "Type", "Size", "Status"],
-      rows: [[xlsxFile.name, xlsxFile.type || 'xlsx', xlsxFile.size || 'N/A', 'Attached']],
-      totals: ["Total", "1 file", "—", "—"]
+      rows: [
+        [
+          xlsxFile.name,
+          xlsxFile.type || "xlsx",
+          xlsxFile.size || "N/A",
+          "Attached",
+        ],
+      ],
+      totals: ["Total", "1 file", "—", "—"],
     };
   }, [previewRequest]);
 
   const pdfPages = React.useMemo(() => {
     if (!previewRequest) return [];
-    
-    const content: string = previewRequest.content || '';
+
+    const content: string = previewRequest.content || "";
     if (!content) {
-      return [{
-        pageNum: 1,
-        title: "No content available",
-        content: ["Report content has not been uploaded yet."]
-      }];
+      return [
+        {
+          pageNum: 1,
+          title: "No content available",
+          content: ["Report content has not been uploaded yet."],
+        },
+      ];
     }
 
-    const lines = content.split('\n').filter((l: string) => l.trim());
+    const lines = content.split("\n").filter((l: string) => l.trim());
     const pageSize = 15;
     const pages: { pageNum: number; title: string; content: string[] }[] = [];
-    
+
     for (let i = 0; i < lines.length; i += pageSize) {
       const pageLines = lines.slice(i, i + pageSize);
       const pageNum = pages.length + 1;
       pages.push({
         pageNum,
         title: `Page ${pageNum}`,
-        content: pageLines
+        content: pageLines,
       });
     }
-    
-    return pages.length > 0 ? pages : [{
-      pageNum: 1,
-      title: "Document",
-      content: [content]
-    }];
+
+    return pages.length > 0
+      ? pages
+      : [
+          {
+            pageNum: 1,
+            title: "Document",
+            content: [content],
+          },
+        ];
   }, [previewRequest]);
 
   const categories = React.useMemo(() => {
     const cats = new Set<string>();
-    requests.forEach(req => {
+    requests.forEach((req) => {
       if (req.category) cats.add(req.category);
     });
     return Array.from(cats).sort();
   }, [requests]);
 
   const statuses = [
-    { value: 'SUBMITTED', label: 'Submitted' },
-    { value: 'ASSIGNED', label: 'Assigned' },
-    { value: 'IN_PROGRESS', label: 'In Progress' },
-    { value: 'REVISION_REQUESTED', label: 'Revision Requested' },
-    { value: 'REVISED', label: 'Revised' },
-    { value: 'OVERDUE', label: 'Overdue' },
-    { value: 'APPROVED', label: 'Approved' },
+    { value: "SUBMITTED", label: "Submitted" },
+    { value: "ASSIGNED", label: "Assigned" },
+    { value: "IN_PROGRESS", label: "In Progress" },
+    { value: "REVISION_REQUESTED", label: "Revision Requested" },
+    { value: "REVISED", label: "Revised" },
+    { value: "OVERDUE", label: "Overdue" },
+    { value: "APPROVED", label: "Approved" },
   ];
 
   const filteredRequests = React.useMemo(() => {
-    return requests.filter(req => {
+    return requests.filter((req) => {
       const searchLower = searchQuery.toLowerCase().trim();
-      const matchesSearch = !searchLower || 
+      const matchesSearch =
+        !searchLower ||
         req.id.toLowerCase().includes(searchLower) ||
         req.title.toLowerCase().includes(searchLower) ||
-        (req.assignedOfficerName && req.assignedOfficerName.toLowerCase().includes(searchLower));
+        (req.assignedOfficerName &&
+          req.assignedOfficerName.toLowerCase().includes(searchLower));
 
-      const matchesCategory = !selectedCategory || req.category === selectedCategory;
+      const matchesCategory =
+        !selectedCategory || req.category === selectedCategory;
       const matchesStatus = !selectedStatus || req.status === selectedStatus;
 
       return matchesSearch && matchesCategory && matchesStatus;
     });
   }, [requests, searchQuery, selectedCategory, selectedStatus]);
 
-  const isFiltered = searchQuery !== '' || selectedCategory !== '' || selectedStatus !== '';
+  const isFiltered =
+    searchQuery !== "" || selectedCategory !== "" || selectedStatus !== "";
   const clearFilters = () => {
-    setSearchQuery('');
-    setSelectedCategory('');
-    setSelectedStatus('');
+    setSearchQuery("");
+    setSelectedCategory("");
+    setSelectedStatus("");
   };
-
-  React.useEffect(() => {
-    const handleGlobalClick = () => {
-      setActiveDropdownId(null);
-    };
-    window.addEventListener('click', handleGlobalClick);
-    return () => window.removeEventListener('click', handleGlobalClick);
-  }, []);
 
   const extendDeadlineStr = (currentDeadline: string, days: number): string => {
     try {
@@ -204,96 +251,275 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
       if (isNaN(d.getTime())) {
         const fallback = new Date();
         fallback.setDate(fallback.getDate() + days);
-        return fallback.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+        return fallback.toLocaleDateString("en-US", {
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+        });
       }
       d.setDate(d.getDate() + days);
-      return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+      });
     } catch {
       const fallback = new Date();
       fallback.setDate(fallback.getDate() + days);
-      return fallback.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+      return fallback.toLocaleDateString("en-US", {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+      });
     }
   };
 
   const getProgressPercentage = (status: string): number => {
     switch (status) {
-      case 'SUBMITTED': return 15;
-      case 'ASSIGNED': return 30;
-      case 'IN_PROGRESS': return 55;
-      case 'REVISION_REQUESTED': return 75;
-      case 'REVISED': return 85;
-      case 'OVERDUE': return 40;
-      case 'APPROVED': return 100;
-      default: return 0;
+      case "SUBMITTED":
+        return 15;
+      case "ASSIGNED":
+        return 30;
+      case "IN_PROGRESS":
+        return 55;
+      case "REVISION_REQUESTED":
+        return 75;
+      case "REVISED":
+        return 85;
+      case "OVERDUE":
+        return 40;
+      case "APPROVED":
+        return 100;
+      default:
+        return 0;
     }
   };
 
   const getProgressColor = (status: string): string => {
     switch (status) {
-      case 'APPROVED': return 'bg-emerald-600';
-      case 'OVERDUE': return 'bg-[#ba1a1a]';
-      case 'REVISION_REQUESTED':
-      case 'REVISED': return 'bg-amber-500';
-      default: return 'bg-[#0037b0]';
+      case "APPROVED":
+        return "bg-emerald-600";
+      case "OVERDUE":
+        return "bg-[#ba1a1a]";
+      case "REVISION_REQUESTED":
+      case "REVISED":
+        return "bg-amber-500";
+      default:
+        return "bg-[#0037b0]";
     }
   };
 
-  const handleDownload = (e: React.MouseEvent, req: any) => {
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "SUBMITTED":
+        return (
+          <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+            Pending Review
+          </span>
+        );
+      case "ASSIGNED":
+        return (
+          <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+            Assigned
+          </span>
+        );
+      case "IN_PROGRESS":
+        return (
+          <span className="bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+            In Progress
+          </span>
+        );
+      case "REVISION_REQUESTED":
+        return (
+          <span className="bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">
+            Revision Needed
+          </span>
+        );
+      case "REVISED":
+        return (
+          <span className="bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+            Revised
+          </span>
+        );
+      case "OVERDUE":
+        return (
+          <span className="bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+            Overdue
+          </span>
+        );
+      case "APPROVED":
+        return (
+          <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+            Completed
+          </span>
+        );
+      default:
+        return (
+          <span className="bg-gray-100 text-gray-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+            {status.replace(/_/g, " ")}
+          </span>
+        );
+    }
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field)
+      return <ArrowUpDown className="w-3 h-3 text-gray-300" />;
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3 h-3 text-[#0037b0]" />
+    ) : (
+      <ArrowDown className="w-3 h-3 text-[#0037b0]" />
+    );
+  };
+
+  const sortedRequests = React.useMemo(() => {
+    const arr = [...filteredRequests];
+    arr.sort((a, b) => {
+      let aVal: string, bVal: string;
+      switch (sortField) {
+        case "id":
+          aVal = a.id;
+          bVal = b.id;
+          break;
+        case "title":
+          aVal = a.title;
+          bVal = b.title;
+          break;
+        case "member":
+          aVal = a.member;
+          bVal = b.member;
+          break;
+        case "assignedOfficerName":
+          aVal = a.assignedOfficerName || "zzz";
+          bVal = b.assignedOfficerName || "zzz";
+          break;
+        case "status":
+          aVal = a.status;
+          bVal = b.status;
+          break;
+        case "deadline":
+          aVal = a.deadline;
+          bVal = b.deadline;
+          break;
+        default:
+          aVal = a.id;
+          bVal = b.id;
+      }
+      const cmp = aVal.localeCompare(bVal);
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [filteredRequests, sortField, sortDirection]);
+
+  const totalPages = Math.ceil(sortedRequests.length / pageSize);
+  const paginatedRequests = sortedRequests.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory, selectedStatus]);
+
+  const handleDownload = async (e: React.MouseEvent, req: any) => {
     e.stopPropagation();
     if (downloadingId) return;
 
-    const att = req.attachments?.[0];
-    if (!att?.id) return;
-
     setDownloadingId(req.id);
-    setDownloadStep('Preparing download...');
 
-    const link = document.createElement('a');
-    link.href = getDownloadUrl(att.id);
-    link.download = att.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    setTimeout(() => {
+    try {
+      const attachments = req.attachments || [];
+      if (attachments.length > 0) {
+        for (const att of attachments) {
+          if (att.id) {
+            await downloadFile(att.id, att.name);
+          }
+        }
+      } else if (req.content) {
+        const blob = new Blob([req.content], {
+          type: "text/plain;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${req.title || req.id}_brief.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        return;
+      }
+    } catch (err) {
+      toast.error("Failed to download file");
+    } finally {
       setDownloadingId(null);
-      setDownloadStep('');
-    }, 1000);
+    }
   };
 
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm">
         <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex justify-between items-center">
-          <h3 className="font-sans font-bold text-gray-900">Research Inquiry Pipeline</h3>
+          <h3 className="font-sans font-bold text-gray-900">
+            Research Inquiry Pipeline
+          </h3>
           <span className="text-xs text-gray-500 font-semibold">
-            {isFiltered 
-              ? `${filteredRequests.length} of ${requests.length} entries` 
+            {isFiltered
+              ? `${filteredRequests.length} of ${requests.length} entries`
               : `${requests.length} total entries`}
           </span>
         </div>
 
-        {/* Workload Summary */}
-        {workload?.officers?.length > 0 && (
+        {/* Workload Summary — hidden from MPs */}
+        {workload?.officers?.length > 0 && currentUser.role !== "MP" && (
           <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/30">
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Officer Workload</span>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                Officer Workload
+              </span>
               <span className="text-[10px] text-gray-400">
-                {workload.summary.totalActive} active / {workload.summary.totalOfficers} officers
-                {workload.summary.atCapacity > 0 && <span className="text-amber-600 ml-2">• {workload.summary.atCapacity} at capacity</span>}
+                {workload.summary.totalActive} active /{" "}
+                {workload.summary.totalOfficers} officers
+                {workload.summary.atCapacity > 0 && (
+                  <span className="text-amber-600 ml-2">
+                    • {workload.summary.atCapacity} at capacity
+                  </span>
+                )}
               </span>
             </div>
             <div className="flex gap-1.5 flex-wrap">
               {workload.officers.map((o: any) => (
-                <div key={o.id} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded px-2 py-1">
-                  <div className={`w-2 h-2 rounded-full ${
-                    o.status === 'at_capacity' ? 'bg-red-500' :
-                    o.status === 'high' ? 'bg-amber-500' :
-                    o.status === 'moderate' ? 'bg-blue-500' :
-                    'bg-green-500'
-                  }`} />
-                  <span className="text-[10px] font-semibold text-gray-700">{o.firstName} {o.lastName}</span>
-                  <span className="text-[9px] text-gray-400">{o.activeCount}/{o.capacity}</span>
+                <div
+                  key={o.id}
+                  className="flex items-center gap-1.5 bg-white border border-gray-200 rounded px-2 py-1"
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      o.status === "at_capacity"
+                        ? "bg-red-500"
+                        : o.status === "high"
+                          ? "bg-amber-500"
+                          : o.status === "moderate"
+                            ? "bg-blue-500"
+                            : "bg-green-500"
+                    }`}
+                  />
+                  <span className="text-[10px] font-semibold text-gray-700">
+                    {o.firstName} {o.lastName}
+                  </span>
+                  <span className="text-[9px] text-gray-400">
+                    {o.activeCount}/{o.capacity}
+                  </span>
                 </div>
               ))}
             </div>
@@ -316,7 +542,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => setSearchQuery("")}
                 className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-gray-400 hover:text-gray-600 cursor-pointer"
                 title="Clear search"
               >
@@ -328,15 +554,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
           {/* Dropdowns */}
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Category Filter */}
-            <div className="relative min-w-[140px]">
+            <div className="relative min-w-35">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full bg-white border border-[#c4c5d7] rounded-md pl-3 pr-8 py-1.5 text-xs font-sans font-semibold text-gray-700 focus:outline-none focus:border-[#0037b0] appearance-none cursor-pointer"
               >
                 <option value="">All Categories</option>
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
                 ))}
               </select>
               <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-400">
@@ -345,15 +573,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
             </div>
 
             {/* Status Filter */}
-            <div className="relative min-w-[150px]">
+            <div className="relative min-w-37.5">
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
                 className="w-full bg-white border border-[#c4c5d7] rounded-md pl-3 pr-8 py-1.5 text-xs font-sans font-semibold text-gray-700 focus:outline-none focus:border-[#0037b0] appearance-none cursor-pointer"
               >
                 <option value="">All Statuses</option>
-                {statuses.map(st => (
-                  <option key={st.value} value={st.value}>{st.label}</option>
+                {statuses.map((st) => (
+                  <option key={st.value} value={st.value}>
+                    {st.label}
+                  </option>
                 ))}
               </select>
               <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-400">
@@ -375,288 +605,545 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredRequests.length === 0 ? (
-              <div className="col-span-full py-12 flex flex-col items-center justify-center text-center space-y-3 bg-gray-50/50 rounded-lg border border-dashed border-[#c4c5d7]">
-                <Filter className="w-8 h-8 text-gray-400 animate-pulse" />
-                <div className="space-y-1">
-                  <h5 className="text-xs font-bold text-gray-900">No inquiry records match your criteria</h5>
-                  <p className="text-[10px] text-gray-500 max-w-sm">Try modifying your search text, selecting a different category, or clearing the active filters.</p>
-                </div>
-                <button
-                  onClick={clearFilters}
-                  className="px-3 py-1.5 bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm transition-all cursor-pointer"
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-[#f3f4f5]/50 border-b border-[#c4c5d7]">
+                <th
+                  className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
+                  onClick={() => handleSort("id")}
                 >
-                  Clear All Filters
-                </button>
-              </div>
-            ) :
-              filteredRequests.map(req => {
-              const progress = getProgressPercentage(req.status);
-              const colorClass = getProgressColor(req.status);
-              const isDownloading = downloadingId === req.id;
-              return (
-                <div 
-                  key={req.id} 
-                  onClick={() => onNavigate('briefs', req.id)}
-                  className="border border-[#c4c5d7] hover:border-[#0037b0] rounded-lg p-4 cursor-pointer space-y-3.5 hover:bg-blue-50/10 transition-all duration-300 ease-out hover:scale-[1.02] hover:shadow-md flex flex-col justify-between"
+                  <span className="flex items-center gap-1">
+                    Request ID {getSortIcon("id")}
+                  </span>
+                </th>
+                <th
+                  className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
+                  onClick={() => handleSort("title")}
                 >
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-start relative">
-                      <div className="flex items-center gap-1.5">
-                        <span className="bg-[#dce1ff] text-[#0039b5] text-[10px] font-bold px-2 py-0.5 rounded">{req.id}</span>
-                        {req.priority === 'URGENT' && (
-                          <span className="bg-red-50 text-red-700 text-[8px] font-extrabold px-1.5 py-0.5 rounded border border-red-200 animate-pulse uppercase tracking-wider">Urgent</span>
-                        )}
+                  <span className="flex items-center gap-1">
+                    Title {getSortIcon("title")}
+                  </span>
+                </th>
+                <th
+                  className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
+                  onClick={() => handleSort("status")}
+                >
+                  <span className="flex items-center gap-1">
+                    Status {getSortIcon("status")}
+                  </span>
+                </th>
+                <th
+                  className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
+                  onClick={() => handleSort("deadline")}
+                >
+                  <span className="flex items-center gap-1">
+                    Deadline {getSortIcon("deadline")}
+                  </span>
+                </th>
+                <th className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider text-right">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {sortedRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-16">
+                    <div className="flex flex-col items-center justify-center text-center space-y-3">
+                      <Filter className="w-8 h-8 text-gray-400 animate-pulse" />
+                      <div className="space-y-1">
+                        <h5 className="text-xs font-bold text-gray-900">
+                          No inquiry records match your criteria
+                        </h5>
+                        <p className="text-[10px] text-gray-500 max-w-sm">
+                          Try modifying your search text, selecting a different
+                          category, or clearing the active filters.
+                        </p>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        {req.status === 'REVISION_REQUESTED' ? (
-                          <span className="text-[9px] font-extrabold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full animate-pulse uppercase tracking-wide flex items-center gap-1 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
-                            Revision Requested
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-gray-500 uppercase">{req.status.replace('_', ' ')}</span>
-                        )}
-                        
-                        {/* Quick Actions Dropdown Trigger */}
-                        <div className="relative">
+                      <button
+                        onClick={clearFilters}
+                        className="px-3 py-1.5 bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm transition-all cursor-pointer"
+                      >
+                        Clear All Filters
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedRequests.map((req) => {
+                  return (
+                    <tr
+                      key={req.id}
+                      className="hover:bg-[#f3f4f5]/40 transition-colors group cursor-pointer"
+                      onClick={() => setViewRequest(req)}
+                    >
+                      {/* Request ID & Priority */}
+                      <td
+                        className="px-4 lg:px-6 py-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-2">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDropdownId(activeDropdownId === req.id ? null : req.id);
-                            }}
-                            className="p-1 rounded text-gray-400 hover:text-[#0037b0] hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center border border-transparent hover:border-gray-200"
-                            title="Quick Actions"
+                            onClick={() =>
+                              updateRequestPriority(
+                                req.id,
+                                req.priority === "URGENT"
+                                  ? "STANDARD"
+                                  : "URGENT",
+                              )
+                            }
+                            className="p-1 rounded hover:bg-gray-100 transition-colors cursor-pointer"
+                            title={
+                              req.priority === "URGENT"
+                                ? "High Priority — Click to set Standard"
+                                : "Standard Priority — Click to set High"
+                            }
+                            aria-label="Toggle priority"
                           >
-                            <MoreVertical className="w-3.5 h-3.5" />
+                            <Flag
+                              className={`w-4 h-4 transition-all ${
+                                req.priority === "URGENT"
+                                  ? "text-red-600 fill-red-600 animate-pulse"
+                                  : "text-gray-300 hover:text-gray-500"
+                              }`}
+                            />
                           </button>
-                          
-                          {activeDropdownId === req.id && (
-                            <div 
-                              onClick={(e) => e.stopPropagation()} 
-                              className="absolute right-0 mt-1 w-52 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1.5 animate-fadeIn font-sans"
+                          <span className="bg-[#dce1ff] text-[#0039b5] text-[10px] font-bold px-2 py-0.5 rounded font-sans">
+                            {req.id}
+                          </span>
+                          {req.priority === "URGENT" && (
+                            <span className="bg-red-50 text-red-700 text-[8px] font-extrabold px-1.5 py-0.5 rounded border border-red-200 animate-pulse uppercase tracking-wider">
+                              Urgent
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Title */}
+                      <td className="px-4 lg:px-6 py-4">
+                        <div className="max-w-[320px]">
+                          <p className="font-semibold text-sm text-[#191c1d] truncate group-hover:text-[#0037b0] transition-colors">
+                            {req.title}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {req.category}
+                          </p>
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 lg:px-6 py-4">
+                        {getStatusBadge(req.status)}
+                      </td>
+
+                      {/* Deadline */}
+                      <td
+                        className={`px-4 lg:px-6 py-4 text-sm font-semibold ${req.status === "OVERDUE" ? "text-[#ba1a1a]" : "text-[#191c1d]"}`}
+                      >
+                        {req.deadline}
+                      </td>
+
+                      {/* Actions */}
+                      <td
+                        className="px-4 lg:px-6 py-4 text-right min-w-30"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setViewRequest(req)}
+                            className="p-2.5 text-[#0037b0] hover:bg-blue-50 rounded-lg transition-all cursor-pointer ring-1 ring-blue-100 shadow-sm"
+                            title="View Details"
+                            aria-label="View Details"
+                          >
+                            <Eye className="w-5 h-5" />
+                          </button>
+                          <div className="relative group/action">
+                            <button
+                              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-all cursor-pointer"
+                              title="Extend Deadline"
+                              aria-label="Extend Deadline"
                             >
-                              <div className="px-3 py-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-1 mb-1 flex items-center justify-between">
-                                <span>Quick Actions</span>
-                                <Zap className="w-2.5 h-2.5 text-amber-500 fill-amber-500 animate-bounce" />
+                              <Clock className="w-4 h-4" />
+                            </button>
+                            <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1 hidden group-hover/action:block">
+                              <div className="px-2.5 py-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                                Extend Due Date
                               </div>
-                              
-                              {/* ASSIGN / REASSIGN */}
-                              <div className="px-1.5">
-                                <button
-                                  onClick={() => {
-                                    setAssignModalRequestId(req.id);
-                                    setAssignModalRequestTitle(req.title);
-                                    setActiveDropdownId(null);
-                                  }}
-                                  className="w-full flex items-center gap-2 px-2 py-1.5 text-[10px] font-semibold text-[#0037b0] hover:bg-[#dce1ff] rounded transition-colors cursor-pointer"
-                                >
-                                  <UserPlus className="w-3 h-3" />
-                                  {req.assignedOfficerId ? 'Reassign' : 'Assign'} Research
-                                </button>
-                              </div>
-                              
-                              <div className="border-t border-gray-100 my-1" />
-
-                              {/* EXTEND DEADLINE */}
-                              <div className="px-1.5">
-                                <div className="px-2 py-1 text-[9px] font-bold text-gray-500 flex items-center gap-1 uppercase tracking-wider">
-                                  <Clock className="w-3 h-3 text-[#0037b0]" />
-                                  Extend Due Date
-                                </div>
-                                <div className="flex gap-1 pl-3 pb-1">
-                                  <button
-                                    onClick={() => {
-                                      const newDate = extendDeadlineStr(req.deadline, 7);
-                                      extendRequestDeadline(req.id, newDate);
-                                      setActiveDropdownId(null);
-                                    }}
-                                    className="px-2 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 rounded text-[9px] font-bold transition-all"
-                                  >
-                                    +7 Days
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      const newDate = extendDeadlineStr(req.deadline, 14);
-                                      extendRequestDeadline(req.id, newDate);
-                                      setActiveDropdownId(null);
-                                    }}
-                                    className="px-2 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 rounded text-[9px] font-bold transition-all"
-                                  >
-                                    +14 Days
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="border-t border-gray-100 my-1" />
-
-                              {/* SEND URGENT FLAG */}
                               <button
                                 onClick={() => {
-                                  updateRequestPriority(req.id, req.priority === 'URGENT' ? 'STANDARD' : 'URGENT');
-                                  setActiveDropdownId(null);
+                                  const newDate = extendDeadlineStr(
+                                    req.deadline,
+                                    7,
+                                  );
+                                  extendRequestDeadline(req.id, newDate);
                                 }}
-                                className={`w-full text-left px-3 py-1 text-[9px] font-bold flex items-center gap-1.5 transition-colors uppercase tracking-wider ${
-                                  req.priority === 'URGENT'
-                                    ? 'text-amber-700 hover:bg-amber-50'
-                                    : 'text-red-700 hover:bg-red-50'
-                                }`}
+                                className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
                               >
-                                <AlertTriangle className={`w-3 h-3 ${req.priority === 'URGENT' ? 'text-amber-600' : 'text-red-600'}`} />
-                                {req.priority === 'URGENT' ? 'Clear Urgent Flag' : 'Send Urgent Flag'}
+                                +7 Days
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const newDate = extendDeadlineStr(
+                                    req.deadline,
+                                    14,
+                                  );
+                                  extendRequestDeadline(req.id, newDate);
+                                }}
+                                className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
+                              >
+                                +14 Days
                               </button>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <h4 className="text-xs font-bold text-gray-900 line-clamp-1">{req.title}</h4>
-                    <p className="text-[10px] text-gray-500 line-clamp-2 leading-relaxed">{req.description}</p>
-                    
-                    {/* Attachments & Drafts Quick Previews */}
-                    <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                      <div className="text-[9px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                        <Paperclip className="w-2.5 h-2.5 text-gray-400" />
-                        <span>Attached Files & Drafts</span>
-                      </div>
-                      <div className="space-y-1">
-                        {/* Always offer Draft Brief preview */}
-                        <div 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPreviewRequest(req);
-                            setPreviewType('draft');
-                            setPreviewAttachmentName(null);
-                          }}
-                          className="flex items-center justify-between p-1.5 bg-blue-50/40 hover:bg-blue-50/80 border border-blue-100/50 rounded text-[10px] text-gray-700 cursor-pointer group transition-all"
-                        >
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <FileText className="w-3.5 h-3.5 text-[#0037b0] shrink-0" />
-                            <span className="font-semibold text-gray-800 truncate">Official Briefing Draft</span>
                           </div>
-                          <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                            <span className="text-[8px] bg-blue-100 text-[#0037b0] px-1 py-0.2 rounded font-bold">Draft v{req.draftVersion || 1}</span>
-                            <Eye className="w-3 h-3 text-[#0037b0]" />
-                          </div>
-                        </div>
-
-                        {/* Listed Attachments */}
-                        {req.attachments && req.attachments.map((att: any, attIdx: number) => {
-                          const isExcel = att.type === 'xlsx';
-                          return (
-                            <div 
-                              key={attIdx}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewRequest(req);
-                                setPreviewType('attachment');
-                                setPreviewAttachmentName(att.name);
+                          {currentUser.role !== "MP" && (
+                            <button
+                              onClick={() => {
+                                setAssignModalRequestId(req.id);
+                                setAssignModalRequestTitle(req.title);
                               }}
-                              className="flex items-center justify-between p-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200/50 rounded text-[10px] text-gray-700 cursor-pointer group transition-all"
+                              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-all cursor-pointer"
+                              title="Reassign Staff"
+                              aria-label="Reassign Staff"
                             >
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                {isExcel ? (
-                                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                ) : (
-                                  <FileText className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                                )}
-                                <span className="font-medium truncate text-gray-700">{att.name}</span>
-                              </div>
-                              <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                <span className="text-[8px] text-gray-400 font-semibold">{att.size}</span>
-                                <Eye className="w-3 h-3 text-gray-500" />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5 pt-1">
-                    {/* Progress Bar Container */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-[9px] font-semibold text-[#434655]">
-                        <span className="uppercase tracking-wider">
-                          {isDownloading ? (
-                            <span className="text-[#0037b0] animate-pulse font-bold flex items-center gap-1">
-                              {downloadStep}
-                            </span>
-                          ) : (
-                            "Workflow Progress"
+                              <RefreshCw className="w-4 h-4" />
+                            </button>
                           )}
-                        </span>
-                        <span className="font-bold text-[#0037b0]">{progress}%</span>
-                      </div>
-                      <div className={`w-full h-1.5 bg-gray-100 rounded-full overflow-hidden ${req.status === 'REVISION_REQUESTED' ? 'ring-1 ring-amber-300' : ''}`}>
-                        <div 
-                          className={`h-full rounded-full transition-all duration-500 ease-out ${
-                            isDownloading 
-                              ? 'bg-amber-500 animate-pulse' 
-                              : req.status === 'REVISION_REQUESTED'
-                                ? `${colorClass} animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]`
-                                : colorClass
-                          }`}
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    </div>
+                          <button
+                            onClick={(e) => handleDownload(e, req)}
+                            disabled={downloadingId !== null}
+                            className={`p-1.5 rounded transition-all cursor-pointer ${
+                              downloadingId === req.id
+                                ? "text-amber-600 animate-pulse bg-amber-50"
+                                : "text-gray-500 hover:bg-gray-100"
+                            }`}
+                            title="Download Brief"
+                            aria-label="Download Brief"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                    <div className="flex justify-between items-center text-[9px] text-gray-400 font-bold border-t border-gray-100 pt-2">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-1 text-[9px]">
-                          <span className="text-gray-500 font-medium">MP:</span>
-                          <span className="text-gray-700 font-bold">{honourable(req.member)}</span>
+        {/* Footer */}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={sortedRequests.length}
+          onPageChange={setCurrentPage}
+          label="entries"
+          trailing={
+            isFiltered && (
+              <span className="text-gray-400 ml-1">
+                (filtered from {requests.length})
+              </span>
+            )
+          }
+          actions={
+            <ExportButton
+              data={filteredRequests.map((req) => ({
+                id: req.id,
+                title: req.title,
+                member: honourable(req.member),
+                officer: req.assignedOfficerName || "Unassigned",
+                status: req.status.replace(/_/g, " "),
+                deadline: req.deadline,
+                category: req.category,
+                priority: req.priority,
+              }))}
+              columns={[
+                { key: "id", label: "Request ID" },
+                { key: "title", label: "Title" },
+                { key: "member", label: "Member" },
+                { key: "officer", label: "Assigned Officer" },
+                { key: "status", label: "Status" },
+                { key: "deadline", label: "Deadline" },
+                { key: "category", label: "Category" },
+                { key: "priority", label: "Priority" },
+              ]}
+              filename="Research_Inquiries"
+              title="Research Inquiry Pipeline"
+            />
+          }
+        />
+      </div>
+
+      {/* View Detail Modal */}
+      {viewRequest && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setViewRequest(null)}
+        >
+          <div
+            className="bg-white border border-[#c4c5d7] rounded-lg shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-scaleIn"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="bg-[#dce1ff] text-[#0039b5] text-xs font-bold px-2.5 py-1 rounded">
+                  {viewRequest.id}
+                </span>
+                <div>
+                  <h3 className="font-sans font-bold text-gray-900 text-sm">
+                    {viewRequest.title}
+                  </h3>
+                  <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                    {viewRequest.category}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewRequest(null)}
+                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Status & Priority Row */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {getStatusBadge(viewRequest.status)}
+                {viewRequest.priority === "URGENT" && (
+                  <span className="bg-red-50 text-red-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-red-200 animate-pulse uppercase tracking-wider flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Urgent Priority
+                  </span>
+                )}
+              </div>
+
+              {/* Progress */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs font-bold text-[#434655]">
+                  <span className="uppercase tracking-wider">
+                    Workflow Progress
+                  </span>
+                  <span className="text-[#0037b0]">
+                    {getProgressPercentage(viewRequest.status)}%
+                  </span>
+                </div>
+                <div
+                  className={`w-full h-2 bg-gray-100 rounded-full overflow-hidden ${viewRequest.status === "REVISION_REQUESTED" ? "ring-1 ring-amber-300" : ""}`}
+                >
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ease-out ${getProgressColor(viewRequest.status)}`}
+                    style={{
+                      width: `${getProgressPercentage(viewRequest.status)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Member (MP)
+                  </span>
+                  <p className="text-sm font-semibold text-[#191c1d]">
+                    {honourable(viewRequest.member)}
+                  </p>
+                </div>
+                {currentUser.role !== "MP" && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                      Assigned Officer
+                    </span>
+                    {viewRequest.teamName ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-[#dce1ff] flex items-center justify-center text-[9px] font-bold text-[#001551]">
+                          {viewRequest.teamName.slice(0, 2).toUpperCase()}
                         </div>
-                        <div className="flex items-center gap-1 text-[9px]">
-                          <span className="text-gray-500 font-medium">Officer:</span>
-                          <span className="text-[#0037b0] font-bold">{req.assignedOfficerName || 'Not Assigned'}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[9px]">
-                          <span className="text-gray-500 font-medium">Due:</span>
-                          <span className="text-gray-700 font-bold">{req.deadline}</span>
+                        <div>
+                          <p className="text-sm font-semibold text-[#191c1d]">
+                            {viewRequest.teamName}
+                          </p>
+                          {viewRequest.assignedOfficers &&
+                            viewRequest.assignedOfficers.length > 0 && (
+                              <p className="text-[10px] text-gray-500">
+                                {viewRequest.assignedOfficers
+                                  .map(
+                                    (o: any) => `${o.firstName} ${o.lastName}`,
+                                  )
+                                  .join(", ")}
+                              </p>
+                            )}
                         </div>
                       </div>
+                    ) : viewRequest.assignedOfficerName ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-[#dce1ff] flex items-center justify-center text-[9px] font-bold text-[#001551]">
+                          {viewRequest.assignedOfficerName
+                            ?.split(" ")
+                            .map((n: string) => n[0])
+                            .join("")
+                            .slice(0, 2)
+                            .toUpperCase() || "RO"}
+                        </div>
+                        <p className="text-sm font-semibold text-[#191c1d]">
+                          {viewRequest.assignedOfficerName}
+                        </p>
+                      </div>
+                    ) : (
                       <button
-                        onClick={(e) => handleDownload(e, req)}
-                        disabled={downloadingId !== null}
-                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider transition-all duration-200 border cursor-pointer ${
-                          isDownloading
-                            ? 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
-                            : 'bg-white text-[#0037b0] border-[#c4c5d7] hover:bg-[#dce1ff]/20 hover:border-[#0037b0]'
-                        }`}
-                        title="Download official parliamentary brief report"
+                        onClick={() => {
+                          setViewRequest(null);
+                          setAssignModalRequestId(viewRequest.id);
+                          setAssignModalRequestTitle(viewRequest.title);
+                        }}
+                        className="text-[#ba1a1a] hover:text-[#ba1a1a]/80 font-semibold text-xs flex items-center gap-1 hover:underline cursor-pointer"
                       >
-                        <Download className={`w-3 h-3 ${isDownloading ? 'animate-bounce' : ''}`} />
-                        {isDownloading ? 'Exporting...' : 'Download Brief'}
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Unassigned — Click to Assign
                       </button>
-                      <button
-                        onClick={() => onNavigate('version-diff', req.reportId || req.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider transition-all duration-200 border cursor-pointer bg-white text-gray-600 border-[#c4c5d7] hover:bg-gray-50 hover:border-gray-300"
-                        title="View version history and compare changes"
-                      >
-                        <GitCompare className="w-3 h-3" />
-                        Versions
-                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Deadline
+                  </span>
+                  <p
+                    className={`text-sm font-semibold ${viewRequest.status === "OVERDUE" ? "text-[#ba1a1a]" : "text-[#191c1d]"}`}
+                  >
+                    {viewRequest.deadline}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Date Submitted
+                  </span>
+                  <p className="text-sm font-semibold text-[#191c1d]">
+                    {viewRequest.dateSubmitted}
+                  </p>
+                </div>
+              </div>
+
+              {/* Description */}
+              {viewRequest.description && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Description
+                  </span>
+                  <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded border border-gray-100">
+                    {viewRequest.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Attachments & Drafts */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                  <Paperclip className="w-3 h-3" />
+                  Attached Files & Drafts
+                </span>
+                <div className="space-y-1.5">
+                  <div
+                    onClick={() => {
+                      setViewRequest(null);
+                      setPreviewRequest(viewRequest);
+                      setPreviewType("draft");
+                      setPreviewAttachmentName(null);
+                    }}
+                    className="flex items-center justify-between p-2.5 bg-blue-50/40 hover:bg-blue-50/80 border border-blue-100/50 rounded text-xs text-gray-700 cursor-pointer group transition-all"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-[#0037b0] shrink-0" />
+                      <span className="font-semibold text-gray-800 truncate">
+                        Official Briefing Draft
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                      <span className="text-[9px] bg-blue-100 text-[#0037b0] px-1.5 py-0.5 rounded font-bold">
+                        Draft v{viewRequest.draftVersion || 1}
+                      </span>
+                      <Eye className="w-3.5 h-3.5 text-[#0037b0]" />
                     </div>
                   </div>
+                  {viewRequest.attachments &&
+                    viewRequest.attachments.map((att: any, attIdx: number) => {
+                      const isExcel = att.type === "xlsx";
+                      return (
+                        <div
+                          key={attIdx}
+                          onClick={() => {
+                            setViewRequest(null);
+                            setPreviewRequest(viewRequest);
+                            setPreviewType("attachment");
+                            setPreviewAttachmentName(att.name);
+                          }}
+                          className="flex items-center justify-between p-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200/50 rounded text-xs text-gray-700 cursor-pointer group transition-all"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isExcel ? (
+                              <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                            ) : (
+                              <FileText className="w-4 h-4 text-red-600 shrink-0" />
+                            )}
+                            <span className="font-medium truncate text-gray-700">
+                              {att.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                            <span className="text-[9px] text-gray-400 font-semibold">
+                              {att.size}
+                            </span>
+                            <Eye className="w-3.5 h-3.5 text-gray-500" />
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
-              );
-            })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 bg-[#f3f4f5] border-t border-[#c4c5d7] flex justify-between items-center shrink-0">
+              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                Encrypted Sandbox View
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setViewRequest(null)}
+                  className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 text-xs font-bold py-1.5 px-4 rounded transition-all cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setViewRequest(null);
+                    onNavigate("briefs", viewRequest.id);
+                  }}
+                  className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-bold py-1.5 px-4 rounded transition-all cursor-pointer"
+                >
+                  Open Full Brief
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Quick Preview Modal */}
       {previewRequest && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn"
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setPreviewRequest(null)}
         >
-          <div 
-            className="bg-white border border-[#c4c5d7] rounded-lg shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden animate-scaleIn"
+          <div
+            className="bg-white border border-[#c4c5d7] rounded-lg shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden animate-scaleIn"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -669,7 +1156,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                   <h3 className="font-sans font-bold text-gray-900 text-sm flex items-center gap-2">
                     <span>Quick Preview:</span>
                     <span className="text-gray-600 font-medium">
-                      {previewType === 'draft' ? "Official Briefing Draft" : previewAttachmentName}
+                      {previewType === "draft"
+                        ? "Official Briefing Draft"
+                        : previewAttachmentName}
                     </span>
                   </h3>
                   <p className="text-[10px] text-gray-500 font-medium mt-0.5 max-w-xl truncate">
@@ -677,7 +1166,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                   </p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setPreviewRequest(null)}
                 className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
                 title="Close Preview"
@@ -688,9 +1177,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
 
             {/* Modal Body */}
             <div className="flex-1 overflow-hidden flex bg-slate-50">
-              
               {/* Draft Preview Layout */}
-              {previewType === 'draft' && (
+              {previewType === "draft" && (
                 <div className="flex-1 flex overflow-hidden">
                   {/* Left Sidebar of Draft Sections */}
                   <div className="w-64 border-r border-gray-200 bg-white overflow-y-auto p-4 flex flex-col gap-1.5 shrink-0">
@@ -702,35 +1190,48 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                         key={idx}
                         onClick={() => setActivePreviewTab(idx)}
                         className={`text-left px-3 py-2 rounded text-xs transition-all font-semibold ${
-                          activePreviewTab === idx 
-                            ? 'bg-[#dce1ff] text-[#0039b5] shadow-sm' 
-                            : 'hover:bg-slate-50 text-gray-700'
+                          activePreviewTab === idx
+                            ? "bg-[#dce1ff] text-[#0039b5] shadow-sm"
+                            : "hover:bg-slate-50 text-gray-700"
                         }`}
                       >
-                        <div className="truncate font-sans font-bold">{sec.title}</div>
+                        <div className="truncate font-sans font-bold">
+                          {sec.title}
+                        </div>
                         <div className="text-[9px] text-gray-400 font-normal truncate mt-0.5">
-                          {sec.content[0] || 'View details...'}
+                          {sec.content[0] || "View details..."}
                         </div>
                       </button>
                     ))}
-                    
+
                     <div className="mt-auto border-t border-gray-100 pt-4 space-y-2">
                       <div className="p-2.5 bg-[#f8f9fa] border border-gray-200 rounded text-[10px] space-y-1">
-                        <span className="font-bold text-gray-700 block">Security Classification</span>
-                        <span className="text-red-700 font-extrabold text-[9px] tracking-wider uppercase block">OFFICIAL-SENSITIVE</span>
-                        <span className="text-gray-500 block">Restricted to active MPs and assigned legal investigators.</span>
+                        <span className="font-bold text-gray-700 block">
+                          Security Classification
+                        </span>
+                        <span className="text-red-700 font-extrabold text-[9px] tracking-wider uppercase block">
+                          OFFICIAL-SENSITIVE
+                        </span>
+                        <span className="text-gray-500 block">
+                          Restricted to active MPs and assigned legal
+                          investigators.
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   {/* Main Document Content */}
                   <div className="flex-1 overflow-y-auto p-8 flex justify-center">
-                    <div className="max-w-2xl w-full bg-white shadow-md border border-gray-200/60 rounded-lg p-10 font-sans min-h-[100%] relative space-y-6 flex flex-col">
+                    <div className="max-w-2xl w-full bg-white shadow-md border border-gray-200/60 rounded-lg p-10 font-sans min-h-full relative space-y-6 flex flex-col">
                       {/* Letterhead decoration */}
                       <div className="flex justify-between items-start border-b border-gray-200 pb-5">
                         <div>
-                          <h4 className="text-[11px] font-bold text-gray-900 tracking-widest uppercase">Parliamentary Research Services</h4>
-                          <span className="text-[9px] text-gray-500 font-semibold uppercase">Republic of Ghana • Joint Secretariat Vault</span>
+                          <h4 className="text-[11px] font-bold text-gray-900 tracking-widest uppercase">
+                            Parliamentary Research Services
+                          </h4>
+                          <span className="text-[9px] text-gray-500 font-semibold uppercase">
+                            Republic of Ghana • Joint Secretariat Vault
+                          </span>
                         </div>
                         <div className="text-right">
                           <span className="text-[9px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded border border-amber-200 font-bold uppercase tracking-wider">
@@ -741,7 +1242,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
 
                       {/* Title of active segment */}
                       <div className="space-y-1">
-                        <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Active Chapter</span>
+                        <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                          Active Chapter
+                        </span>
                         <h2 className="text-sm font-bold text-gray-900 font-sans border-b border-gray-100 pb-1">
                           {parsedSections[activePreviewTab]?.title}
                         </h2>
@@ -749,19 +1252,27 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
 
                       {/* Content paragraphs */}
                       <div className="text-xs text-gray-700 leading-relaxed font-sans space-y-4 flex-1">
-                        {parsedSections[activePreviewTab]?.content.map((p, pIdx) => (
-                          <p key={pIdx} className="text-justify font-sans">
-                            {p}
-                          </p>
-                        ))}
+                        {parsedSections[activePreviewTab]?.content.map(
+                          (p, pIdx) => (
+                            <p key={pIdx} className="text-justify font-sans">
+                              {p}
+                            </p>
+                          ),
+                        )}
                       </div>
 
                       {/* Signature block / stamp placeholder */}
                       <div className="pt-8 border-t border-gray-100 flex justify-between items-end text-[9px] text-gray-400">
                         <div>
-                          <p className="font-bold text-gray-600">DIRECTORATE SIGN-OFF:</p>
-                          <p className="font-semibold text-[#0037b0] mt-1">Verified: RSA-4096 Secure Signature</p>
-                          <p className="text-gray-400 font-medium">Date Verified: {new Date().toLocaleDateString()}</p>
+                          <p className="font-bold text-gray-600">
+                            DIRECTORATE SIGN-OFF:
+                          </p>
+                          <p className="font-semibold text-[#0037b0] mt-1">
+                            Verified: RSA-4096 Secure Signature
+                          </p>
+                          <p className="text-gray-400 font-medium">
+                            Date Verified: {new Date().toLocaleDateString()}
+                          </p>
                         </div>
                         <div className="w-16 h-16 rounded-full border-4 border-amber-600/20 flex items-center justify-center text-amber-600/30 select-none font-bold rotate-12 uppercase text-[7px] text-center p-1 font-mono">
                           Official Draft Archive
@@ -773,190 +1284,241 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
               )}
 
               {/* Excel Spreadsheet Preview Layout */}
-              {previewType === 'attachment' && previewAttachmentName?.endsWith('.xlsx') && spreadsheetData && (
-                <div className="flex-1 flex flex-col p-6 overflow-hidden">
-                  {/* Spreadsheet toolbar */}
-                  <div className="bg-white border border-[#c4c5d7] rounded-t-lg px-4 py-2 flex items-center justify-between shrink-0 border-b-0">
-                    <div className="flex items-center gap-2">
-                      <div className="bg-emerald-50 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200 uppercase flex items-center gap-1">
-                        <FileSpreadsheet className="w-3 h-3 text-emerald-600" />
-                        <span>Interactive Excel Viewer</span>
+              {previewType === "attachment" &&
+                previewAttachmentName?.endsWith(".xlsx") &&
+                spreadsheetData && (
+                  <div className="flex-1 flex flex-col p-6 overflow-hidden">
+                    {/* Spreadsheet toolbar */}
+                    <div className="bg-white border border-[#c4c5d7] rounded-t-lg px-4 py-2 flex items-center justify-between shrink-0 border-b-0">
+                      <div className="flex items-center gap-2">
+                        <div className="bg-emerald-50 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200 uppercase flex items-center gap-1">
+                          <FileSpreadsheet className="w-3 h-3 text-emerald-600" />
+                          <span>Interactive Excel Viewer</span>
+                        </div>
+                        <span className="text-xs font-bold text-gray-700">
+                          {spreadsheetData.title}
+                        </span>
                       </div>
-                      <span className="text-xs font-bold text-gray-700">{spreadsheetData.title}</span>
+                      <div className="text-[10px] text-gray-400 font-mono">
+                        Sheet1 / Auto-calculated
+                      </div>
                     </div>
-                    <div className="text-[10px] text-gray-400 font-mono">Sheet1 / Auto-calculated</div>
-                  </div>
 
-                  {/* Spreadsheet Grid container */}
-                  <div className="flex-1 bg-white border border-[#c4c5d7] rounded-b-lg overflow-auto">
-                    <table className="w-full text-left border-collapse table-fixed">
-                      <thead>
-                        <tr className="bg-slate-100 border-b border-gray-200">
-                          <th className="w-12 bg-slate-200 border-r border-slate-300 text-center font-mono text-[9px] text-gray-500 py-1 select-none"></th>
-                          {spreadsheetData.headers.map((h, hIdx) => (
-                            <th 
-                              key={hIdx} 
-                              className="px-4 py-1.5 border-r border-slate-200 bg-slate-100 text-gray-600 font-bold text-[10px] uppercase tracking-wider truncate"
+                    {/* Spreadsheet Grid container */}
+                    <div className="flex-1 bg-white border border-[#c4c5d7] rounded-b-lg overflow-auto">
+                      <table className="w-full text-left border-collapse table-fixed">
+                        <thead>
+                          <tr className="bg-slate-100 border-b border-gray-200">
+                            <th className="w-12 bg-slate-200 border-r border-slate-300 text-center font-mono text-[9px] text-gray-500 py-1 select-none"></th>
+                            {spreadsheetData.headers.map((h, hIdx) => (
+                              <th
+                                key={hIdx}
+                                className="px-4 py-1.5 border-r border-slate-200 bg-slate-100 text-gray-600 font-bold text-[10px] uppercase tracking-wider truncate"
+                              >
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {/* Data Rows */}
+                          {spreadsheetData.rows.map((row, rIdx) => (
+                            <tr
+                              key={rIdx}
+                              className="border-b border-gray-100 hover:bg-slate-50 transition-colors"
                             >
-                              {h}
-                            </th>
+                              <td className="bg-slate-50 border-r border-slate-200 text-center font-mono text-[9px] text-gray-400 py-1 select-none font-bold">
+                                {rIdx + 1}
+                              </td>
+                              {row.map((val, cIdx) => {
+                                const isNumeric = !isNaN(
+                                  parseFloat(val.replace(/[%,M\s]/g, "")),
+                                );
+                                return (
+                                  <td
+                                    key={cIdx}
+                                    className={`px-4 py-2 border-r border-gray-100 text-[11px] font-mono truncate ${
+                                      isNumeric
+                                        ? "text-right text-gray-800"
+                                        : "text-gray-600"
+                                    }`}
+                                  >
+                                    {val}
+                                  </td>
+                                );
+                              })}
+                            </tr>
                           ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {/* Data Rows */}
-                        {spreadsheetData.rows.map((row, rIdx) => (
-                          <tr key={rIdx} className="border-b border-gray-100 hover:bg-slate-50 transition-colors">
-                            <td className="bg-slate-50 border-r border-slate-200 text-center font-mono text-[9px] text-gray-400 py-1 select-none font-bold">
-                              {rIdx + 1}
+
+                          {/* Blank rows to look like a real Excel sheet */}
+                          {Array.from({ length: 6 }).map((_, bIdx) => (
+                            <tr
+                              key={`blank-${bIdx}`}
+                              className="border-b border-gray-50 bg-white"
+                            >
+                              <td className="bg-slate-50 border-r border-slate-100 text-center font-mono text-[9px] text-gray-300 py-1 select-none">
+                                {spreadsheetData.rows.length + bIdx + 1}
+                              </td>
+                              {spreadsheetData.headers.map((_, hIdx) => (
+                                <td
+                                  key={hIdx}
+                                  className="px-4 py-2 border-r border-gray-50 text-[11px] font-mono"
+                                ></td>
+                              ))}
+                            </tr>
+                          ))}
+
+                          {/* Totals Summary Row */}
+                          <tr className="bg-emerald-50/50 border-t-2 border-emerald-600/30 font-bold">
+                            <td className="bg-emerald-100/50 border-r border-emerald-200 text-center font-mono text-[9px] text-emerald-800 py-1.5 select-none font-black">
+                              ∑
                             </td>
-                            {row.map((val, cIdx) => {
-                              const isNumeric = !isNaN(parseFloat(val.replace(/[%,M\s]/g, '')));
+                            {spreadsheetData.totals.map((total, tIdx) => {
+                              const isNumeric =
+                                total.includes("M") ||
+                                total.includes("%") ||
+                                total.includes(",");
                               return (
-                                <td 
-                                  key={cIdx} 
-                                  className={`px-4 py-2 border-r border-gray-100 text-[11px] font-mono truncate ${
-                                    isNumeric ? 'text-right text-gray-800' : 'text-gray-600'
+                                <td
+                                  key={tIdx}
+                                  className={`px-4 py-2 border-r border-emerald-100 text-[11px] text-emerald-900 font-bold font-mono ${
+                                    isNumeric ? "text-right" : "text-left"
                                   }`}
                                 >
-                                  {val}
+                                  {total}
                                 </td>
                               );
                             })}
                           </tr>
-                        ))}
-
-                        {/* Blank rows to look like a real Excel sheet */}
-                        {Array.from({ length: 6 }).map((_, bIdx) => (
-                          <tr key={`blank-${bIdx}`} className="border-b border-gray-50 bg-white">
-                            <td className="bg-slate-50 border-r border-slate-100 text-center font-mono text-[9px] text-gray-300 py-1 select-none">
-                              {spreadsheetData.rows.length + bIdx + 1}
-                            </td>
-                            {spreadsheetData.headers.map((_, hIdx) => (
-                              <td key={hIdx} className="px-4 py-2 border-r border-gray-50 text-[11px] font-mono"></td>
-                            ))}
-                          </tr>
-                        ))}
-
-                        {/* Totals Summary Row */}
-                        <tr className="bg-emerald-50/50 border-t-2 border-emerald-600/30 font-bold">
-                          <td className="bg-emerald-100/50 border-r border-emerald-200 text-center font-mono text-[9px] text-emerald-800 py-1.5 select-none font-black">
-                            ∑
-                          </td>
-                          {spreadsheetData.totals.map((total, tIdx) => {
-                            const isNumeric = total.includes('M') || total.includes('%') || total.includes(',');
-                            return (
-                              <td 
-                                key={tIdx} 
-                                className={`px-4 py-2 border-r border-emerald-100 text-[11px] text-emerald-900 font-bold font-mono ${
-                                  isNumeric ? 'text-right' : 'text-left'
-                                }`}
-                              >
-                                {total}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      </tbody>
-                    </table>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* PDF/Word Document Preview Layout */}
-              {previewType === 'attachment' && !previewAttachmentName?.endsWith('.xlsx') && (
-                <div className="flex-1 flex overflow-hidden">
-                  {/* Left sidebar for page directories */}
-                  <div className="w-56 border-r border-gray-200 bg-white overflow-y-auto p-4 flex flex-col gap-1.5 shrink-0">
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Document Pages
-                    </div>
-                    {pdfPages.map((page, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setActivePreviewTab(idx)}
-                        className={`text-left px-3 py-2 rounded text-xs transition-all font-semibold ${
-                          activePreviewTab === idx 
-                            ? 'bg-red-50 text-red-700 shadow-sm border border-red-100' 
-                            : 'hover:bg-slate-50 text-gray-600'
-                        }`}
-                      >
-                        <div className="font-sans font-bold text-gray-800">Page {page.pageNum}</div>
-                        <div className="text-[9px] text-gray-400 font-normal truncate mt-0.5">
-                          {page.title}
-                        </div>
-                      </button>
-                    ))}
-
-                    <div className="mt-auto p-3 bg-red-50/40 rounded border border-red-100 text-[9px] space-y-1">
-                      <span className="font-bold text-red-800 block">PDF Decryption Mode</span>
-                      <p className="text-gray-500 leading-normal">
-                        Pre-rendered for high security inside the sandbox. Direct modification restricted.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Main PDF Canvas area */}
-                  <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center">
-                    {/* Document Header Controls */}
-                    <div className="max-w-xl w-full bg-slate-800 text-white rounded-t-lg px-4 py-1.5 flex items-center justify-between text-xs font-mono shrink-0 select-none shadow-sm">
-                      <div className="flex items-center gap-1 text-gray-400">
-                        <span>Zoom:</span>
-                        <span className="text-white font-bold">100%</span>
+              {previewType === "attachment" &&
+                !previewAttachmentName?.endsWith(".xlsx") && (
+                  <div className="flex-1 flex overflow-hidden">
+                    {/* Left sidebar for page directories */}
+                    <div className="w-56 border-r border-gray-200 bg-white overflow-y-auto p-4 flex flex-col gap-1.5 shrink-0">
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Document Pages
                       </div>
-                      <div className="flex items-center gap-3">
-                        <button 
-                          disabled={activePreviewTab === 0}
-                          onClick={() => setActivePreviewTab(prev => Math.max(0, prev - 1))}
-                          className="px-1.5 py-0.5 rounded hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent font-bold"
+                      {pdfPages.map((page, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActivePreviewTab(idx)}
+                          className={`text-left px-3 py-2 rounded text-xs transition-all font-semibold ${
+                            activePreviewTab === idx
+                              ? "bg-red-50 text-red-700 shadow-sm border border-red-100"
+                              : "hover:bg-slate-50 text-gray-600"
+                          }`}
                         >
-                          &lt; Prev
+                          <div className="font-sans font-bold text-gray-800">
+                            Page {page.pageNum}
+                          </div>
+                          <div className="text-[9px] text-gray-400 font-normal truncate mt-0.5">
+                            {page.title}
+                          </div>
                         </button>
-                        <span>{activePreviewTab + 1} / {pdfPages.length}</span>
-                        <button 
-                          disabled={activePreviewTab === pdfPages.length - 1}
-                          onClick={() => setActivePreviewTab(prev => Math.min(pdfPages.length - 1, prev + 1))}
-                          className="px-1.5 py-0.5 rounded hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent font-bold"
-                        >
-                          Next &gt;
-                        </button>
+                      ))}
+
+                      <div className="mt-auto p-3 bg-red-50/40 rounded border border-red-100 text-[9px] space-y-1">
+                        <span className="font-bold text-red-800 block">
+                          PDF Decryption Mode
+                        </span>
+                        <p className="text-gray-500 leading-normal">
+                          Pre-rendered for high security inside the sandbox.
+                          Direct modification restricted.
+                        </p>
                       </div>
                     </div>
 
-                    {/* PDF Page Canvas */}
-                    <div className="max-w-xl w-full bg-white shadow-lg border border-gray-300 rounded-b-lg p-10 font-sans min-h-[500px] flex flex-col justify-between">
-                      <div className="space-y-6">
-                        {/* Page header indicator */}
-                        <div className="flex justify-between items-center text-[8px] text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-2">
-                          <span>{previewAttachmentName}</span>
-                          <span>Page {pdfPages[activePreviewTab]?.pageNum} of {pdfPages.length}</span>
+                    {/* Main PDF Canvas area */}
+                    <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center">
+                      {/* Document Header Controls */}
+                      <div className="max-w-xl w-full bg-slate-800 text-white rounded-t-lg px-4 py-1.5 flex items-center justify-between text-xs font-mono shrink-0 select-none shadow-sm">
+                        <div className="flex items-center gap-1 text-gray-400">
+                          <span>Zoom:</span>
+                          <span className="text-white font-bold">100%</span>
                         </div>
+                        <div className="flex items-center gap-3">
+                          <button
+                            disabled={activePreviewTab === 0}
+                            onClick={() =>
+                              setActivePreviewTab((prev) =>
+                                Math.max(0, prev - 1),
+                              )
+                            }
+                            className="px-1.5 py-0.5 rounded hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent font-bold"
+                          >
+                            &lt; Prev
+                          </button>
+                          <span>
+                            {activePreviewTab + 1} / {pdfPages.length}
+                          </span>
+                          <button
+                            disabled={activePreviewTab === pdfPages.length - 1}
+                            onClick={() =>
+                              setActivePreviewTab((prev) =>
+                                Math.min(pdfPages.length - 1, prev + 1),
+                              )
+                            }
+                            className="px-1.5 py-0.5 rounded hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent font-bold"
+                          >
+                            Next &gt;
+                          </button>
+                        </div>
+                      </div>
 
-                        {/* Page body */}
-                        <div className="space-y-4">
-                          <h4 className="text-xs font-bold text-slate-800 border-l-2 border-red-600 pl-2">
-                            {pdfPages[activePreviewTab]?.title}
-                          </h4>
-                          <div className="text-[11px] text-gray-600 leading-relaxed font-sans space-y-3 whitespace-pre-line">
-                            {pdfPages[activePreviewTab]?.content.map((textLine, tlIdx) => (
-                              <p key={tlIdx} className={textLine.includes('---') ? 'border-t border-dashed border-gray-100 pt-3' : ''}>
-                                {textLine}
-                              </p>
-                            ))}
+                      {/* PDF Page Canvas */}
+                      <div className="max-w-xl w-full bg-white shadow-lg border border-gray-300 rounded-b-lg p-10 font-sans min-h-125 flex flex-col justify-between">
+                        <div className="space-y-6">
+                          {/* Page header indicator */}
+                          <div className="flex justify-between items-center text-[8px] text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-2">
+                            <span>{previewAttachmentName}</span>
+                            <span>
+                              Page {pdfPages[activePreviewTab]?.pageNum} of{" "}
+                              {pdfPages.length}
+                            </span>
+                          </div>
+
+                          {/* Page body */}
+                          <div className="space-y-4">
+                            <h4 className="text-xs font-bold text-slate-800 border-l-2 border-red-600 pl-2">
+                              {pdfPages[activePreviewTab]?.title}
+                            </h4>
+                            <div className="text-[11px] text-gray-600 leading-relaxed font-sans space-y-3 whitespace-pre-line">
+                              {pdfPages[activePreviewTab]?.content.map(
+                                (textLine, tlIdx) => (
+                                  <p
+                                    key={tlIdx}
+                                    className={
+                                      textLine.includes("---")
+                                        ? "border-t border-dashed border-gray-100 pt-3"
+                                        : ""
+                                    }
+                                  >
+                                    {textLine}
+                                  </p>
+                                ),
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* PDF Footer seal */}
-                      <div className="pt-8 border-t border-gray-100 flex justify-between items-center text-[8px] text-gray-400">
-                        <span>PRS SECURE PLATFORM • PDF READER v1.4</span>
-                        <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded font-bold">SHA-256 SECURED</span>
+                        {/* PDF Footer seal */}
+                        <div className="pt-8 border-t border-gray-100 flex justify-between items-center text-[8px] text-gray-400">
+                          <span>PRS SECURE PLATFORM • PDF READER v1.4</span>
+                          <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded font-bold">
+                            SHA-256 SECURED
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
-
+                )}
             </div>
 
             {/* Modal Footer */}
@@ -992,7 +1554,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
         <AssignModal
           requestId={assignModalRequestId}
           requestTitle={assignModalRequestTitle}
-          onClose={() => { setAssignModalRequestId(null); setAssignModalRequestTitle(''); }}
+          onClose={() => {
+            setAssignModalRequestId(null);
+            setAssignModalRequestTitle("");
+          }}
         />
       )}
     </div>

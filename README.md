@@ -1,4 +1,4 @@
-# Parliamentary Research Management System (PRRMS)
+# Parliamentary Research Request Management System (PRRMS)
 
 A full-stack application for managing research requests, assignments, reports, and workflows for the Parliamentary Service of Ghana's Research Department.
 
@@ -61,10 +61,13 @@ A full-stack application for managing research requests, assignments, reports, a
 
 | Script | Description |
 |--------|-------------|
+| `npm run prepare` | Auto-generate Prisma client on install |
 | `npm run dev` | Start Vite dev server (port 3000) |
 | `npm run dev:server` | Start Express backend with hot reload |
 | `npm run dev:all` | Start both frontend and backend concurrently |
 | `npm run build` | Build frontend for production |
+| `npm run preview` | Preview production build |
+| `npm run clean` | Remove dist folder |
 | `npm run lint` | Type-check with TypeScript |
 | `npm run db:migrate` | Run Prisma migrations |
 | `npm run db:push` | Push schema changes without migration |
@@ -75,6 +78,7 @@ A full-stack application for managing research requests, assignments, reports, a
 | `npm run server:start` | Start backend in production mode |
 | `npm run test` | Run tests in watch mode |
 | `npm run test:run` | Run tests once |
+| `npm run test:ui` | Run Vitest UI |
 
 ## Test Credentials
 
@@ -99,10 +103,10 @@ All users use password: **`password123`**
 
 The system has 4 roles with different permissions:
 
-- **Admin** — Assign research, manage requests, review reports, manage teams, full user management
-- **Research Officer** — Accept/decline assignments, submit drafts, manage revisions
+- **Admin** — Full access: assign research, manage requests, review reports, manage teams, view statistics, manage users, audit log
+- **Research Officer** — Accept/decline assignments, submit drafts, manage revisions, view briefs
 - **Research Assistant** — Support officers, view assigned work
-- **MP** — Submit research requests, track progress
+- **MP** — Submit research requests, track progress, view briefs, manage projects
 
 ### Research Request Lifecycle
 
@@ -122,10 +126,13 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 - **Assignment System** — Assign individual officers, multiple officers, or research teams to requests with custom deadlines and notes
 - **Team Management** — Create and manage research teams with members, assign work to entire teams
 - **Report Drafting** — Officers create and submit research reports with version history using a rich text editor (TipTap)
+- **Auto-Save** — Draft content automatically saved to database every 3 seconds while editing
 - **Rich Text Editor** — Full formatting toolbar: bold, italic, strikethrough, headings, bullet/numbered lists, blockquotes, horizontal rules, undo/redo
 - **Inline Review Annotations** — Admins select specific text in a draft and annotate it with feedback; officers see exactly which text the comment references
 - **Review Workflow** — Admin annotates reports with inline or section-level comments, requests revisions, approves final versions
-- **Immediate Feedback Notifications** — Officers receive in-app notifications and email alerts immediately when an admin posts a review comment (not just on formal revision requests)
+- **Immediate Feedback Notifications** — Officers receive in-app notifications and email alerts immediately when an admin posts a review comment
+- **Delivered Research Notifications** — MPs are notified when their research brief is delivered
+- **Overdue Request Alerts** — Automatic notifications sent to officers and MPs when requests pass their deadline
 - **Document Version Diff** — Side-by-side comparison of report versions with line-by-line diff highlighting
 - **Committee Workbench** — View and manage requests per parliamentary committee with cross-committee sharing
 - **Parliamentary Calendar** — Month-grid view of deadlines, overdue alerts, and upcoming milestones
@@ -136,76 +143,86 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 - **Global Search** — Command palette (Ctrl+K) for searching requests, reports, and people
 - **CSV/PDF Export** — Export data views as CSV or print to PDF
 - **File Uploads** — Attach multiple files (PDF, DOCX, XLSX, ZIP up to 50MB) to requests with upload progress indicators and secure download links
-- **Notifications** — In-app notification center with read/unread tracking
+- **Notification Preferences** — Per-user control over push notifications, email summaries, and trigger-specific settings (new assignments, status changes, draft mentions, deadline reminders)
 - **User Profile Management** — Update name, title, constituency (for MPs), password
+- **Admin User Impersonation** — Admins can temporarily act as another user for debugging
 
 ## Project Structure
 
 ```
-├── server/                    # Express.js backend
-│   ├── index.ts               # Server entry point, CORS, route mounting
+├── server/                        # Express.js backend
+│   ├── index.ts                   # Server entry point, CORS, route mounting
 │   ├── middleware/
-│   │   └── auth.ts            # JWT authentication, role-based access
+│   │   └── auth.ts                # JWT authentication, role-based access
 │   ├── lib/
-│   │   ├── prisma.ts          # Prisma client singleton
-│   │   ├── email.ts           # Nodemailer transporter + email templates
-│   │   └── env.ts             # Environment variable validation
+│   │   ├── prisma.ts              # Prisma client singleton
+│   │   ├── email.ts               # Nodemailer transporter + 7 email templates
+│   │   ├── env.ts                 # Environment variable validation
+│   │   ├── notifications.ts       # Notification preference checks (shouldNotify, shouldEmail)
+│   │   ├── requestUtils.ts        # Request number generation (REQ-YYYY-NNNN), ID/number lookup
+│   │   ├── overdueCheck.ts        # Scheduled overdue request notification job
+│   │   ├── logger.ts              # Structured logging (info/warn/error) with request context
+│   │   ├── pagination.ts          # Page/limit query param parsing and clamping
+│   │   ├── asyncHandler.ts        # Express async error wrapper
+│   │   ├── jwt.ts                 # JWT secret and expiry configuration
+│   │   └── rateLimit.ts           # In-memory IP-based rate limiter
 │   └── routes/
-│       ├── auth.ts            # Login, profile, change-password
-│       ├── requests.ts        # Research request CRUD, search, sharing
-│       ├── assignments.ts     # Assign officers/teams, accept/decline
-│       ├── reports.ts         # Report CRUD, version history, version diff
-│       ├── reviews.ts         # Review comments, revision requests, approval
-│       ├── users.ts           # User management (admin only)
-│       ├── teams.ts           # Research team CRUD and membership
-│       ├── notifications.ts   # Notification listing and read management
-│       ├── dashboard.ts       # Metrics, analytics, activity log, workload
-│       └── uploads.ts         # File upload and download
+│       ├── auth.ts                # Login, profile, password reset, notification prefs, impersonation
+│       ├── requests.ts            # Research request CRUD, search, sharing, status updates with notifications
+│       ├── assignments.ts         # Assign officers/teams, accept/decline, get my assignments
+│       ├── reports.ts             # Report CRUD, auto-save, version history, version diff
+│       ├── reviews.ts             # Review comments, revision requests, approval with notifications
+│       ├── users.ts               # User management (admin only)
+│       ├── teams.ts               # Research team CRUD and membership
+│       ├── notifications.ts       # Notification listing and read management
+│       ├── dashboard.ts           # Metrics, analytics, activity log, workload
+│       └── uploads.ts             # File upload and download
 ├── prisma/
-│   ├── schema.prisma          # Database schema (16 models, 7 enums)
-│   ├── seed.ts                # Test data seeder (16 committees, 10 users, 6 requests)
-│   └── migrations/            # Database migration history
-├── src/                       # React frontend
-│   ├── App.tsx                # Main routing, sidebar, global search
-│   ├── main.tsx               # App entry point
-│   ├── types.ts               # TypeScript interfaces
+│   ├── schema.prisma              # Database schema (16 models, 7 enums)
+│   ├── seed.ts                    # Test data seeder (16 committees, 10 users, 6 requests)
+│   └── migrations/                # Database migration history
+├── src/                           # React frontend
+│   ├── App.tsx                    # Main routing, sidebar, global search
+│   ├── main.tsx                   # App entry point
+│   ├── types.ts                   # TypeScript interfaces
 │   ├── context/
-│   │   └── AppContext.tsx      # Global state, API calls, auth
+│   │   └── AppContext.tsx          # Global state, API calls, auth, auto-save
 │   ├── lib/
-│   │   ├── api.ts             # 40+ API functions with JWT auth
-│   │   └── toast.ts           # Toast notification system
+│   │   ├── api.ts                 # 40+ API functions with JWT auth
+│   │   ├── format.ts              # Formatting helpers (honourable title)
+│   │   └── toast.ts               # Toast notification system
 │   └── components/
-│       ├── LoginView.tsx              # Login form with demo buttons
-│       ├── Sidebar.tsx                # Navigation sidebar
-│       ├── Topbar.tsx                 # Header bar with notifications
-│       ├── AdminDashboardView.tsx     # Admin overview dashboard
-│       ├── MemberDashboardView.tsx    # MP dashboard
-│       ├── ProjectsView.tsx           # Request pipeline with filters
-│       ├── AssignModal.tsx            # Multi-officer/team assignment modal
-│       ├── OfficerWorkflowView.tsx    # Officer's task queue with multi-file uploads
-│       ├── OfficerRevisionWorkspaceView.tsx  # Revision workspace with TipTap rich text editor
-│       ├── AdminRevisionReviewView.tsx       # Admin review interface with inline text annotation
-│       ├── NewRequestFormView.tsx     # Research request form
-│       ├── CommitteeWorkbenchView.tsx # Committee management
-│       ├── ParliamentaryCalendarView.tsx  # Calendar view
-│       ├── ResearchTemplatesView.tsx  # Report templates
-│       ├── DocumentVersionDiffView.tsx    # Version diff viewer
-│       ├── StatisticsView.tsx         # Charts and analytics
-│       ├── MembersView.tsx            # User management
-│       ├── ActivityLogView.tsx        # Audit log viewer
-│       ├── NotificationsView.tsx      # Notification center
-│       ├── SettingsView.tsx           # User profile settings
-│       ├── SupportView.tsx            # Help and support
-│       ├── ArchiveView.tsx            # Archived requests
-│       ├── GlobalSearch.tsx           # Ctrl+K search palette
-│       ├── ExportButton.tsx           # CSV/PDF export
-│       ├── ErrorBoundary.tsx          # Error boundary component
-│       └── LoadingSpinner.tsx         # Loading spinner
-├── .env.example               # Environment variable template
-├── credentials.md             # All test user credentials
-├── vite.config.ts             # Vite configuration
-├── tsconfig.json              # TypeScript configuration
-└── package.json               # Dependencies and scripts
+│       ├── LoginView.tsx                  # Login form with demo role buttons
+│       ├── Sidebar.tsx                    # Role-filtered navigation sidebar
+│       ├── Topbar.tsx                     # Header bar with unread notification badge
+│       ├── AdminDashboardView.tsx         # Admin overview dashboard with metrics
+│       ├── MemberDashboardView.tsx        # MP portal with timeline and feedback
+│       ├── OfficerWorkflowView.tsx        # Officer task queue with accept/decline
+│       ├── OfficerRevisionWorkspaceView.tsx  # Revision workspace with TipTap editor + auto-save
+│       ├── AdminRevisionReviewView.tsx    # Admin review interface with inline text annotation
+│       ├── ProjectsView.tsx               # Research pipeline with filters and quick actions
+│       ├── AssignModal.tsx                # Multi-officer/team assignment modal
+│       ├── NewRequestFormView.tsx         # Research request submission form
+│       ├── CommitteeWorkbenchView.tsx     # Committee management with cross-committee sharing
+│       ├── ParliamentaryCalendarView.tsx  # Calendar view with deadline highlighting
+│       ├── ResearchTemplatesView.tsx      # Predefined report templates
+│       ├── DocumentVersionDiffView.tsx    # Side-by-side version diff viewer
+│       ├── StatisticsView.tsx             # Charts and analytics (admin only)
+│       ├── MembersView.tsx                # Parliamentary directory (admin only)
+│       ├── ActivityLogView.tsx            # Audit log viewer
+│       ├── NotificationsView.tsx          # Notification center with preference settings
+│       ├── SettingsView.tsx               # User profile settings
+│       ├── SupportView.tsx                # Help and support
+│       ├── ArchiveView.tsx                # Archived requests
+│       ├── GlobalSearch.tsx               # Ctrl+K search palette
+│       ├── ExportButton.tsx               # CSV/PDF export
+│       ├── ErrorBoundary.tsx              # Error boundary component
+│       └── LoadingSpinner.tsx             # Loading spinner
+├── .env.example                   # Environment variable template
+├── credentials.md                 # All test user credentials
+├── vite.config.ts                 # Vite configuration
+├── tsconfig.json                  # TypeScript configuration
+└── package.json                   # Dependencies and scripts
 ```
 
 ## Database Schema
@@ -215,21 +232,21 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | Model | Description |
 |-------|-------------|
 | `Department` | Organizational departments |
-| `User` | All system users with roles |
+| `User` | All system users with roles, notification preferences |
 | `Committee` | 16 Parliament of Ghana standing/select/joint/ad-hoc committees |
-| `ResearchRequest` | Research requests submitted by MPs |
-| `Assignment` | Links officers/teams to requests with deadlines |
+| `ResearchRequest` | Research requests submitted by MPs with full lifecycle tracking |
+| `Assignment` | Links officers/teams to requests with deadlines and accept/decline tracking |
 | `ResearchTeam` | Research teams with members |
 | `TeamMember` | Team membership join table |
-| `ResearchReport` | Report drafts and final versions |
-| `ReportVersion` | Version history for reports |
-| `ReviewComment` | Admin review comments on reports with inline text highlighting |
-| `Attachment` | File attachments on requests |
+| `ResearchReport` | Report drafts and final versions with content and approval state |
+| `ReportVersion` | Immutable version history for reports |
+| `ReviewComment` | Admin review comments with inline text highlighting and threaded replies |
+| `Attachment` | File attachments on requests (PDF, DOCX, XLSX, ZIP) |
 | `SharedResearch` | Cross-committee request sharing |
-| `Notification` | In-app notifications |
-| `ActivityLog` | System-wide audit trail |
-| `Setting` | Key-value application settings |
-| `PasswordResetToken` | Secure password reset tokens |
+| `Notification` | In-app notifications with type, read status, and deep links |
+| `ActivityLog` | System-wide audit trail with action type and metadata |
+| `Setting` | Key-value application settings store |
+| `PasswordResetToken` | Secure password reset tokens with expiry |
 
 ### Enums
 
@@ -251,8 +268,13 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 |--------|----------|-------------|------|
 | POST | `/login` | Login with email/password | No |
 | POST | `/forgot-password` | Request password reset | No |
+| POST | `/reset-password` | Reset password with token | No |
 | PUT | `/profile` | Update own profile | Yes |
 | POST | `/change-password` | Change password | Yes |
+| GET | `/notification-prefs` | Get notification preferences | Yes |
+| PUT | `/notification-prefs` | Update notification preferences | Yes |
+| POST | `/impersonate` | Impersonate another user | Yes (ADMIN) |
+| POST | `/logout` | Logout and log activity | Yes |
 
 ### Research Requests (`/api/requests`)
 
@@ -261,13 +283,13 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | GET | `/` | List all requests | Yes |
 | GET | `/:id` | Get single request | Yes |
 | POST | `/` | Create new request | Yes (ADMIN, MP) |
-| PUT | `/:id` | Update request | Yes |
+| PUT | `/:id` | Update request (sends DELIVERED notification to submitter) | Yes |
 | POST | `/:id/cancel` | Cancel request | Yes |
 | GET | `/meta/committees` | List committees | Yes |
 | GET | `/meta/committees/stats` | Committee request stats | Yes |
 | GET | `/committee/:committeeId` | Requests by committee | Yes |
 | GET | `/search/global` | Global search | Yes |
-| POST | `/:requestId/share` | Share with committee | Yes |
+| POST | `/:requestId/share` | Share with committee | Yes (ADMIN) |
 | GET | `/:requestId/shared` | Get shared info | Yes |
 | GET | `/shared/committee/:committeeId` | Shared with committee | Yes |
 
@@ -276,8 +298,9 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/pending` | Pending assignments | Yes (ADMIN) |
-| POST | `/` | Assign officer/team(s) | Yes (ADMIN) |
+| POST | `/` | Assign officer(s)/team | Yes (ADMIN) |
 | GET | `/officers` | List available officers | Yes (ADMIN) |
+| GET | `/mine` | Get my assignments | Yes (OFFICER, ASSISTANT) |
 | POST | `/:assignmentId/accept` | Accept assignment | Yes (OFFICER) |
 | POST | `/:assignmentId/decline` | Decline with reason | Yes (OFFICER) |
 
@@ -286,6 +309,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | POST | `/` | Create/upload report | Yes |
+| PUT | `/:reportId` | Update report (auto-save) | Yes |
 | GET | `/:reportId/versions` | Version history | Yes |
 | GET | `/:reportId/versions/:v1/compare/:v2` | Compare versions | Yes |
 
@@ -294,9 +318,9 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/request/:requestId` | Get review comments | Yes |
-| POST | `/` | Add review comment (with optional `highlightedText`, `startOffset`, `endOffset` for inline annotations) | Yes (ADMIN) |
-| PUT | `/:commentId/resolve` | Resolve comment | Yes (ADMIN) |
-| POST | `/:commentId/request-revision` | Request revision (notifies officer via in-app + email) | Yes (ADMIN) |
+| POST | `/` | Add review comment (with optional inline annotation fields) | Yes (ADMIN) |
+| PUT | `/:commentId/resolve` | Resolve comment | Yes |
+| POST | `/request-revision` | Request revision (notifies officers via in-app + email) | Yes (ADMIN) |
 | POST | `/approve` | Approve report (notifies submitter) | Yes (ADMIN) |
 
 ### Teams (`/api/teams`)
@@ -328,13 +352,13 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | GET | `/` | Dashboard metrics | Yes |
 | GET | `/analytics` | Detailed analytics | Yes |
 | GET | `/activity` | Activity audit log | Yes |
-| GET | `/workload` | Officer workload stats | Yes |
+| GET | `/workload` | Officer workload stats | Yes (ADMIN) |
 
 ### Notifications (`/api/notifications`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/` | List notifications | Yes |
+| GET | `/` | List notifications with unread count | Yes |
 | PUT | `/:id/read` | Mark as read | Yes |
 | PUT | `/read-all` | Mark all as read | Yes |
 
@@ -344,7 +368,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 |--------|----------|-------------|------|
 | GET | `/request/:requestId` | List attachments | Yes |
 | GET | `/:attachmentId/download` | Download file | Yes |
-| POST | `/:requestId` | Upload file | Yes |
+| POST | `/:requestId` | Upload file (multipart) | Yes |
 
 ### Health Check
 
@@ -370,6 +394,25 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | `SMTP_FROM` | No | `PRRMS <noreply@parliament.gov.gh>` | From address for emails |
 
 > **Note:** Email notifications require `SMTP_HOST` to be configured. Without it, emails are logged to console but not sent.
+
+## Notification System
+
+The system generates notifications for the following events:
+
+| Event | Recipient | Type | Trigger |
+|-------|-----------|------|---------|
+| Request submitted | — | — | MP creates a request |
+| Officer assigned | Officer | `REQUEST_ASSIGNED` | Admin assigns an officer or team |
+| Draft submitted | All admins | `REPORT_UPLOADED` | Officer submits a report draft |
+| Revision requested | All assignees | `REVISION_REQUESTED` | Admin requests changes on a report |
+| Report approved | MP (submitter) | `REPORT_APPROVED` | Admin approves the final report |
+| Research delivered | MP (submitter) | `REPORT_DELIVERED` | Status changes to DELIVERED |
+| Assignment accepted | Admin | `GENERAL` | Officer accepts an assignment |
+| Assignment declined | Admin | `GENERAL` | Officer declines an assignment |
+| Review comment | Assigned officer | `REPORT_UPLOADED` | Admin posts a comment on a draft |
+| Request overdue | Officer + MP | `GENERAL` | Scheduled job detects overdue requests |
+
+All notifications respect per-user notification preferences (push notifications, email summaries, per-trigger toggles).
 
 ## Parliamentary Committees
 

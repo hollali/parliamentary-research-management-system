@@ -12,10 +12,49 @@ const uploadsDir = path.join(__dirname, "../../uploads");
 
 const router = Router();
 
+function canAccessRequest(request: {
+  submitterId: string | null;
+  assignedOfficerId: string | null;
+  teamId: string | null;
+  assignments?: Array<{ assignedToId: string | null }>;
+  team?: { members?: Array<{ userId: string }> } | null;
+}, userId: string, role: string) {
+  if (role === "ADMIN") return true;
+
+  const isSubmitter = request.submitterId === userId;
+  const isAssignedOfficer = request.assignedOfficerId === userId;
+  const isDirectAssignment = request.assignments?.some((assignment) => assignment.assignedToId === userId) ?? false;
+  const isTeamMember = request.team?.members?.some((member) => member.userId === userId) ?? false;
+
+  return isSubmitter || isAssignedOfficer || isDirectAssignment || isTeamMember;
+}
+
 // List attachments for a request
 router.get("/request/:requestId", authenticateToken, async (req, res) => {
   try {
     const { requestId } = req.params;
+    const { userId, role } = req.user!;
+    const request = await prisma.researchRequest.findUnique({
+      where: { id: requestId },
+      select: {
+        id: true,
+        requestNumber: true,
+        submitterId: true,
+        assignedOfficerId: true,
+        teamId: true,
+        assignments: { select: { assignedToId: true } },
+        team: { select: { members: { select: { userId: true } } } },
+      },
+    });
+
+    if (!request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    if (!canAccessRequest(request, userId, role)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     const attachments = await prisma.attachment.findMany({
       where: { requestId },
       include: {
@@ -41,7 +80,14 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
       where: { id: attachmentId },
       include: {
         request: {
-          select: { id: true, submitterId: true, assignedOfficerId: true },
+          select: {
+            id: true,
+            submitterId: true,
+            assignedOfficerId: true,
+            teamId: true,
+            assignments: { select: { assignedToId: true } },
+            team: { select: { members: { select: { userId: true } } } },
+          },
         },
       },
     });
@@ -50,11 +96,7 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Attachment not found" });
     }
 
-    const isSubmitter = attachment.request.submitterId === userId;
-    const isOfficer = attachment.request.assignedOfficerId === userId;
-    const isAdmin = role === "ADMIN";
-
-    if (!isSubmitter && !isOfficer && !isAdmin) {
+    if (!canAccessRequest(attachment.request, userId, role)) {
       return res.status(403).json({ error: "Access denied" });
     }
 
@@ -70,8 +112,9 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
       ZIP: "application/zip",
     };
 
+    const safeName = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     res.setHeader("Content-Type", mimeTypes[attachment.fileType] || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(attachment.name)}"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(attachment.name)}`);
     res.setHeader("Content-Length", fs.statSync(filePath).size);
 
     const stream = fs.createReadStream(filePath);
@@ -97,17 +140,23 @@ router.post(
 
       const request = await prisma.researchRequest.findUnique({
         where: { id: requestId },
+        select: {
+          id: true,
+          requestNumber: true,
+          submitterId: true,
+          assignedOfficerId: true,
+          teamId: true,
+          assignments: { select: { assignedToId: true } },
+          team: { select: { members: { select: { userId: true } } } },
+        },
       });
       if (!request) {
         return res.status(404).json({ error: "Request not found" });
       }
 
-      // Authorization: only the submitter, assigned officer, or admin can upload
+      // Authorization: only the submitter, assigned officer, direct assignees, team members, or admin can upload
       const { role, userId } = req.user!;
-      const isSubmitter = request.submitterId === userId;
-      const isOfficer = request.assignedOfficerId === userId;
-      const isAdmin = role === "ADMIN";
-      if (!isSubmitter && !isOfficer && !isAdmin) {
+      if (!canAccessRequest(request, userId, role)) {
         return res.status(403).json({ error: "Access denied" });
       }
 

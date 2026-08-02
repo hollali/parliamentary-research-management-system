@@ -1,107 +1,409 @@
-import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { useToast } from '../lib/toast';
-import { getDownloadUrl, uploadFile } from '../lib/api';
-import { honourable } from '../lib/format';
-import { ResearchRequest } from '../types';
-import { 
-  BarChart3, 
-  Sparkles, 
-  Clock, 
-  Award, 
-  FileCheck, 
-  Download, 
-  ChevronRight, 
+import React, { useState, useEffect, useCallback } from "react";
+import { useApp } from "../context/AppContext";
+import { useToast } from "../lib/toast";
+import {
+  getDownloadUrl,
+  downloadFile,
+  uploadFile,
+  getRequest,
+  getRequestActivity,
+} from "../lib/api";
+import { honourable } from "../lib/format";
+import { ResearchRequest } from "../types";
+import { filterRequestsForCurrentUser } from "../lib/requestAccess";
+import { Pagination } from "./Pagination";
+import {
+  Clock,
+  Award,
+  FileCheck,
+  Download,
+  ChevronRight,
   Send,
-  Upload
-} from 'lucide-react';
+  Upload,
+  X,
+  User,
+  Activity,
+  MessageSquare,
+  GitBranch,
+  Calendar,
+  CheckCircle2,
+} from "lucide-react";
+
+interface DetailedRequest {
+  id: string;
+  title: string;
+  status: ResearchRequest["status"];
+  priority: string;
+  deadline: string;
+  dateSubmitted: string;
+  dateAssigned: string | null;
+  dateCompleted: string | null;
+  dateDelivered: string | null;
+  dateClosed: string | null;
+  draftVersion: number;
+  category: { id: string; name: string };
+  submitter: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    initials: string;
+    title: string;
+  };
+  officer: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    initials: string;
+    title: string;
+  } | null;
+  reports: {
+    id: string;
+    title: string;
+    version: number;
+    isDraft: boolean;
+    isApproved: boolean;
+    createdAt: string;
+    author: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      initials: string;
+    };
+    versions: {
+      id: string;
+      version: number;
+      notes: string | null;
+      createdAt: string;
+    }[];
+  }[];
+  comments: {
+    id: string;
+    text: string;
+    section: string | null;
+    resolved: boolean;
+    createdAt: string;
+    author: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      initials: string;
+      title: string;
+    };
+  }[];
+  attachments: {
+    id: string;
+    name: string;
+    fileType: string;
+    fileSize: number | null;
+  }[];
+  assignments: {
+    id: string;
+    notes: string | null;
+    deadline: string;
+    acceptedAt: string | null;
+    createdAt: string;
+    assignedBy: { id: string; firstName: string; lastName: string };
+    assignedTo: { id: string; firstName: string; lastName: string } | null;
+  }[];
+}
+
+interface ActivityLogEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  description: string;
+  metadata: any;
+  createdAt: string;
+  author: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    initials: string;
+  } | null;
+}
+
+const PROGRESS_MAP: Record<string, number> = {
+  SUBMITTED: 10,
+  ASSIGNED: 25,
+  IN_PROGRESS: 50,
+  DRAFT_SUBMITTED: 65,
+  REVISION_REQUESTED: 70,
+  REVISED: 75,
+  APPROVED: 90,
+  DELIVERED: 100,
+  CLOSED: 100,
+  OVERDUE: 40,
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  CREATED: "Created",
+  UPDATED: "Updated",
+  ASSIGNED: "Assigned",
+  STATUS_CHANGED: "Status Changed",
+  FILE_UPLOADED: "File Uploaded",
+  COMMENT_ADDED: "Comment Added",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+  DEACTIVATED: "Deactivated",
+};
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getDaysRemaining(deadline: string): {
+  days: number;
+  label: string;
+  color: string;
+} {
+  const now = new Date();
+  const dl = new Date(deadline);
+  const diffMs = dl.getTime() - now.getTime();
+  const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (days < 0)
+    return {
+      days: Math.abs(days),
+      label: `${Math.abs(days)}d overdue`,
+      color: "text-red-600 bg-red-50",
+    };
+  if (days === 0)
+    return { days: 0, label: "Due today", color: "text-amber-700 bg-amber-50" };
+  if (days <= 3)
+    return {
+      days,
+      label: `${days}d remaining`,
+      color: "text-amber-600 bg-amber-50",
+    };
+  if (days <= 7)
+    return {
+      days,
+      label: `${days}d remaining`,
+      color: "text-blue-600 bg-blue-50",
+    };
+  return {
+    days,
+    label: `${days}d remaining`,
+    color: "text-emerald-600 bg-emerald-50",
+  };
+}
 
 export const MemberDashboardView: React.FC = () => {
   const { requests, currentUser, addComment, updateRequestPriority } = useApp();
   const { toast } = useToast();
-  const memberRequests = requests.filter(r => r.member === currentUser.name);
-  
-  // Default to first request if available
-  const [selectedRequestId, setSelectedRequestId] = useState<string>(
-    memberRequests[0]?.id || requests[0]?.id || ''
-  );
-  
-  const [feedbackText, setFeedbackText] = useState('');
-  const [isExpedited, setIsExpedited] = useState(false);
+  const memberRequests = filterRequestsForCurrentUser(requests, currentUser);
 
-  const activeRequest = requests.find(r => r.id === selectedRequestId) || requests[0];
+  const [selectedRequestId, setSelectedRequestId] = useState<string>(
+    memberRequests[0]?.id || requests[0]?.id || "",
+  );
+
+  const [feedbackText, setFeedbackText] = useState("");
+  const [isExpedited, setIsExpedited] = useState(false);
+  const [trackingModalRequest, setTrackingModalRequest] =
+    useState<ResearchRequest | null>(null);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(memberRequests.length / pageSize),
+  );
+  const currentPageClamped = Math.min(currentPage, totalPages);
+  const paginatedRequests = memberRequests.slice(
+    (currentPageClamped - 1) * pageSize,
+    currentPageClamped * pageSize,
+  );
+
+  // Modal detail data
+  const [detail, setDetail] = useState<DetailedRequest | null>(null);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const activeRequest =
+    requests.find((r) => r.id === selectedRequestId) || requests[0];
+
+  // Fetch detailed data when modal opens
+  const fetchModalData = useCallback(
+    async (requestId: string) => {
+      setDetailLoading(true);
+      try {
+        const [detailData, activityData] = await Promise.all([
+          getRequest(requestId),
+          getRequestActivity(requestId),
+        ]);
+        setDetail(detailData);
+        setActivityLogs(activityData);
+      } catch {
+        toast.error("Failed to load request details");
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [toast],
+  );
+
+  useEffect(() => {
+    if (trackingModalRequest) {
+      fetchModalData(trackingModalRequest.id);
+    } else {
+      setDetail(null);
+      setActivityLogs([]);
+    }
+  }, [trackingModalRequest, fetchModalData]);
 
   const handleSendFeedback = (e: React.FormEvent) => {
     e.preventDefault();
     if (!feedbackText.trim() || !activeRequest) return;
     addComment(activeRequest.id, feedbackText);
-    setFeedbackText('');
-    toast.success('Your feedback has been appended to the request timeline.');
+    setFeedbackText("");
+    toast.success("Your feedback has been appended to the request timeline.");
   };
 
-  const getStatusLabel = (status: ResearchRequest['status']) => {
+  const getStatusLabel = (status: ResearchRequest["status"]) => {
     switch (status) {
-      case 'SUBMITTED': return 'Under Review';
-      case 'ASSIGNED': return 'Assigned';
-      case 'IN_PROGRESS': return 'In Progress';
-      case 'REVISION_REQUESTED':
-      case 'REVISED': return 'Under Revision';
-      case 'APPROVED': return 'Completed';
-      case 'OVERDUE': return 'Overdue';
-      default: return status;
+      case "SUBMITTED":
+        return "Under Review";
+      case "ASSIGNED":
+        return "Assigned";
+      case "IN_PROGRESS":
+        return "In Progress";
+      case "DRAFT_SUBMITTED":
+        return "Draft Submitted";
+      case "REVISION_REQUESTED":
+      case "REVISED":
+        return "Under Revision";
+      case "APPROVED":
+        return "Completed";
+      case "DELIVERED":
+        return "Delivered";
+      case "CLOSED":
+        return "Closed";
+      case "OVERDUE":
+        return "Overdue";
+      default:
+        return status;
     }
   };
 
-  // Timeline step generator based on status
   const getTimelineSteps = (req: ResearchRequest) => {
-    const isSubmitted = true;
-    const isAssigned = ['ASSIGNED', 'IN_PROGRESS', 'REVISION_REQUESTED', 'REVISED', 'APPROVED'].includes(req.status);
-    const isInProgress = ['IN_PROGRESS', 'REVISION_REQUESTED', 'REVISED', 'APPROVED'].includes(req.status);
-    const isRevision = ['REVISION_REQUESTED', 'REVISED'].includes(req.status);
-    const isCompleted = ['APPROVED', 'DELIVERED', 'CLOSED'].includes(req.status);
+    const isAssigned = [
+      "ASSIGNED",
+      "IN_PROGRESS",
+      "DRAFT_SUBMITTED",
+      "REVISION_REQUESTED",
+      "REVISED",
+      "APPROVED",
+      "DELIVERED",
+    ].includes(req.status);
+    const isInProgress = [
+      "IN_PROGRESS",
+      "DRAFT_SUBMITTED",
+      "REVISION_REQUESTED",
+      "REVISED",
+      "APPROVED",
+      "DELIVERED",
+    ].includes(req.status);
+    const isRevision = ["REVISION_REQUESTED", "REVISED"].includes(req.status);
+    const isCompleted = ["APPROVED", "DELIVERED", "CLOSED"].includes(
+      req.status,
+    );
+    const isDelivered = ["DELIVERED", "CLOSED"].includes(req.status);
 
-    return [
+    type StepStatus = "completed" | "active" | "pending";
+    const steps: {
+      title: string;
+      date: string | null;
+      desc: string;
+      status: StepStatus;
+    }[] = [
       {
-        title: 'Request Submitted',
+        title: "Request Submitted",
         date: req.dateSubmitted,
-        desc: 'Request received and authenticated by administrative desk.',
-        status: 'completed'
+        desc: "Request received and authenticated by administrative desk.",
+        status: "completed",
       },
       {
-        title: 'Staff Appointed',
-        date: isAssigned ? req.dateSubmitted : 'Awaiting Appointment',
-        desc: isAssigned ? `Lead researcher ${req.assignedOfficerName || 'appointed'}.` : 'Selecting suitable research staff.',
-        status: isAssigned ? 'completed' : 'pending'
+        title: "Staff Appointed",
+        date: isAssigned ? detail?.dateAssigned || req.dateSubmitted : null,
+        desc: isAssigned
+          ? "Lead researcher appointed."
+          : "Selecting suitable research staff.",
+        status: isAssigned ? "completed" : "pending",
       },
       {
-        title: 'Draft Synthesis Active',
-        date: isInProgress ? req.deadline : 'Awaiting Synthesis',
-        desc: isInProgress ? 'Core research formulated and policy implications drafted.' : 'Research synthesis not started.',
-        status: isCompleted ? 'completed' : isInProgress ? 'active' : 'pending'
+        title: "Draft Synthesis Active",
+        date: isInProgress ? req.deadline : null,
+        desc: isInProgress
+          ? "Core research formulated and policy implications drafted."
+          : "Research synthesis not started.",
+        status: isCompleted ? "completed" : isInProgress ? "active" : "pending",
       },
       {
-        title: 'Administrative Peer Review',
-        date: isCompleted ? req.deadline : isRevision ? 'Revision Required' : 'Awaiting submission',
-        desc: isCompleted ? 'Final administrative check completed.' : isRevision ? 'Comments submitted for revision.' : 'Awaiting officer draft submission.',
-        status: isCompleted ? 'completed' : isRevision ? 'active' : 'pending'
+        title: "Administrative Peer Review",
+        date: isCompleted
+          ? detail?.dateCompleted || req.deadline
+          : isRevision
+            ? "Revision Required"
+            : null,
+        desc: isCompleted
+          ? "Final administrative check completed."
+          : isRevision
+            ? "Comments submitted for revision."
+            : "Awaiting officer draft submission.",
+        status: isCompleted ? "completed" : isRevision ? "active" : "pending",
       },
       {
-        title: 'Brief Delivered',
-        date: isCompleted ? req.deadline : 'Awaiting Delivery',
-        desc: isCompleted ? 'Secure brief transmitted to Member Office.' : 'Delivery upon final peer-review approval.',
-        status: isCompleted ? 'completed' : 'pending'
-      }
+        title: "Brief Delivered",
+        date: isDelivered ? detail?.dateDelivered || req.deadline : null,
+        desc: isDelivered
+          ? "Secure brief transmitted to Member Office."
+          : "Delivery upon final peer-review approval.",
+        status: isDelivered ? "completed" : "pending",
+      },
     ];
+    return steps;
   };
 
   const steps = activeRequest ? getTimelineSteps(activeRequest) : [];
+  const progress = activeRequest
+    ? (PROGRESS_MAP[activeRequest.status] ?? 0)
+    : 0;
+  const deadlineInfo = activeRequest
+    ? getDaysRemaining(activeRequest.deadline)
+    : null;
 
   return (
     <div className="space-y-8 animate-fadeIn">
       {/* Page Header */}
       <div>
         <h2 className="font-sans font-bold text-2xl text-[#191c1d]">
-          Welcome back, {currentUser.role === 'MP' ? honourable(currentUser.name) : currentUser.name}
+          Welcome back,{" "}
+          {currentUser.role === "MP"
+            ? honourable(currentUser.name)
+            : currentUser.name}
         </h2>
         <p className="font-sans text-sm text-[#434655] mt-1">
           Track legislative requests and access delivered research briefs.
@@ -112,8 +414,17 @@ export const MemberDashboardView: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">Active Requests</p>
-            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">{memberRequests.filter(r => !['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)).length}</h3>
+            <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
+              Active Requests
+            </p>
+            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">
+              {
+                memberRequests.filter(
+                  (r) =>
+                    !["APPROVED", "DELIVERED", "CLOSED"].includes(r.status),
+                ).length
+              }
+            </h3>
             <p className="text-[11px] text-[#434655] mt-1">In progress</p>
           </div>
           <div className="p-3 bg-blue-50 text-[#0037b0] rounded">
@@ -123,9 +434,19 @@ export const MemberDashboardView: React.FC = () => {
 
         <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">Completed</p>
-            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">{memberRequests.filter(r => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)).length}</h3>
-            <p className="text-[11px] text-emerald-800 font-semibold mt-1">Delivered briefs</p>
+            <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
+              Completed
+            </p>
+            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">
+              {
+                memberRequests.filter((r) =>
+                  ["APPROVED", "DELIVERED", "CLOSED"].includes(r.status),
+                ).length
+              }
+            </h3>
+            <p className="text-[11px] text-emerald-800 font-semibold mt-1">
+              Delivered briefs
+            </p>
           </div>
           <div className="p-3 bg-emerald-50 text-[#006b2c] rounded">
             <Award className="w-6 h-6" />
@@ -134,8 +455,12 @@ export const MemberDashboardView: React.FC = () => {
 
         <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">Total Requests</p>
-            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">{memberRequests.length}</h3>
+            <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
+              Total Requests
+            </p>
+            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">
+              {memberRequests.length}
+            </h3>
             <p className="text-[11px] text-[#434655] mt-1">All time</p>
           </div>
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded">
@@ -147,7 +472,6 @@ export const MemberDashboardView: React.FC = () => {
       {/* Active selected request tracking timeline split */}
       {activeRequest && (
         <section className="bg-white border border-[#c4c5d7] rounded-lg overflow-hidden shadow-sm grid grid-cols-1 lg:grid-cols-3">
-          
           {/* Left / Middle: Interactive Timeline */}
           <div className="lg:col-span-2 p-8 border-r border-[#c4c5d7] space-y-6">
             <header className="border-b border-gray-100 pb-4">
@@ -158,34 +482,50 @@ export const MemberDashboardView: React.FC = () => {
                 {activeRequest.title}
               </h3>
               <p className="text-xs text-gray-500 mt-1">
-                Category: <span className="font-semibold text-gray-700">{activeRequest.category}</span> • Topic: <span className="font-semibold text-gray-700">{activeRequest.topic}</span>
+                Category:{" "}
+                <span className="font-semibold text-gray-700">
+                  {activeRequest.category}
+                </span>{" "}
+                • Topic:{" "}
+                <span className="font-semibold text-gray-700">
+                  {activeRequest.topic}
+                </span>
               </p>
             </header>
 
             {/* Vertical timeline steps */}
             <div className="space-y-8 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
               {steps.map((step, idx) => {
-                let dotClass = 'bg-gray-200 text-gray-400';
-                let titleClass = 'text-gray-400 font-medium';
-                if (step.status === 'completed') {
-                  dotClass = 'bg-[#0037b0] text-white ring-4 ring-blue-50';
-                  titleClass = 'text-gray-900 font-bold';
-                } else if (step.status === 'active') {
-                  dotClass = 'bg-yellow-500 text-white ring-4 ring-yellow-50 animate-pulse';
-                  titleClass = 'text-yellow-800 font-bold';
+                let dotClass = "bg-gray-200 text-gray-400";
+                let titleClass = "text-gray-400 font-medium";
+                if (step.status === "completed") {
+                  dotClass = "bg-[#0037b0] text-white ring-4 ring-blue-50";
+                  titleClass = "text-gray-900 font-bold";
+                } else if (step.status === "active") {
+                  dotClass =
+                    "bg-yellow-500 text-white ring-4 ring-yellow-50 animate-pulse";
+                  titleClass = "text-yellow-800 font-bold";
                 }
 
                 return (
                   <div className="flex gap-6 relative z-10" key={idx}>
-                    <div className={`w-6.5 h-6.5 rounded-full flex items-center justify-center text-[10px] font-bold ${dotClass}`}>
+                    <div
+                      className={`w-6.5 h-6.5 rounded-full flex items-center justify-center text-[10px] font-bold ${dotClass}`}
+                    >
                       {idx + 1}
                     </div>
                     <div className="flex-1">
                       <div className="flex justify-between items-start">
-                        <h4 className={`text-sm ${titleClass}`}>{step.title}</h4>
-                        <span className="text-[11px] font-semibold text-gray-400">{step.date}</span>
+                        <h4 className={`text-sm ${titleClass}`}>
+                          {step.title}
+                        </h4>
+                        <span className="text-[11px] font-semibold text-gray-400">
+                          {step.date ? formatDate(step.date as string) : "—"}
+                        </span>
                       </div>
-                      <p className="text-xs text-gray-500 mt-0.5 leading-normal">{step.desc}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-normal">
+                        {step.desc}
+                      </p>
                     </div>
                   </div>
                 );
@@ -196,30 +536,38 @@ export const MemberDashboardView: React.FC = () => {
           {/* Right side: Sidebar files and updates */}
           <div className="p-8 bg-gray-50 flex flex-col justify-between">
             <div className="space-y-6">
-              <h4 className="font-sans font-bold text-sm text-[#191c1d] uppercase tracking-wider">Delivered Attachments</h4>
-              
+              <h4 className="font-sans font-bold text-sm text-[#191c1d] uppercase tracking-wider">
+                Delivered Attachments
+              </h4>
+
               {activeRequest.attachments.length > 0 ? (
                 <div className="space-y-3">
                   {activeRequest.attachments.map((file, fIdx) => (
-                    <div key={fIdx} className="bg-white border border-[#c4c5d7] rounded-lg p-3 flex items-center justify-between shadow-sm hover:border-[#0037b0] transition-colors">
+                    <div
+                      key={fIdx}
+                      className="bg-white border border-[#c4c5d7] rounded-lg p-3 flex items-center justify-between shadow-sm hover:border-[#0037b0] transition-colors"
+                    >
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-red-50 text-red-600 flex items-center justify-center font-bold text-xs">PDF</div>
+                        <div className="w-8 h-8 rounded bg-red-50 text-red-600 flex items-center justify-center font-bold text-xs">
+                          PDF
+                        </div>
                         <div>
-                          <p className="text-xs font-bold text-gray-900 truncate max-w-[150px]">{file.name}</p>
-                          <p className="text-[10px] text-gray-500">{file.size}</p>
+                          <p className="text-xs font-bold text-gray-900 truncate max-w-37.5">
+                            {file.name}
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            {file.size}
+                          </p>
                         </div>
                       </div>
-                      <button 
+                      <button
                         onClick={() => {
                           if (file.id) {
-                            const link = document.createElement('a');
-                            link.href = getDownloadUrl(file.id);
-                            link.download = file.name;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
+                            downloadFile(file.id, file.name).catch(() =>
+                              toast.error(`Failed to download "${file.name}"`),
+                            );
                           } else {
-                            toast.info('File not yet uploaded to server');
+                            toast.info("File not yet uploaded to server");
                           }
                         }}
                         className="p-1.5 hover:bg-gray-100 rounded text-gray-700 hover:text-[#0037b0] transition-colors"
@@ -236,23 +584,28 @@ export const MemberDashboardView: React.FC = () => {
                 </div>
               )}
 
-              {/* Document Upload Button */}
               <div className="mt-4">
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   id="dashboard-file-upload"
-                  className="hidden" 
+                  className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file && activeRequest) {
                       uploadFile(activeRequest.id, file)
-                        .then(() => toast.success(`"${file.name}" uploaded successfully.`))
-                        .catch(() => toast.error('Failed to upload file'));
+                        .then(() =>
+                          toast.success(
+                            `"${file.name}" uploaded successfully.`,
+                          ),
+                        )
+                        .catch(() => toast.error("Failed to upload file"));
                     }
                   }}
                 />
-                <button 
-                  onClick={() => document.getElementById('dashboard-file-upload')?.click()}
+                <button
+                  onClick={() =>
+                    document.getElementById("dashboard-file-upload")?.click()
+                  }
                   className="w-full bg-white border border-dashed border-[#0037b0] text-[#0037b0] hover:bg-blue-50 text-xs font-semibold py-2 rounded flex items-center justify-center gap-1.5 transition-all"
                 >
                   <Upload className="w-3.5 h-3.5" />
@@ -260,16 +613,20 @@ export const MemberDashboardView: React.FC = () => {
                 </button>
               </div>
 
-              {/* Leave comments or feedback panel */}
-              <form onSubmit={handleSendFeedback} className="space-y-3 border-t border-gray-200 pt-6">
-                <h5 className="font-sans font-bold text-xs text-gray-700">Add Directive / Feedback</h5>
-                <textarea 
+              <form
+                onSubmit={handleSendFeedback}
+                className="space-y-3 border-t border-gray-200 pt-6"
+              >
+                <h5 className="font-sans font-bold text-xs text-gray-700">
+                  Add Directive / Feedback
+                </h5>
+                <textarea
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
                   placeholder="Ask for focus updates or comment on research scope..."
                   className="w-full bg-white border border-[#c4c5d7] rounded p-2 text-xs h-20 outline-none focus:ring-1 focus:ring-[#0037b0]"
                 />
-                <button 
+                <button
                   type="submit"
                   className="w-full bg-[#515f74] hover:bg-[#3a485c] text-white text-xs font-semibold py-2 rounded flex items-center justify-center gap-1.5 transition-all"
                 >
@@ -279,26 +636,33 @@ export const MemberDashboardView: React.FC = () => {
               </form>
             </div>
 
-            {/* Expedited service action */}
             <div className="border-t border-gray-200 pt-6 mt-6 flex justify-between items-center">
               <div>
-                <p className="text-xs font-bold text-gray-900">Need immediate updates?</p>
-                <p className="text-[10px] text-gray-500">Submit a priority review ticket</p>
+                <p className="text-xs font-bold text-gray-900">
+                  Need immediate updates?
+                </p>
+                <p className="text-[10px] text-gray-500">
+                  Submit a priority review ticket
+                </p>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setIsExpedited(true);
                   if (activeRequest) {
-                    updateRequestPriority(activeRequest.id, 'URGENT');
+                    updateRequestPriority(activeRequest.id, "URGENT");
                   }
-                  toast.success('Urgent review status triggered. Admin has been notified.');
+                  toast.success(
+                    "Urgent review status triggered. Admin has been notified.",
+                  );
                 }}
                 disabled={isExpedited}
                 className={`text-xs font-semibold px-3 py-1.5 rounded transition-all ${
-                  isExpedited ? 'bg-amber-100 text-amber-800 cursor-default' : 'bg-white border border-[#0037b0] text-[#0037b0] hover:bg-blue-50'
+                  isExpedited
+                    ? "bg-amber-100 text-amber-800 cursor-default"
+                    : "bg-white border border-[#0037b0] text-[#0037b0] hover:bg-blue-50"
                 }`}
               >
-                {isExpedited ? 'Urgent Requested' : 'Request Rush'}
+                {isExpedited ? "Urgent Requested" : "Request Rush"}
               </button>
             </div>
           </div>
@@ -308,46 +672,80 @@ export const MemberDashboardView: React.FC = () => {
       {/* Active Requests List Table */}
       <section className="bg-white border border-[#c4c5d7] rounded-lg overflow-hidden shadow-sm">
         <div className="px-6 py-4 border-b border-[#c4c5d7] bg-[#f3f4f5]">
-          <h4 className="font-sans font-semibold text-[#191c1d]">Your Active Requests</h4>
+          <h4 className="font-sans font-semibold text-[#191c1d]">
+            Your Active Requests
+          </h4>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-[#f3f4f5]/30 border-b border-[#c4c5d7]">
-                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">Request ID</th>
-                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">Title</th>
-                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">Committee</th>
-                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">Researcher</th>
-                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">Status</th>
-                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">Deadline</th>
-                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase text-right">Action</th>
+                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
+                  Request ID
+                </th>
+                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
+                  Title
+                </th>
+                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
+                  Committee
+                </th>
+                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
+                  Deadline
+                </th>
+                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase text-right">
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {memberRequests.map(req => (
-                <tr 
-                  key={req.id} 
+              {paginatedRequests.map((req) => (
+                <tr
+                  key={req.id}
                   className={`cursor-pointer transition-colors hover:bg-[#f3f4f5]/30 ${
-                    req.id === selectedRequestId ? 'bg-blue-50/40 font-medium' : ''
+                    req.id === selectedRequestId
+                      ? "bg-blue-50/40 font-medium"
+                      : ""
                   }`}
-                  onClick={() => setSelectedRequestId(req.id)}
+                  onClick={() => {
+                    setSelectedRequestId(req.id);
+                    setTrackingModalRequest(req);
+                  }}
                 >
-                  <td className="px-6 py-3.5 text-sm font-bold text-[#191c1d]">{req.id}</td>
-                  <td className="px-6 py-3.5 text-sm text-[#191c1d] font-semibold">{req.title}</td>
-                  <td className="px-6 py-3.5 text-xs text-gray-500">{req.category}</td>
-                  <td className="px-6 py-3.5 text-sm text-[#191c1d]">
-                    {req.assignedOfficerName || <span className="text-amber-800 italic text-xs">Selecting researcher</span>}
+                  <td className="px-6 py-3.5 text-sm font-bold text-[#191c1d]">
+                    {req.id}
+                  </td>
+                  <td className="px-6 py-3.5 text-sm text-[#191c1d] font-semibold">
+                    {req.title}
+                  </td>
+                  <td className="px-6 py-3.5 text-xs text-gray-500">
+                    {req.category}
                   </td>
                   <td className="px-6 py-3.5">
-                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      ['APPROVED', 'DELIVERED', 'CLOSED'].includes(req.status) ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-                    }`}>
+                    <span
+                      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        ["APPROVED", "DELIVERED", "CLOSED"].includes(req.status)
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
                       {getStatusLabel(req.status)}
                     </span>
                   </td>
-                  <td className="px-6 py-3.5 text-xs text-[#191c1d] font-semibold">{req.deadline}</td>
+                  <td className="px-6 py-3.5 text-xs text-[#191c1d] font-semibold">
+                    {req.deadline}
+                  </td>
                   <td className="px-6 py-3.5 text-right">
-                    <button className="text-[#0037b0] hover:underline text-xs font-bold flex items-center justify-end gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRequestId(req.id);
+                        setTrackingModalRequest(req);
+                      }}
+                      className="text-[#0037b0] hover:underline text-xs font-bold flex items-center justify-end gap-1"
+                    >
                       <span>Track</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
@@ -357,7 +755,421 @@ export const MemberDashboardView: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={currentPageClamped}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={memberRequests.length}
+          onPageChange={setCurrentPage}
+          label="requests"
+        />
       </section>
+
+      {/* ═══════════════════════════════════════════════════════
+          ENHANCED TRACKING MODAL
+          ═══════════════════════════════════════════════════════ */}
+      {trackingModalRequest && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setTrackingModalRequest(null)}
+        >
+          <div
+            className="bg-white border border-[#c4c5d7] rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fadeIn"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ── Modal Header ── */}
+            <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="bg-[#dce1ff] text-[#001551] font-bold text-xs px-2.5 py-1 rounded-full uppercase tracking-wider">
+                  {trackingModalRequest.id}
+                </span>
+                <div>
+                  <h3 className="font-sans font-bold text-gray-900 text-sm">
+                    {trackingModalRequest.title}
+                  </h3>
+                  <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                    {trackingModalRequest.category}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setTrackingModalRequest(null)}
+                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* ── Modal Body ── */}
+            <div className="flex-1 overflow-y-auto">
+              {detailLoading ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0037b0]" />
+                </div>
+              ) : detail ? (
+                <div className="p-6 space-y-6">
+                  {/* ── Status + Priority + Time Remaining ── */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span
+                      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        ["APPROVED", "DELIVERED", "CLOSED"].includes(
+                          detail.status,
+                        )
+                          ? "bg-emerald-100 text-emerald-800"
+                          : detail.status === "OVERDUE"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {getStatusLabel(detail.status)}
+                    </span>
+                    {detail.priority === "URGENT" && (
+                      <span className="bg-red-50 text-red-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-red-200 animate-pulse uppercase tracking-wider">
+                        Urgent Priority
+                      </span>
+                    )}
+                    {deadlineInfo && (
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${deadlineInfo.color}`}
+                      >
+                        {deadlineInfo.label}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* ── Progress Bar ── */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-bold text-[#434655]">
+                      <span className="uppercase tracking-wider">
+                        Workflow Progress
+                      </span>
+                      <span className="text-[#0037b0]">{progress}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#0037b0] rounded-full transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* ── Assigned Officer ── */}
+                  {detail.officer && (
+                    <div className="flex items-center gap-3 bg-gray-50 border border-[#c4c5d7] rounded-lg p-3">
+                      <div className="w-9 h-9 rounded-full bg-[#0037b0] text-white flex items-center justify-center text-xs font-bold">
+                        {detail.officer.initials}
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">
+                          Assigned Research Officer
+                        </p>
+                        <p className="text-xs font-bold text-gray-900">
+                          {detail.officer.title
+                            ? `${detail.officer.title} `
+                            : ""}
+                          {detail.officer.firstName} {detail.officer.lastName}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Milestone Timestamps ── */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Submitted", date: detail.dateSubmitted },
+                      { label: "Assigned", date: detail.dateAssigned },
+                      { label: "Completed", date: detail.dateCompleted },
+                      { label: "Delivered", date: detail.dateDelivered },
+                    ].map((m) => (
+                      <div
+                        key={m.label}
+                        className={`rounded-lg p-2.5 text-center border ${
+                          m.date
+                            ? "bg-blue-50/50 border-blue-100"
+                            : "bg-gray-50 border-gray-100"
+                        }`}
+                      >
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">
+                          {m.label}
+                        </p>
+                        <p
+                          className={`text-xs font-bold mt-0.5 ${m.date ? "text-gray-900" : "text-gray-400"}`}
+                        >
+                          {m.date ? formatDate(m.date) : "—"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Vertical Timeline Steps ── */}
+                  <div>
+                    <h4 className="font-sans font-bold text-xs text-[#191c1d] uppercase tracking-wider mb-4">
+                      Progress Timeline
+                    </h4>
+                    <div className="space-y-6 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
+                      {getTimelineSteps(trackingModalRequest).map(
+                        (step, idx) => {
+                          let dotClass = "bg-gray-200 text-gray-400";
+                          let titleClass = "text-gray-400 font-medium";
+                          if (step.status === "completed") {
+                            dotClass =
+                              "bg-[#0037b0] text-white ring-4 ring-blue-50";
+                            titleClass = "text-gray-900 font-bold";
+                          } else if (step.status === "active") {
+                            dotClass =
+                              "bg-yellow-500 text-white ring-4 ring-yellow-50 animate-pulse";
+                            titleClass = "text-yellow-800 font-bold";
+                          }
+
+                          return (
+                            <div className="flex gap-5 relative z-10" key={idx}>
+                              <div
+                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${dotClass}`}
+                              >
+                                {step.status === "completed" ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                ) : (
+                                  idx + 1
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start gap-2">
+                                  <h4 className={`text-sm ${titleClass}`}>
+                                    {step.title}
+                                  </h4>
+                                  <span className="text-[11px] font-semibold text-gray-400 shrink-0">
+                                    {step.date
+                                      ? formatDate(step.date as string)
+                                      : "—"}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-0.5 leading-normal">
+                                  {step.desc}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        },
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Draft Version History ── */}
+                  {detail.reports.length > 0 && (
+                    <div className="border-t border-gray-100 pt-5 space-y-3">
+                      <h4 className="font-sans font-bold text-xs text-[#191c1d] uppercase tracking-wider flex items-center gap-1.5">
+                        <GitBranch className="w-3.5 h-3.5" />
+                        Draft Version History
+                      </h4>
+                      {detail.reports.map((report) => (
+                        <div
+                          key={report.id}
+                          className="bg-gray-50 border border-[#c4c5d7] rounded-lg p-3 space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="bg-[#dce1ff] text-[#001551] text-[10px] font-bold px-2 py-0.5 rounded">
+                                v{report.version}
+                              </span>
+                              <span className="text-xs font-bold text-gray-900">
+                                {report.title}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {report.isApproved && (
+                                <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                  Approved
+                                </span>
+                              )}
+                              {report.isDraft && !report.isApproved && (
+                                <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                  Draft
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-gray-500">
+                            by {report.author.firstName}{" "}
+                            {report.author.lastName} •{" "}
+                            {formatDate(report.createdAt)}
+                          </p>
+                          {report.versions.length > 1 && (
+                            <div className="flex flex-wrap gap-1">
+                              {report.versions.map((v) => (
+                                <span
+                                  key={v.id}
+                                  className="text-[10px] bg-white border border-gray-200 text-gray-600 px-1.5 py-0.5 rounded"
+                                >
+                                  v{v.version}
+                                  {v.notes ? ` — ${v.notes}` : ""}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── Activity Feed ── */}
+                  {activityLogs.length > 0 && (
+                    <div className="border-t border-gray-100 pt-5 space-y-3">
+                      <h4 className="font-sans font-bold text-xs text-[#191c1d] uppercase tracking-wider flex items-center gap-1.5">
+                        <Activity className="w-3.5 h-3.5" />
+                        Activity Feed
+                      </h4>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {activityLogs.map((log) => (
+                          <div
+                            key={log.id}
+                            className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                              {log.author?.initials || "—"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-gray-900">
+                                <span className="font-bold">
+                                  {log.author?.firstName} {log.author?.lastName}
+                                </span>{" "}
+                                <span className="text-gray-500">
+                                  {log.description.toLowerCase()}
+                                </span>
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-gray-400">
+                                  {formatRelativeTime(log.createdAt)}
+                                </span>
+                                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium">
+                                  {ACTION_LABELS[log.action] || log.action}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Comments Thread ── */}
+                  {detail.comments.length > 0 && (
+                    <div className="border-t border-gray-100 pt-5 space-y-3">
+                      <h4 className="font-sans font-bold text-xs text-[#191c1d] uppercase tracking-wider flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Comments &amp; Feedback ({detail.comments.length})
+                      </h4>
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {detail.comments.map((comment) => (
+                          <div
+                            key={comment.id}
+                            className={`rounded-lg p-3 border ${
+                              comment.resolved
+                                ? "bg-gray-50 border-gray-100 opacity-60"
+                                : "bg-white border-[#c4c5d7]"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-[#515f74] text-white flex items-center justify-center text-[9px] font-bold">
+                                  {comment.author.initials}
+                                </div>
+                                <span className="text-xs font-bold text-gray-900">
+                                  {comment.author.title
+                                    ? `${comment.author.title} `
+                                    : ""}
+                                  {comment.author.firstName}{" "}
+                                  {comment.author.lastName}
+                                </span>
+                                {comment.section && (
+                                  <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                                    {comment.section}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {comment.resolved && (
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">
+                                    Resolved
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-gray-400">
+                                  {formatRelativeTime(comment.createdAt)}
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-xs text-gray-700 mt-2 leading-relaxed">
+                              {comment.text}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Delivered Attachments ── */}
+                  {detail.attachments.length > 0 && (
+                    <div className="border-t border-gray-100 pt-5 space-y-3">
+                      <h4 className="font-sans font-bold text-xs text-[#191c1d] uppercase tracking-wider">
+                        Delivered Attachments
+                      </h4>
+                      {detail.attachments.map((file) => (
+                        <div
+                          key={file.id}
+                          className="bg-white border border-[#c4c5d7] rounded-lg p-3 flex items-center justify-between shadow-sm hover:border-[#0037b0] transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-red-50 text-red-600 flex items-center justify-center font-bold text-xs">
+                              {file.fileType}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-gray-900 truncate max-w-75">
+                                {file.name}
+                              </p>
+                              <p className="text-[10px] text-gray-500">
+                                {file.fileSize
+                                  ? `${(file.fileSize / 1024).toFixed(1)} KB`
+                                  : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              downloadFile(file.id, file.name).catch(() =>
+                                toast.error(
+                                  `Failed to download "${file.name}"`,
+                                ),
+                              );
+                            }}
+                            className="p-1.5 hover:bg-gray-100 rounded text-gray-700 hover:text-[#0037b0] transition-colors"
+                            title="Download"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-20 text-sm text-gray-500">
+                  No details available.
+                </div>
+              )}
+            </div>
+
+            {/* ── Modal Footer ── */}
+            <div className="px-6 py-4 bg-[#f3f4f5] border-t border-[#c4c5d7] flex justify-end shrink-0">
+              <button
+                onClick={() => setTrackingModalRequest(null)}
+                className="text-xs font-semibold px-4 py-2 rounded bg-white border border-[#c4c5d7] text-[#191c1d] hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

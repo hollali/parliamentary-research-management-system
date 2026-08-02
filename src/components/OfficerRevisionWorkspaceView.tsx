@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { getRequest, getReviews, createReport, getAttachments, uploadFile } from '../lib/api';
+import { useToast } from '../lib/toast';
+import { getRequest, getReviews, createReport, updateReport, getAttachments, uploadFile, downloadFile } from '../lib/api';
 import { highlightText } from '../lib/highlight';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -17,6 +18,7 @@ import {
   ArrowLeft,
   Loader2,
   Upload,
+  Download,
   Paperclip,
   Bold,
   Italic,
@@ -51,7 +53,8 @@ interface ReviewComment {
 }
 
 export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceViewProps> = ({ requestId, onBack }) => {
-  const { requests, updateRequestContent, resolveComment, addComment, updateRequestStatus } = useApp();
+  const { requests, updateRequestContent, resolveComment, addComment, updateRequestStatus, templates } = useApp();
+  const { toast } = useToast();
   const request = requests.find(r => r.id === requestId) || requests[0];
   
   const [editorText, setEditorText] = useState('');
@@ -65,21 +68,56 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   const [attachments, setAttachments] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedText = useRef('');
+
+  const autoSave = useCallback(async (text: string) => {
+    if (text === lastSavedText.current || text.trim().length < 10) return;
+    lastSavedText.current = text;
+    updateRequestContent(request.id, text);
+    try {
+      if (reportId) {
+        await updateReport(reportId, { content: text, notes: 'Auto-saved' });
+      } else {
+        const data = await createReport({
+          requestId,
+          title: request.title,
+          content: text,
+          isDraft: true,
+          notes: 'Auto-saved',
+        });
+        if (data?.id) setReportId(data.id);
+      }
+      setLastSaved(new Date());
+    } catch {
+      // silent — manual save still available
+    }
+  }, [reportId, requestId, request?.title, updateRequestContent]);
 
   const editor = useEditor({
     extensions: [StarterKit, Highlight.configure({ multicolor: true })],
     content: '',
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none font-serif text-sm leading-relaxed min-h-[400px] outline-none p-4',
+        class: 'prose prose-sm max-w-none font-serif text-sm leading-relaxed min-h-[400px] h-full outline-none p-4',
       },
     },
     onUpdate: ({ editor }) => {
-      setEditorText(editor.getText());
+      const text = editor.getText();
+      setEditorText(text);
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = setTimeout(() => autoSave(text), 3000);
     },
   });
 
   // Fetch report content and reviews from API on mount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (!requestId) {
       setLoading(false);
@@ -101,7 +139,19 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
           setReportId(request.reportId || null);
           setDraftVersion(request.draftVersion);
         } else {
-          content = `Report draft for ${request?.title || 'Unknown'}.\n\nSection 1: Executive Summary\n[Edit this draft to add your summary analysis here]`;
+          // Try to pre-fill from the assigned template
+          const templateId = request?.templateId || data?.templateId;
+          const tpl = templates.find((t) => t.id === templateId);
+          if (tpl && Array.isArray(tpl.sections) && tpl.sections.length > 0) {
+            const sections = tpl.sections as { heading: string; prompt: string }[];
+            content = `# ${request?.title || 'Research Brief'}\n\n`;
+            content += `> Template: ${tpl.name}\n\n`;
+            for (const s of sections) {
+              content += `## ${s.heading}\n\n_${s.prompt}_\n\n[Write your content here]\n\n`;
+            }
+          } else {
+            content = `Report draft for ${request?.title || 'Unknown'}.\n\nSection 1: Executive Summary\n[Edit this draft to add your summary analysis here]`;
+          }
         }
         setEditorText(content);
         if (editor && content) {
@@ -190,20 +240,27 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
 
   const handleSaveDraft = async () => {
     updateRequestContent(request.id, editorText);
+    lastSavedText.current = editorText;
     
     try {
-      const data = await createReport({
-        requestId: request.id,
-        title: request.title,
-        content: editorText,
-        isDraft: true,
-        notes: `Draft saved (v${draftVersion})`,
-      });
-      if (data?.id && !reportId) {
-        setReportId(data.id);
+      if (reportId) {
+        await updateReport(reportId, { content: editorText, notes: `Draft saved (v${draftVersion})` });
+      } else {
+        const data = await createReport({
+          requestId,
+          title: request.title,
+          content: editorText,
+          isDraft: true,
+          notes: `Draft saved (v${draftVersion})`,
+        });
+        if (data?.id) {
+          setReportId(data.id);
+        }
       }
+      setLastSaved(new Date());
+      toast.success('Draft saved');
     } catch {
-      // Local save already happened
+      toast.error('Failed to save draft');
     }
   };
 
@@ -223,15 +280,15 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     // Create new report version via API
     try {
       await createReport({
-        requestId: request.id,
-        title: request.title,
-        content: editorText,
-        isDraft: false,
-        filePath: latestAttachment?.filePath || undefined,
-        fileType: latestAttachment?.fileType || undefined,
-        fileSize: latestAttachment?.fileSize || undefined,
-        notes: `Revision v${draftVersion + 1} submitted for review`,
-      });
+          requestId,
+          title: request.title,
+          content: editorText,
+          isDraft: false,
+          filePath: latestAttachment?.filePath || undefined,
+          fileType: latestAttachment?.fileType || undefined,
+          fileSize: latestAttachment?.fileSize || undefined,
+          notes: `Revision v${draftVersion + 1} submitted for review`,
+        });
     } catch {
       // Fall through to local-only
     }
@@ -447,13 +504,13 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto min-h-[400px]">
+          <div className="flex-1 overflow-y-auto min-h-[400px] max-h-[600px]">
             <EditorContent editor={editor} className="p-6" />
           </div>
 
           <div className="bg-[#f3f4f5] border-t border-[#c4c5d7] px-6 py-3 text-xs text-gray-500 font-semibold flex justify-between items-center">
             <span>Word count: {editor ? editor.getText().split(/\s+/).filter(Boolean).length : 0} words</span>
-            <span>Last auto-saved: Just now</span>
+            <span>{lastSaved ? `Last saved: ${lastSaved.toLocaleTimeString()}` : 'Not yet saved'}</span>
           </div>
         </div>
 
@@ -608,7 +665,18 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
                   <FileText className="w-4 h-4 text-red-500" />
                   <span className="font-semibold text-gray-900">{att.name}</span>
                 </div>
-                <span className="text-gray-500 font-bold">{att.fileSize ? `${(att.fileSize / 1024 / 1024).toFixed(1)} MB` : ''}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-500 font-bold">{att.fileSize ? `${(att.fileSize / 1024 / 1024).toFixed(1)} MB` : ''}</span>
+                  {att.id && (
+                    <button
+                      onClick={() => downloadFile(att.id, att.name).catch(() => toast.error(`Failed to download "${att.name}"`))}
+                      className="p-1 hover:bg-gray-200 rounded text-gray-600 hover:text-[#0037b0] transition-colors"
+                      title="Download"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

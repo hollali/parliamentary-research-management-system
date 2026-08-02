@@ -1,319 +1,370 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
-import { 
-  FileText, 
-  Copy, 
-  CheckCircle2, 
-  BookOpen, 
-  BarChart3, 
-  Scale, 
-  Globe, 
-  Users
+import {
+  FileText,
+  Copy,
+  CheckCircle2,
+  BookOpen,
+  BarChart3,
+  Scale,
+  Globe,
+  Users,
+  Trash2,
+  Plus,
+  ArrowUp,
+  ArrowDown,
+  X,
+  Eye,
 } from 'lucide-react';
 
-interface TemplateSection {
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  Legislation: <Scale className="w-5 h-5" />,
+  Policy: <BarChart3 className="w-5 h-5" />,
+  Committee: <Users className="w-5 h-5" />,
+  Research: <BookOpen className="w-5 h-5" />,
+  Proceedings: <Globe className="w-5 h-5" />,
+  Custom: <FileText className="w-5 h-5" />,
+};
+
+const CATEGORIES = ['Legislation', 'Policy', 'Committee', 'Research', 'Proceedings', 'Custom'];
+
+interface SectionDraft {
   heading: string;
   prompt: string;
 }
 
-interface Template {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  icon: React.ReactNode;
-  sections: TemplateSection[];
-}
-
-const TEMPLATES: Template[] = [
-  {
-    id: 'legislative-brief',
-    name: 'Legislative Brief',
-    description: 'Standard format for briefs on pending or proposed legislation.',
-    category: 'Legislation',
-    icon: <Scale className="w-5 h-5" />,
-    sections: [
-      { heading: 'Executive Summary', prompt: 'Provide a 2-3 paragraph summary of the key findings and recommendations.' },
-      { heading: 'Background', prompt: 'Context of the legislation: when introduced, by whom, current parliamentary stage.' },
-      { heading: 'Key Provisions', prompt: 'Summary of major clauses and their practical implications.' },
-      { heading: 'Comparative Analysis', prompt: 'How similar legislation works in other jurisdictions (ECOWAS, Commonwealth).' },
-      { heading: 'Stakeholder Views', prompt: 'Positions of government, civil society, affected groups, and international bodies.' },
-      { heading: 'Fiscal Implications', prompt: 'Estimated cost to the state, revenue implications, and budget line items.' },
-      { heading: 'Constitutional Considerations', prompt: 'Alignment with the 1992 Constitution and relevant court decisions.' },
-      { heading: 'Recommendations', prompt: 'Specific, actionable recommendations for the Committee or House.' },
-    ],
-  },
-  {
-    id: 'policy-brief',
-    name: 'Policy Brief',
-    description: 'For analysis of government policies and their impact on citizens.',
-    category: 'Policy',
-    icon: <BarChart3 className="w-5 h-5" />,
-    sections: [
-      { heading: 'Issue Overview', prompt: 'What policy issue is being examined and why it matters to Parliament.' },
-      { heading: 'Current Policy Landscape', prompt: 'Description of existing policies, regulations, and institutional frameworks.' },
-      { heading: 'Data & Evidence', prompt: 'Key statistics, research findings, and empirical evidence relevant to the issue.' },
-      { heading: 'Impact Assessment', prompt: 'How the policy affects different regions, demographics, and sectors in Ghana.' },
-      { heading: 'International Benchmarks', prompt: 'Best practices and lessons from comparable countries.' },
-      { heading: 'Policy Options', prompt: 'Alternative approaches Parliament could consider, with pros and cons.' },
-      { heading: 'Recommendations', prompt: 'Clear, evidence-based policy recommendations with implementation considerations.' },
-    ],
-  },
-  {
-    id: 'committee-report',
-    name: 'Committee Report',
-    description: 'Formal report structure for committee inquiries and investigations.',
-    category: 'Committee',
-    icon: <Users className="w-5 h-5" />,
-    sections: [
-      { heading: 'Mandate & Scope', prompt: 'Terms of reference, timeline, and authority under which the inquiry was conducted.' },
-      { heading: 'Methodology', prompt: 'How information was gathered: hearings, site visits, document review, interviews.' },
-      { heading: 'Background & Context', prompt: 'Historical context and preceding events that led to the inquiry.' },
-      { heading: 'Findings of Fact', prompt: 'Objective, evidence-based findings organized by theme or issue area.' },
-      { heading: 'Analysis & Discussion', prompt: 'Interpretation of findings, root causes, and systemic issues identified.' },
-      { heading: 'Stakeholder Submissions', prompt: 'Summary of key testimony and submissions received.' },
-      { heading: 'Recommendations', prompt: 'Numbered, specific recommendations directed at responsible entities.' },
-      { heading: 'Dissenting Views', prompt: 'Any minority reports or differing opinions among committee members.' },
-    ],
-  },
-  {
-    id: 'research-summary',
-    name: 'Research Summary',
-    description: 'Concise summary format for completed research deliverables.',
-    category: 'Research',
-    icon: <BookOpen className="w-5 h-5" />,
-    sections: [
-      { heading: 'Research Question', prompt: 'The specific question(s) this research sought to answer.' },
-      { heading: 'Methodology', prompt: 'Research design, data sources, analytical methods used.' },
-      { heading: 'Key Findings', prompt: 'Bullet-point summary of the most important discoveries.' },
-      { heading: 'Detailed Analysis', prompt: 'In-depth discussion of findings with supporting evidence and data.' },
-      { heading: 'Implications for Parliament', prompt: 'How findings relate to current legislative or oversight activities.' },
-      { heading: 'Limitations', prompt: 'Constraints, gaps in data, and areas requiring further research.' },
-      { heading: 'References', prompt: 'Key sources consulted during the research.' },
-    ],
-  },
-  {
-    id: 'hansard-summary',
-    name: 'Hansard Summary',
-    description: 'Format for summarizing parliamentary debate proceedings.',
-    category: 'Proceedings',
-    icon: <Globe className="w-5 h-5" />,
-    sections: [
-      { heading: 'Session Details', prompt: 'Date, sitting number, presiding officer, quorum confirmation.' },
-      { heading: 'Order of Business', prompt: 'Sequence of items on the day\'s agenda.' },
-      { heading: 'Key Debates', prompt: 'Summary of major floor debates including positions taken by both sides.' },
-      { heading: 'Motions & Votes', prompt: 'All motions proposed, seconded, and voted upon with results.' },
-      { heading: 'Questions to Ministers', prompt: 'Notable oral and written questions and ministerial responses.' },
-      { heading: 'Committee Reports Presented', prompt: 'Reports tabled and any actions requested of the House.' },
-      { heading: 'Announcements', prompt: 'Official announcements, upcoming sittings, and adjournment.' },
-    ],
-  },
+const DEFAULT_SECTIONS: SectionDraft[] = [
+  { heading: 'Introduction', prompt: 'Provide context and purpose of this research document.' },
+  { heading: 'Methodology', prompt: 'Describe the research approach and data sources used.' },
+  { heading: 'Findings', prompt: 'Present the key findings with supporting evidence.' },
+  { heading: 'Analysis', prompt: 'Interpret findings and discuss implications.' },
+  { heading: 'Recommendations', prompt: 'Provide actionable recommendations based on the analysis.' },
 ];
 
+const OVERLAY_STYLE = { top: '-100px', bottom: '-100px', width: '200vw', left: '50%', transform: 'translateX(-50%)' };
+
 export const ResearchTemplatesView: React.FC = () => {
+  const { templates, addTemplate, removeTemplate } = useApp();
   const { toast } = useToast();
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [customTemplates, setCustomTemplates] = useState<Template[]>(() => {
-    const saved = localStorage.getItem('prrms_custom_templates');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [customName, setCustomName] = useState('');
-  const [customDescription, setCustomDescription] = useState('');
-  const [showNewForm, setShowNewForm] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [modalName, setModalName] = useState('');
+  const [modalDescription, setModalDescription] = useState('');
+  const [modalCategory, setModalCategory] = useState('Custom');
+  const [modalSections, setModalSections] = useState<SectionDraft[]>(DEFAULT_SECTIONS.map((s) => ({ ...s })));
+  const [modalErrors, setModalErrors] = useState<{ name?: string; sections?: string }>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const allTemplates = [...TEMPLATES, ...customTemplates];
+  const resetModal = useCallback(() => {
+    setModalName('');
+    setModalDescription('');
+    setModalCategory('Custom');
+    setModalSections(DEFAULT_SECTIONS.map((s) => ({ ...s })));
+    setModalErrors({});
+    setSubmitting(false);
+  }, []);
 
-  const saveCustomTemplates = (templates: Template[]) => {
-    setCustomTemplates(templates);
-    localStorage.setItem('prrms_custom_templates', JSON.stringify(templates));
+  const openModal = () => { resetModal(); setShowModal(true); };
+  const closeModal = () => { setShowModal(false); resetModal(); };
+
+  const addSection = () => setModalSections((p) => [...p, { heading: '', prompt: '' }]);
+  const removeSection = (i: number) => { if (modalSections.length > 1) setModalSections((p) => p.filter((_, j) => j !== i)); };
+  const updateSection = (i: number, field: 'heading' | 'prompt', v: string) =>
+    setModalSections((p) => p.map((s, j) => (j === i ? { ...s, [field]: v } : s)));
+  const moveSection = (i: number, d: -1 | 1) => {
+    const t = i + d;
+    if (t < 0 || t >= modalSections.length) return;
+    setModalSections((p) => { const n = [...p]; [n[i], n[t]] = [n[t], n[i]]; return n; });
   };
 
-  const handleCreateCustom = () => {
-    if (!customName.trim()) {
-      toast.error('Template name is required');
-      return;
-    }
-    const newTemplate: Template = {
-      id: `custom-${Date.now()}`,
-      name: customName.trim(),
-      description: customDescription.trim() || 'Custom research template',
-      category: 'Custom',
-      icon: <FileText className="w-5 h-5" />,
-      sections: [
-        { heading: 'Introduction', prompt: 'Provide context and purpose of this research document.' },
-        { heading: 'Methodology', prompt: 'Describe the research approach and data sources used.' },
-        { heading: 'Findings', prompt: 'Present the key findings with supporting evidence.' },
-        { heading: 'Analysis', prompt: 'Interpret findings and discuss implications.' },
-        { heading: 'Recommendations', prompt: 'Provide actionable recommendations based on the analysis.' },
-      ],
-    };
-    saveCustomTemplates([...customTemplates, newTemplate]);
-    setCustomName('');
-    setCustomDescription('');
-    setShowNewForm(false);
-    setSelectedTemplate(newTemplate);
-    toast.success('Custom template created');
+  const validateModal = (): boolean => {
+    const e: { name?: string; sections?: string } = {};
+    if (!modalName.trim()) e.name = 'Template name is required';
+    if (modalSections.some((s) => !s.heading.trim())) e.sections = 'All sections must have a heading';
+    setModalErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  const handleDeleteCustom = (templateId: string) => {
-    const updated = customTemplates.filter((t) => t.id !== templateId);
-    saveCustomTemplates(updated);
-    if (selectedTemplate?.id === templateId) setSelectedTemplate(null);
-    toast.success('Template deleted');
-  };
+  const selectedTemplate = templates.find((t) => t.id === selectedId) || null;
 
-  const generateMarkdown = (template: Template): string => {
-    let md = `# ${template.name}\n\n`;
-    md += `> ${template.description}\n\n`;
-    template.sections.forEach((s, i) => {
-      md += `## ${i + 1}. ${s.heading}\n\n`;
-      md += `_${s.prompt}_\n\n`;
-      md += `[Content goes here]\n\n`;
-    });
+  const generateMarkdown = (name: string, desc: string, sections: { heading: string; prompt: string }[]): string => {
+    let md = `# ${name}\n\n> ${desc}\n\n`;
+    sections.forEach((s, i) => { md += `## ${i + 1}. ${s.heading}\n\n_${s.prompt}_\n\n[Content goes here]\n\n`; });
     return md;
   };
 
-  const handleCopy = (template: Template) => {
-    const md = generateMarkdown(template);
-      navigator.clipboard.writeText(md).then(() => {
-        setCopied(true);
-        toast.success('Template copied. Paste into your report draft to use.');
-        setTimeout(() => setCopied(false), 2000);
-      });
+  const handleCopy = (t: typeof templates[0]) => {
+    const sections = t.sections as { heading: string; prompt: string }[];
+    navigator.clipboard.writeText(generateMarkdown(t.name, t.description || '', sections)).then(() => {
+      setCopiedId(t.id);
+      toast.success('Template copied. Paste into your report draft to use.');
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
+
+  const handleCreate = async () => {
+    if (!validateModal()) return;
+    const cleaned = modalSections.filter((s) => s.heading.trim()).map((s) => ({ heading: s.heading.trim(), prompt: s.prompt.trim() }));
+    try {
+      setSubmitting(true);
+      const created = await addTemplate(modalName.trim(), modalDescription.trim() || undefined, modalCategory, cleaned);
+      setShowModal(false); resetModal(); setSelectedId(created.id);
+      toast.success('Template created');
+    } catch { toast.error('Failed to create template'); } finally { setSubmitting(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    try { await removeTemplate(id); if (selectedId === id) setSelectedId(null); toast.success('Template deleted'); }
+    catch { toast.error('Failed to delete template'); }
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn">
+    <div className="space-y-8 animate-fadeIn">
+      {/* ── Page header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-sans font-bold text-2xl text-[#191c1d]">Research Output Templates</h2>
-          <p className="font-sans text-sm text-[#434655] mt-1">Pre-defined report structures for common research deliverables.</p>
+          <h2 className="font-sans font-bold text-3xl text-[#191c1d]">Research Output Templates</h2>
+          <p className="font-sans text-base text-[#434655] mt-1.5">
+            Pre-defined report structures for common research deliverables.
+            {templates.length > 0 && <span className="text-gray-400 ml-1.5">({templates.length} available)</span>}
+          </p>
         </div>
-        <button
-          onClick={() => setShowNewForm(!showNewForm)}
-          className="bg-[#0037b0] text-white text-xs font-bold px-4 py-2 rounded shadow hover:bg-[#1d4ed8] transition-all"
-        >
-          {showNewForm ? 'Cancel' : '+ New Template'}
+        <button onClick={openModal} className="bg-[#0037b0] text-white text-sm font-bold px-5 py-2.5 rounded-lg shadow hover:bg-[#1d4ed8] transition-all">
+          + New Template
         </button>
       </div>
 
-      {showNewForm && (
-        <div className="bg-white border border-[#0037b0] rounded-lg shadow-sm p-6 space-y-4">
-          <h3 className="font-bold text-sm text-[#191c1d]">Create Custom Template</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#434655] uppercase">Template Name</label>
-              <input
-                type="text"
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="e.g. Budget Analysis Brief"
-                className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 text-xs outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#434655] uppercase">Description</label>
-              <input
-                type="text"
-                value={customDescription}
-                onChange={(e) => setCustomDescription(e.target.value)}
-                placeholder="Brief description of the template purpose"
-                className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded p-2.5 text-xs outline-none"
-              />
-            </div>
-          </div>
-          <p className="text-[10px] text-gray-400">New templates include 5 default sections (Introduction, Methodology, Findings, Analysis, Recommendations). You can copy and customize after creation.</p>
-          <button
-            onClick={handleCreateCustom}
-            className="bg-[#0037b0] text-white text-xs font-bold px-4 py-2 rounded shadow hover:bg-[#1d4ed8] transition-all"
-          >
-            Create Template
-          </button>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {allTemplates.map((t) => (
-          <div
-            key={t.id}
-            className={`bg-white border rounded-lg shadow-sm p-5 cursor-pointer transition-all hover:shadow-md ${
-              selectedTemplate?.id === t.id
-                ? 'border-[#0037b0] ring-2 ring-[#0037b0] ring-inset'
-                : 'border-[#c4c5d7] hover:border-gray-300'
-            }`}
-            onClick={() => setSelectedTemplate(selectedTemplate?.id === t.id ? null : t)}
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-blue-50 rounded-lg text-[#0037b0] shrink-0">
-                {t.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-sans font-bold text-sm text-[#191c1d]">{t.name}</h3>
-                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mt-0.5">{t.category}</p>
-                <p className="text-xs text-gray-500 mt-2 leading-relaxed">{t.description}</p>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between">
-              <span className="text-[10px] text-gray-400 font-semibold">
-                {t.sections.length} sections
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleCopy(t); }}
-                  className="text-[10px] font-bold text-[#0037b0] hover:underline flex items-center gap-1"
-                >
-                  {copied && selectedTemplate?.id === t.id ? (
-                    <><CheckCircle2 className="w-3 h-3" /> Copied</>
-                  ) : (
-                    <><Copy className="w-3 h-3" /> Copy</>
-                  )}
-                </button>
-                {t.id.startsWith('custom-') && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteCustom(t.id); }}
-                    className="text-[10px] font-bold text-[#ba1a1a] hover:underline"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Preview panel */}
-      {selectedTemplate && (
-        <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h3 className="font-sans font-bold text-base text-[#191c1d]">{selectedTemplate.name}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">{selectedTemplate.description}</p>
-            </div>
-            <button
-              onClick={() => handleCopy(selectedTemplate)}
-              className="px-3 py-1.5 bg-[#0037b0] text-white text-[11px] font-bold rounded hover:bg-[#1d4ed8] transition-colors flex items-center gap-1.5"
-            >
-              <Copy className="w-3 h-3" /> Copy to Clipboard
-            </button>
-          </div>
-          <div className="p-6">
-            <div className="space-y-4">
-              {selectedTemplate.sections.map((s, i) => (
-                <div key={i} className="border-l-2 border-blue-200 pl-4">
-                  <h4 className="font-sans font-bold text-sm text-[#191c1d]">
-                    {i + 1}. {s.heading}
-                  </h4>
-                  <p className="text-xs text-gray-500 italic mt-1">{s.prompt}</p>
-                  <div className="mt-2 bg-gray-50 border border-gray-100 rounded p-3 min-h-[40px]">
-                    <span className="text-[10px] text-gray-300 italic">Content placeholder</span>
+      {/* ── Template cards ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {templates.map((t) => {
+          const sections = t.sections as { heading: string; prompt: string }[];
+          const icon = CATEGORY_ICONS[t.category] || CATEGORY_ICONS.Custom;
+          return (
+            <div key={t.id} className={`bg-white border-2 rounded-xl shadow-sm transition-all hover:shadow-lg ${selectedId === t.id ? 'border-[#0037b0] ring-2 ring-[#0037b0] ring-inset' : 'border-[#e0e1e6] hover:border-gray-300'}`}>
+              <div className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-blue-50 rounded-xl text-[#0037b0] shrink-0">{icon}</div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-sans font-bold text-lg text-[#191c1d] leading-tight">{t.name}</h3>
+                    <span className="inline-block mt-1.5 text-xs text-[#0037b0] bg-blue-50 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide">{t.category}</span>
+                    {t.description && <p className="text-sm text-gray-500 mt-2.5 leading-relaxed">{t.description}</p>}
                   </div>
                 </div>
-              ))}
+
+                {/* Section list */}
+                <div className="mt-4 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg px-4 py-3">
+                  <div className="space-y-1.5">
+                    {sections.map((s, i) => (
+                      <div key={i} className="flex items-center gap-2.5">
+                        <span className="text-xs font-bold text-gray-300 w-5 text-right shrink-0">{i + 1}.</span>
+                        <span className="text-sm text-[#434655]">{s.heading}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Card footer */}
+              <div className="px-6 py-4 border-t border-[#f0f0f2] flex items-center justify-between">
+                <span className="text-xs text-gray-400 font-semibold">
+                  {sections.length} sections{t.isBuiltIn && <span className="ml-1.5 text-[#0037b0]">(Built-in)</span>}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setSelectedId(t.id)} className="p-2.5 rounded-lg bg-[#0037b0] text-white hover:bg-[#1d4ed8] transition-colors shadow-sm" title="View template">
+                    <Eye className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => handleCopy(t)} className="p-2.5 rounded-lg bg-blue-50 text-[#0037b0] hover:bg-blue-100 transition-colors" title="Copy template">
+                    {copiedId === t.id ? <CheckCircle2 className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                  </button>
+                  {!t.isBuiltIn && (
+                    <button onClick={() => handleDelete(t.id)} className="p-2.5 rounded-lg bg-red-50 text-[#ba1a1a] hover:bg-red-100 transition-colors" title="Delete template">
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {templates.length === 0 && (
+          <div className="col-span-full text-center py-20 text-gray-400">
+            <FileText className="w-14 h-14 mx-auto mb-4 opacity-40" />
+            <p className="text-lg font-semibold">No templates available</p>
+            <p className="text-sm mt-1.5">Create a custom template or contact your administrator.</p>
+          </div>
+        )}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          PREVIEW MODAL
+         ═══════════════════════════════════════════════════════ */}
+      {selectedTemplate && (
+        <>
+          <div className="fixed z-50 bg-black/50 backdrop-blur-sm" style={OVERLAY_STYLE} onClick={() => setSelectedId(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full h-full flex flex-col overflow-hidden pointer-events-auto">
+              {/* Header */}
+              <div className="px-10 py-6 border-b border-gray-200 flex items-start justify-between shrink-0">
+                <div className="flex items-center gap-4 flex-1 min-w-0 pr-6">
+                  <div className="p-4 bg-blue-50 rounded-xl text-[#0037b0] shrink-0">
+                    {CATEGORY_ICONS[selectedTemplate.category] || CATEGORY_ICONS.Custom}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h2 className="font-sans font-bold text-2xl text-[#191c1d] leading-tight">{selectedTemplate.name}</h2>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-sm text-[#0037b0] bg-blue-50 px-3 py-1 rounded-full font-bold uppercase tracking-wide">{selectedTemplate.category}</span>
+                      <span className="text-sm text-gray-400 font-semibold">
+                        {(selectedTemplate.sections as { heading: string; prompt: string }[]).length} sections
+                      </span>
+                      {selectedTemplate.isBuiltIn && <span className="text-sm text-[#0037b0] font-semibold">(Built-in)</span>}
+                    </div>
+                    {selectedTemplate.description && <p className="text-base text-gray-500 mt-3 leading-relaxed">{selectedTemplate.description}</p>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button onClick={() => handleCopy(selectedTemplate)} className="px-5 py-2.5 bg-[#0037b0] text-white text-sm font-bold rounded-lg hover:bg-[#1d4ed8] transition-colors flex items-center gap-2 shadow">
+                    <Copy className="w-4 h-4" /> Copy to Clipboard
+                  </button>
+                  <button onClick={() => setSelectedId(null)} className="p-2.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+              {/* Sections */}
+              <div className="px-10 py-8 overflow-y-auto flex-1">
+                <div className="space-y-8 max-w-4xl">
+                  {(selectedTemplate.sections as { heading: string; prompt: string }[]).map((s, i) => (
+                    <div key={i} className="border-l-4 border-blue-200 pl-8">
+                      <h4 className="font-sans font-bold text-xl text-[#191c1d]">{i + 1}. {s.heading}</h4>
+                      <p className="text-base text-gray-500 italic mt-2 leading-relaxed">{s.prompt}</p>
+                      <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-5 min-h-[72px]">
+                        <span className="text-sm text-gray-300 italic">Content placeholder</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          CREATE MODAL
+         ═══════════════════════════════════════════════════════ */}
+      {showModal && (
+        <>
+          <div className="fixed z-50 bg-black/50 backdrop-blur-sm" style={OVERLAY_STYLE} onClick={closeModal} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-full max-h-[90vh] flex flex-col overflow-hidden pointer-events-auto">
+              {/* Header */}
+              <div className="px-8 py-5 border-b border-gray-200 flex items-center justify-between shrink-0">
+                <div>
+                  <h2 className="font-sans font-bold text-xl text-[#191c1d]">Create Custom Template</h2>
+                  <p className="text-sm text-gray-400 mt-1">Define the structure and section prompts for your template.</p>
+                </div>
+                <button onClick={closeModal} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-8 py-6 space-y-6 overflow-y-auto flex-1">
+                {/* Name */}
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-[#434655] uppercase">Template Name <span className="text-[#ba1a1a]">*</span></label>
+                  <input type="text" value={modalName} onChange={(e) => { setModalName(e.target.value); setModalErrors((p) => ({ ...p, name: undefined })); }}
+                    placeholder="e.g. Budget Analysis Brief"
+                    className={`w-full bg-[#f3f4f5] border-2 rounded-lg p-3.5 text-sm outline-none transition-colors ${modalErrors.name ? 'border-[#ba1a1a]' : 'border-[#c4c5d7] focus:border-[#0037b0]'}`} />
+                  {modalErrors.name && <p className="text-xs text-[#ba1a1a] font-semibold">{modalErrors.name}</p>}
+                </div>
+
+                {/* Description */}
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-[#434655] uppercase">Description</label>
+                  <textarea value={modalDescription} onChange={(e) => setModalDescription(e.target.value)}
+                    placeholder="Brief description of when and how this template should be used" rows={3}
+                    className="w-full bg-[#f3f4f5] border-2 border-[#c4c5d7] rounded-lg p-3.5 text-sm outline-none focus:border-[#0037b0] transition-colors resize-none" />
+                </div>
+
+                {/* Category */}
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-[#434655] uppercase">Category</label>
+                  <div className="flex flex-wrap gap-2.5">
+                    {CATEGORIES.map((cat) => (
+                      <button key={cat} onClick={() => setModalCategory(cat)}
+                        className={`px-4 py-2 rounded-full text-sm font-bold border-2 transition-all ${modalCategory === cat ? 'bg-[#0037b0] text-white border-[#0037b0]' : 'bg-white text-[#434655] border-[#c4c5d7] hover:border-[#0037b0] hover:text-[#0037b0]'}`}>
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── Sections ── */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-[#434655] uppercase">Sections <span className="text-[#ba1a1a]">*</span></label>
+                    <button onClick={addSection} className="flex items-center gap-1.5 text-sm font-bold text-white bg-[#0037b0] hover:bg-[#1d4ed8] px-3 py-1.5 rounded-lg transition-colors shadow-sm">
+                      <Plus className="w-4 h-4" /> Add Section
+                    </button>
+                  </div>
+                  {modalErrors.sections && <p className="text-xs text-[#ba1a1a] font-semibold">{modalErrors.sections}</p>}
+
+                  <div className="space-y-4">
+                    {modalSections.map((section, i) => (
+                      <div key={i} className="bg-[#f9fafb] border border-[#e5e7eb] rounded-xl p-5 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-bold text-gray-400 w-6 text-center shrink-0">{i + 1}</span>
+                          <input type="text" value={section.heading} onChange={(e) => { updateSection(i, 'heading', e.target.value); setModalErrors((p) => ({ ...p, sections: undefined })); }}
+                            placeholder="Section heading"
+                            className="flex-1 bg-white border border-[#d1d5db] rounded-lg px-4 py-2.5 text-sm font-bold text-[#191c1d] outline-none focus:border-[#0037b0] transition-colors" />
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => moveSection(i, -1)} disabled={i === 0}
+                              className="p-1.5 rounded-lg hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500" title="Move up">
+                              <ArrowUp className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => moveSection(i, 1)} disabled={i === modalSections.length - 1}
+                              className="p-1.5 rounded-lg hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed text-gray-500" title="Move down">
+                              <ArrowDown className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => removeSection(i)} disabled={modalSections.length <= 1}
+                              className="p-1.5 rounded-lg hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-[#ba1a1a]" title="Remove section">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <textarea value={section.prompt} onChange={(e) => updateSection(i, 'prompt', e.target.value)}
+                          placeholder="Guidance prompt for this section (what the author should address)" rows={2}
+                          className="w-full bg-white border border-[#d1d5db] rounded-lg px-4 py-2.5 text-sm text-[#434655] italic outline-none focus:border-[#0037b0] transition-colors resize-none" />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Add section — bottom button */}
+                  <button onClick={addSection}
+                    className="w-full py-3 border-2 border-dashed border-[#c4c5d7] rounded-xl text-sm font-bold text-[#0037b0] hover:border-[#0037b0] hover:bg-blue-50 transition-all flex items-center justify-center gap-2">
+                    <Plus className="w-4 h-4" /> Add another section
+                  </button>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-8 py-5 border-t border-gray-200 flex items-center justify-between shrink-0">
+                <span className="text-xs text-gray-400 font-semibold">{modalSections.length} section{modalSections.length !== 1 ? 's' : ''}</span>
+                <div className="flex items-center gap-4">
+                  <button onClick={closeModal} className="px-5 py-2.5 text-sm font-bold text-[#434655] hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                  <button onClick={handleCreate} disabled={submitting}
+                    className="px-5 py-2.5 bg-[#0037b0] text-white text-sm font-bold rounded-lg shadow hover:bg-[#1d4ed8] disabled:opacity-50 transition-all">
+                    {submitting ? 'Creating...' : 'Create Template'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

@@ -18,6 +18,7 @@ import notificationRoutes from "./routes/notifications.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import uploadRoutes from "./routes/uploads.js";
 import teamRoutes from "./routes/teams.js";
+import templateRoutes from "./routes/templates.js";
 import { checkOverdueRequests } from "./lib/overdueCheck.js";
 
 const app = express();
@@ -43,6 +44,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/teams", teamRoutes);
+app.use("/api/templates", templateRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {

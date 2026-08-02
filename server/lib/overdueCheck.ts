@@ -1,5 +1,6 @@
 import prisma from "./prisma.js";
 import { logger } from "./logger.js";
+import { createNotification } from "./notifications.js";
 
 export async function checkOverdueRequests(): Promise<void> {
   try {
@@ -25,7 +26,7 @@ export async function checkOverdueRequests(): Promise<void> {
     for (const request of overdueRequests) {
       const recentNotification = await prisma.notification.findFirst({
         where: {
-          link: `/requests/${request.id}`,
+          link: `/briefs/${request.requestNumber}`,
           type: "GENERAL",
           title: "Request Overdue",
           createdAt: { gte: recentThreshold },
@@ -41,14 +42,12 @@ export async function checkOverdueRequests(): Promise<void> {
       const daysOverdue = Math.ceil((now.getTime() - request.deadline.getTime()) / (1000 * 60 * 60 * 24));
 
       for (const recipientId of recipientIds) {
-        await prisma.notification.create({
-          data: {
-            recipientId,
-            type: "GENERAL",
-            title: "Request Overdue",
-            message: `"${request.title}" (${request.requestNumber}) is ${daysOverdue} day${daysOverdue > 1 ? "s" : ""} overdue.`,
-            link: `/requests/${request.id}`,
-          },
+        await createNotification({
+          recipientId,
+          type: "GENERAL",
+          title: "Request Overdue",
+          message: `"${request.title}" (${request.requestNumber}) is ${daysOverdue} day${daysOverdue > 1 ? "s" : ""} overdue.`,
+          requestNumber: request.requestNumber,
         });
       }
     }

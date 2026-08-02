@@ -2,8 +2,9 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, draftSubmittedEmail } from "../lib/email.js";
-import { shouldNotify, shouldEmail } from "../lib/notifications.js";
+import { shouldNotify, shouldEmail, createNotification } from "../lib/notifications.js";
 import { logger } from "../lib/logger.js";
+import { lookupByIdOrNumber } from "../lib/requestUtils.js";
 
 const router = Router();
 
@@ -16,21 +17,21 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
       return res.status(400).json({ error: "requestId and title are required" });
     }
 
-    const request = await prisma.researchRequest.findUnique({ where: { id: requestId } });
+    const request = await prisma.researchRequest.findUnique({ where: lookupByIdOrNumber(requestId) });
     if (!request) {
       return res.status(404).json({ error: "Request not found" });
     }
 
     // Get next version number
     const lastReport = await prisma.researchReport.findFirst({
-      where: { requestId },
+      where: { requestId: request.id },
       orderBy: { version: "desc" },
     });
     const nextVersion = (lastReport?.version || 0) + 1;
 
     const report = await prisma.researchReport.create({
       data: {
-        requestId,
+        requestId: request.id,
         authorId: req.user!.userId,
         uploadedById: req.user!.userId,
         title,
@@ -61,7 +62,7 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
 
     // Update request status
     await prisma.researchRequest.update({
-      where: { id: requestId },
+      where: { id: request.id },
       data: {
         status: isDraft !== false ? "DRAFT_SUBMITTED" : "IN_PROGRESS",
         draftVersion: nextVersion,
@@ -87,14 +88,12 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
 
       for (const admin of admins) {
         if (await shouldNotify(admin.id, 'draftMentions')) {
-          await prisma.notification.create({
-            data: {
-              recipientId: admin.id,
-              type: "REPORT_UPLOADED",
-              title: "Draft Submitted for Review",
-              message: `A new draft (v${nextVersion}) has been submitted for: ${request.title}`,
-              link: `/requests/${requestId}`,
-            },
+          await createNotification({
+            recipientId: admin.id,
+            type: "REPORT_UPLOADED",
+            title: "Draft Submitted for Review",
+            message: `A new draft (v${nextVersion}) has been submitted for: ${request.title}`,
+            requestId,
           });
         }
         if (await shouldEmail(admin.id)) {
@@ -107,6 +106,31 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
     res.status(201).json(report);
   } catch (error) {
     logger.requestError("POST", "/", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update existing report (auto-save)
+router.put("/:reportId", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), async (req, res) => {
+  try {
+    const { content, isDraft, notes } = req.body;
+    const report = await prisma.researchReport.findUnique({ where: { id: req.params.reportId } });
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    const updated = await prisma.researchReport.update({
+      where: { id: report.id },
+      data: {
+        ...(content !== undefined && { content }),
+        ...(isDraft !== undefined && { isDraft }),
+      },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true, initials: true } },
+      },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    logger.requestError("PUT", "/:reportId", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
