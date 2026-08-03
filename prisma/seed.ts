@@ -265,33 +265,6 @@ async function main() {
     }),
   ]);
 
-  const assistants = await Promise.all([
-    prisma.user.create({
-      data: {
-        email: "adwoa.boakye@parliament.gh",
-        passwordHash: password,
-        firstName: "Adwoa",
-        lastName: "Boakye",
-        role: Role.RESEARCH_ASSISTANT,
-        title: "Research Assistant",
-        initials: "AB",
-        departmentId: departments[1].id,
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: "yaw.darko@parliament.gh",
-        passwordHash: password,
-        firstName: "Yaw",
-        lastName: "Darko",
-        role: Role.RESEARCH_ASSISTANT,
-        title: "Research Assistant",
-        initials: "YD",
-        departmentId: departments[2].id,
-      },
-    }),
-  ]);
-
   const mps = await Promise.all([
     prisma.user.create({
       data: {
@@ -604,7 +577,6 @@ async function main() {
         create: [
           { userId: officers[0].id },
           { userId: officers[1].id },
-          { userId: assistants[0].id },
         ],
       },
     },
@@ -619,7 +591,6 @@ async function main() {
         create: [
           { userId: officers[1].id },
           { userId: officers[2].id },
-          { userId: assistants[1].id },
         ],
       },
     },
@@ -632,8 +603,8 @@ async function main() {
       leadId: admin.id,
       members: {
         create: [
+          { userId: officers[0].id },
           { userId: officers[2].id },
-          { userId: assistants[0].id },
         ],
       },
     },
@@ -721,7 +692,7 @@ async function main() {
   for (const tpl of builtInTemplates) {
     await prisma.template.upsert({
       where: { id: `builtin-${tpl.category.toLowerCase().replace(/\s+/g, "-")}` },
-      update: { name: tpl.name, description: tpl.description, sections: tpl.sections },
+      update: { name: tpl.name, description: tpl.description, sections: tpl.sections, isBuiltIn: true },
       create: {
         id: `builtin-${tpl.category.toLowerCase().replace(/\s+/g, "-")}`,
         name: tpl.name,

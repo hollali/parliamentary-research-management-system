@@ -49,7 +49,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     // Validate officers in a single batch query
     const officers = await prisma.user.findMany({
-      where: { id: { in: officerIds }, role: { in: ["RESEARCH_OFFICER", "RESEARCH_ASSISTANT"] } },
+      where: { id: { in: officerIds }, role: { in: ["RESEARCH_OFFICER"] } },
     });
     if (officers.length !== officerIds.length) {
       const foundIds = new Set(officers.map(o => o.id));
@@ -172,7 +172,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 router.get("/officers", authenticateToken, requireRole("ADMIN"), async (_req, res) => {
   try {
     const officers = await prisma.user.findMany({
-      where: { role: { in: ["RESEARCH_OFFICER", "RESEARCH_ASSISTANT"] }, isActive: true },
+      where: { role: { in: ["RESEARCH_OFFICER"] }, isActive: true },
       select: {
         id: true,
         firstName: true,
@@ -192,7 +192,7 @@ router.get("/officers", authenticateToken, requireRole("ADMIN"), async (_req, re
 });
 
 // Get my assignments (officer)
-router.get("/mine", authenticateToken, requireRole("RESEARCH_OFFICER", "RESEARCH_ASSISTANT"), async (req, res) => {
+router.get("/mine", authenticateToken, requireRole("RESEARCH_OFFICER"), async (req, res) => {
   try {
     const assignments = await prisma.assignment.findMany({
       where: { assignedToId: req.user!.userId },

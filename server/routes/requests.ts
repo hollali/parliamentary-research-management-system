@@ -74,7 +74,13 @@ router.get("/", authenticateToken, async (req, res) => {
       prisma.researchRequest.count({ where }),
     ]);
 
-    res.json({ requests, total, page, totalPages: Math.ceil(total / limit) });
+    const now = new Date();
+    const overdueStatuses = ["SUBMITTED", "ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"];
+    const enriched = requests.map((r) =>
+      overdueStatuses.includes(r.status) && new Date(r.deadline) < now ? { ...r, status: "OVERDUE" } : r,
+    );
+
+    res.json({ requests: enriched, total, page, totalPages: Math.ceil(total / limit) });
   } catch (error) {
     logger.requestError("GET", "/", error);
     res.status(500).json({ error: "Internal server error" });
@@ -438,7 +444,7 @@ router.get("/search/global", authenticateToken, async (req, res) => {
 
     if (role === "MP") {
       requestWhere.submitterId = userId;
-    } else if (role === "RESEARCH_OFFICER" || role === "RESEARCH_ASSISTANT") {
+    } else if (role === "RESEARCH_OFFICER") {
       requestWhere.OR = [
         { title: mode },
         { subject: mode },

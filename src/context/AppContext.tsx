@@ -137,6 +137,7 @@ function mapApiRequest(r: any): ResearchRequest {
     APPROVED: "APPROVED",
     DELIVERED: "DELIVERED",
     CLOSED: "CLOSED",
+    OVERDUE: "OVERDUE",
   };
 
   return {
@@ -347,7 +348,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
     getActivityLog({ limit: 20 })
       .then((data: any) => {
-        const logs = data?.activity || [];
+        const logs = data?.logs || [];
         const mapped: HistoryItem[] = logs.map((a: any) => ({
           id: a.id,
           userName: a.author
@@ -377,7 +378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       .catch((err: any) =>
         console.warn("Failed to load templates:", err?.message),
       );
-  }, [isOnline]);
+  }, [isOnline, currentUser.id]);
 
   // Poll for new notifications every 30 seconds
   useEffect(() => {
@@ -419,6 +420,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         email: data.user.email,
         initials: data.user.initials,
         title: data.user.title || data.user.role,
+        constituency: data.user.constituency,
       };
       setCurrentUser(apiUser);
       return true;
@@ -465,6 +467,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             email: impersonateData.user.email,
             initials: impersonateData.user.initials,
             title: impersonateData.user.title || impersonateData.user.role,
+            constituency: impersonateData.user.constituency,
           };
           setCurrentUser(apiUser);
           return;
@@ -883,6 +886,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               initials: data.initials || prev.initials,
               title: data.title || prev.title,
               email: data.email || prev.email,
+              ...(updates.constituency !== undefined && {
+                constituency: updates.constituency,
+              }),
             }));
           }
         },

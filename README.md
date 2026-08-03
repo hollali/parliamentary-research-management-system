@@ -4,9 +4,9 @@ A full-stack application for managing research requests, assignments, reports, a
 
 ## Tech Stack
 
-- **Frontend:** React 19, Vite 6, Tailwind CSS 4, TypeScript 5.8, Lucide React icons, TipTap rich text editor
+- **Frontend:** React 19, Vite 6, Tailwind CSS 4, TypeScript 5.8, React Router, Lucide React icons, Motion, TipTap rich text editor
 - **Backend:** Express.js, Prisma 7 ORM, PostgreSQL, JWT authentication, Nodemailer
-- **Tooling:** tsx, Vitest, concurrently, ESLint
+- **Tooling:** tsx, Vitest, concurrently
 
 ## Getting Started
 
@@ -80,6 +80,27 @@ A full-stack application for managing research requests, assignments, reports, a
 | `npm run test:run` | Run tests once |
 | `npm run test:ui` | Run Vitest UI |
 
+### Production Deployment
+
+1. Create a `.env` file with production values (see [Environment Variables](#environment-variables)). Set `NODE_ENV=production` and a strong, unique `JWT_SECRET`.
+2. Point `VITE_API_URL` at the API base URL (e.g. `https://api.example.com/api`) **before** building — it is baked into the frontend bundle.
+3. Build the frontend:
+   ```bash
+   npm run build
+   ```
+4. Apply migrations and seed the database:
+   ```bash
+   npm run db:migrate
+   npm run db:seed
+   ```
+5. Start the server. In production it serves both the API and the built frontend (`dist/`) from the same port:
+   ```bash
+   npm run server:start
+   ```
+6. Configure `SMTP_*` variables to enable transactional email (assignments, revisions, overdue alerts). Without SMTP, emails are logged to the console.
+
+> The health check at `/api/health` reports the server status and whether SMTP is configured.
+
 ## Test Credentials
 
 All users use password: **`password123`**
@@ -91,8 +112,6 @@ All users use password: **`password123`**
 | Research Officer | Kofi Osei | `kofi.osei@parliament.gh` |
 | Research Officer | Serwaa Appiah | `serwaa.appiah@parliament.gh` |
 | Research Officer | Gyasi Mensah | `gyasi.mensah@parliament.gh` |
-| Research Assistant | Adwoa Boakye | `adwoa.boakye@parliament.gh` |
-| Research Assistant | Yaw Darko | `yaw.darko@parliament.gh` |
 | MP | Hon. Emmanuel Boateng | `hon.boateng@parliament.gh` |
 | MP | Hon. Abena Adjei | `hon.adjei@parliament.gh` |
 | MP | Hon. John Kumah | `hon.kumah@parliament.gh` |
@@ -101,11 +120,10 @@ All users use password: **`password123`**
 
 ### Role-Based Access Control
 
-The system has 4 roles with different permissions:
+The system has 3 roles with different permissions:
 
 - **Admin** — Full access: assign research, manage requests, review reports, manage teams, view statistics, manage users, audit log
 - **Research Officer** — Accept/decline assignments, submit drafts, manage revisions, view briefs
-- **Research Assistant** — Support officers, view assigned work
 - **MP** — Submit research requests, track progress, view briefs, manage projects
 
 ### Research Request Lifecycle
@@ -119,6 +137,8 @@ Admin reviews → APPROVED or REVISION_REQUESTED
 Officer revises → REVISED → re-review
 Admin approves → APPROVED → DELIVERED → CLOSED
 ```
+
+Requests past their deadline while still in an active state (SUBMITTED through REVISED) are surfaced as `OVERDUE` — a computed display status derived from the deadline, not a stored value.
 
 ### Core Features
 
@@ -136,10 +156,12 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 - **Document Version Diff** — Side-by-side comparison of report versions with line-by-line diff highlighting
 - **Committee Workbench** — View and manage requests per parliamentary committee with cross-committee sharing
 - **Parliamentary Calendar** — Month-grid view of deadlines, overdue alerts, and upcoming milestones
-- **Research Templates** — Predefined report structures (Legislative Brief, Policy Brief, Committee Report, etc.)
+- **Research Templates** — Predefined report structures (Legislative Brief, Policy Brief, Committee Report, etc.) with built-in templates seeded into the database; admins can copy, create, edit, and delete templates
+- **Legislative Briefs** — Dedicated brief view with filtering, sorting, and pagination over research requests
+- **Member Directory** — Searchable, filterable parliamentary directory table with contact details, request counts, and active/inactive status
 - **Email Notifications** — Automated emails for assignments, draft submissions, review comments, and revision requests (requires SMTP config)
-- **Activity Audit Log** — Filterable log of all system actions with user attribution
-- **Workload Balancing** — Dashboard showing officer capacity and utilization stats
+- **Activity Audit Log** — Filterable, paginated log of all system actions with user attribution
+- **Workload Balancing** — Paginated dashboard showing officer capacity and utilization stats
 - **Global Search** — Command palette (Ctrl+K) for searching requests, reports, and people
 - **CSV/PDF Export** — Export data views as CSV or print to PDF
 - **File Uploads** — Attach multiple files (PDF, DOCX, XLSX, ZIP up to 50MB) to requests with upload progress indicators and secure download links
@@ -176,10 +198,12 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 │       ├── teams.ts               # Research team CRUD and membership
 │       ├── notifications.ts       # Notification listing and read management
 │       ├── dashboard.ts           # Metrics, analytics, activity log, workload
+│       ├── templates.ts           # Research template CRUD
 │       └── uploads.ts             # File upload and download
 ├── prisma/
-│   ├── schema.prisma              # Database schema (16 models, 7 enums)
-│   ├── seed.ts                    # Test data seeder (16 committees, 10 users, 6 requests)
+│   ├── schema.prisma              # Database schema (17 models, 7 enums)
+│   ├── seed.ts                    # Test data seeder (16 committees, 8 users, 6 requests)
+│   ├── seedTemplates.ts           # Built-in report template seeder
 │   └── migrations/                # Database migration history
 ├── src/                           # React frontend
 │   ├── App.tsx                    # Main routing, sidebar, global search
@@ -188,9 +212,12 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 │   ├── context/
 │   │   └── AppContext.tsx          # Global state, API calls, auth, auto-save
 │   ├── lib/
-│   │   ├── api.ts                 # 40+ API functions with JWT auth
+│   │   ├── api.ts                 # 65 API functions with JWT auth
 │   │   ├── format.ts              # Formatting helpers (honourable title)
-│   │   └── toast.ts               # Toast notification system
+│   │   ├── highlight.ts           # Inline annotation text highlighting helpers
+│   │   ├── requestAccess.ts       # Role/submitter-based request filtering helpers
+│   │   ├── toast.ts               # Toast notification system
+│   │   └── validation.ts          # Form input validation helpers
 │   └── components/
 │       ├── LoginView.tsx                  # Login form with demo role buttons
 │       ├── Sidebar.tsx                    # Role-filtered navigation sidebar
@@ -206,6 +233,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 │       ├── CommitteeWorkbenchView.tsx     # Committee management with cross-committee sharing
 │       ├── ParliamentaryCalendarView.tsx  # Calendar view with deadline highlighting
 │       ├── ResearchTemplatesView.tsx      # Predefined report templates
+│       ├── LegislativeBriefsView.tsx      # Legislative briefs with filtering, sorting, pagination
 │       ├── DocumentVersionDiffView.tsx    # Side-by-side version diff viewer
 │       ├── StatisticsView.tsx             # Charts and analytics (admin only)
 │       ├── MembersView.tsx                # Parliamentary directory (admin only)
@@ -216,6 +244,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 │       ├── ArchiveView.tsx                # Archived requests
 │       ├── GlobalSearch.tsx               # Ctrl+K search palette
 │       ├── ExportButton.tsx               # CSV/PDF export
+│       ├── Pagination.tsx                 # Reusable pagination control
 │       ├── ErrorBoundary.tsx              # Error boundary component
 │       └── LoadingSpinner.tsx             # Loading spinner
 ├── .env.example                   # Environment variable template
@@ -247,12 +276,13 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | `ActivityLog` | System-wide audit trail with action type and metadata |
 | `Setting` | Key-value application settings store |
 | `PasswordResetToken` | Secure password reset tokens with expiry |
+| `Template` | Reusable report structure templates with sections, category, and built-in flag |
 
 ### Enums
 
 | Enum | Values |
 |------|--------|
-| `Role` | `ADMIN`, `RESEARCH_OFFICER`, `RESEARCH_ASSISTANT`, `MP` |
+| `Role` | `ADMIN`, `RESEARCH_OFFICER`, `MP` |
 | `RequestStatus` | `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `DRAFT_SUBMITTED`, `REVISION_REQUESTED`, `REVISED`, `APPROVED`, `DELIVERED`, `CLOSED` |
 | `Priority` | `STANDARD`, `URGENT` |
 | `CommitteeType` | `STANDING`, `SELECT`, `JOINT`, `AD_HOC` |
@@ -282,6 +312,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 |--------|----------|-------------|------|
 | GET | `/` | List all requests | Yes |
 | GET | `/:id` | Get single request | Yes |
+| GET | `/:id/activity` | Get request activity timeline | Yes |
 | POST | `/` | Create new request | Yes (ADMIN, MP) |
 | PUT | `/:id` | Update request (sends DELIVERED notification to submitter) | Yes |
 | POST | `/:id/cancel` | Cancel request | Yes |
@@ -300,7 +331,7 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | GET | `/pending` | Pending assignments | Yes (ADMIN) |
 | POST | `/` | Assign officer(s)/team | Yes (ADMIN) |
 | GET | `/officers` | List available officers | Yes (ADMIN) |
-| GET | `/mine` | Get my assignments | Yes (OFFICER, ASSISTANT) |
+| GET | `/mine` | Get my assignments | Yes (OFFICER) |
 | POST | `/:assignmentId/accept` | Accept assignment | Yes (OFFICER) |
 | POST | `/:assignmentId/decline` | Decline with reason | Yes (OFFICER) |
 
@@ -370,6 +401,15 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | GET | `/:attachmentId/download` | Download file | Yes |
 | POST | `/:requestId` | Upload file (multipart) | Yes |
 
+### Templates (`/api/templates`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/` | List all templates | Yes |
+| GET | `/:id` | Get template details | Yes |
+| POST | `/` | Create template | Yes |
+| DELETE | `/:id` | Delete template (built-ins protected) | Yes |
+
 ### Health Check
 
 | Method | Endpoint | Description | Auth |
@@ -381,11 +421,13 @@ Admin approves → APPROVED → DELIVERED → CLOSED
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | `prrms-dev-secret` | JWT signing secret |
-| `FRONTEND_URL` | No | `http://localhost:3000` | CORS allowed origin |
+| `JWT_SECRET` | Yes | — | JWT signing secret (must be a secure random string) |
+| `JWT_EXPIRY` | No | `24h` | JWT token expiry (e.g. `1h`, `7d`) |
+| `FRONTEND_URL` | No | `http://localhost:3000` | CORS allowed origin (comma-separated list supported) |
 | `PORT` | No | `3001` | Backend server port |
-| `NODE_ENV` | No | `development` | Environment mode |
+| `NODE_ENV` | No | `development` | Environment mode (`production` serves the built frontend) |
 | `VITE_API_URL` | No | `http://localhost:3001/api` | Frontend API base URL |
+| `OFFICER_CAPACITY` | No | `10` | Max active assignments per officer used for workload stats |
 | `SMTP_HOST` | No | `localhost` | SMTP server host |
 | `SMTP_PORT` | No | `587` | SMTP server port |
 | `SMTP_SECURE` | No | `false` | Use TLS |

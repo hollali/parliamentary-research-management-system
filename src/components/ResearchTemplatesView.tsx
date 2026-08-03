@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
 import {
@@ -49,6 +49,7 @@ export const ResearchTemplatesView: React.FC = () => {
   const { toast } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalName, setModalName] = useState('');
   const [modalDescription, setModalDescription] = useState('');
@@ -68,6 +69,18 @@ export const ResearchTemplatesView: React.FC = () => {
 
   const openModal = () => { resetModal(); setShowModal(true); };
   const closeModal = () => { setShowModal(false); resetModal(); };
+
+  useEffect(() => {
+    if (!showModal && !selectedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowModal(false);
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showModal, selectedId]);
 
   const addSection = () => setModalSections((p) => [...p, { heading: '', prompt: '' }]);
   const removeSection = (i: number) => { if (modalSections.length > 1) setModalSections((p) => p.filter((_, j) => j !== i)); };
@@ -120,6 +133,18 @@ export const ResearchTemplatesView: React.FC = () => {
     catch { toast.error('Failed to delete template'); }
   };
 
+  const requestDelete = (id: string) => {
+    if (confirmDeleteId === id) {
+      setConfirmDeleteId(null);
+      handleDelete(id);
+    } else {
+      setConfirmDeleteId(id);
+      setTimeout(() => {
+        setConfirmDeleteId((cur) => (cur === id ? null : cur));
+      }, 3000);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fadeIn">
       {/* ── Page header ── */}
@@ -142,7 +167,7 @@ export const ResearchTemplatesView: React.FC = () => {
           const sections = t.sections as { heading: string; prompt: string }[];
           const icon = CATEGORY_ICONS[t.category] || CATEGORY_ICONS.Custom;
           return (
-            <div key={t.id} className={`bg-white border-2 rounded-xl shadow-sm transition-all hover:shadow-lg ${selectedId === t.id ? 'border-[#0037b0] ring-2 ring-[#0037b0] ring-inset' : 'border-[#e0e1e6] hover:border-gray-300'}`}>
+            <div key={t.id} onClick={() => setSelectedId(t.id)} className={`bg-white border-2 rounded-xl shadow-sm transition-all hover:shadow-lg cursor-pointer ${selectedId === t.id ? 'border-[#0037b0] ring-2 ring-[#0037b0] ring-inset' : 'border-[#e0e1e6] hover:border-gray-300'}`}>
               <div className="p-6">
                 <div className="flex items-start gap-4">
                   <div className="p-3 bg-blue-50 rounded-xl text-[#0037b0] shrink-0">{icon}</div>
@@ -172,15 +197,15 @@ export const ResearchTemplatesView: React.FC = () => {
                   {sections.length} sections{t.isBuiltIn && <span className="ml-1.5 text-[#0037b0]">(Built-in)</span>}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setSelectedId(t.id)} className="p-2.5 rounded-lg bg-[#0037b0] text-white hover:bg-[#1d4ed8] transition-colors shadow-sm" title="View template">
+                  <button onClick={(e) => { e.stopPropagation(); setSelectedId(t.id); }} className="p-2.5 rounded-lg bg-[#0037b0] text-white hover:bg-[#1d4ed8] transition-colors shadow-sm" title="View template">
                     <Eye className="w-5 h-5" />
                   </button>
-                  <button onClick={() => handleCopy(t)} className="p-2.5 rounded-lg bg-blue-50 text-[#0037b0] hover:bg-blue-100 transition-colors" title="Copy template">
+                  <button onClick={(e) => { e.stopPropagation(); handleCopy(t); }} className="p-2.5 rounded-lg bg-blue-50 text-[#0037b0] hover:bg-blue-100 transition-colors" title="Copy template">
                     {copiedId === t.id ? <CheckCircle2 className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                   </button>
                   {!t.isBuiltIn && (
-                    <button onClick={() => handleDelete(t.id)} className="p-2.5 rounded-lg bg-red-50 text-[#ba1a1a] hover:bg-red-100 transition-colors" title="Delete template">
-                      <Trash2 className="w-5 h-5" />
+                    <button onClick={(e) => { e.stopPropagation(); requestDelete(t.id); }} className={`p-2.5 rounded-lg transition-colors ${confirmDeleteId === t.id ? 'bg-[#ba1a1a] text-white' : 'bg-red-50 text-[#ba1a1a] hover:bg-red-100'}`} title={confirmDeleteId === t.id ? 'Click again to confirm deletion' : 'Delete template'}>
+                      {confirmDeleteId === t.id ? <span className="text-xs font-bold px-0.5">Confirm?</span> : <Trash2 className="w-5 h-5" />}
                     </button>
                   )}
                 </div>
@@ -205,7 +230,7 @@ export const ResearchTemplatesView: React.FC = () => {
         <>
           <div className="fixed z-50 bg-black/50 backdrop-blur-sm" style={OVERLAY_STYLE} onClick={() => setSelectedId(null)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full h-full flex flex-col overflow-hidden pointer-events-auto">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col overflow-hidden pointer-events-auto">
               {/* Header */}
               <div className="px-10 py-6 border-b border-gray-200 flex items-start justify-between shrink-0">
                 <div className="flex items-center gap-4 flex-1 min-w-0 pr-6">

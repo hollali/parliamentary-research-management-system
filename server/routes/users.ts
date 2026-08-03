@@ -4,7 +4,7 @@ import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
 
-const VALID_ROLES = ["ADMIN", "RESEARCH_OFFICER", "RESEARCH_ASSISTANT", "MP"] as const;
+const VALID_ROLES = ["ADMIN", "RESEARCH_OFFICER", "MP"] as const;
 
 const router = Router();
 

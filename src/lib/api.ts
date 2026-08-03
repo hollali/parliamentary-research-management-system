@@ -125,7 +125,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
   });
 }
 
-export async function updateUserProfile(data: { firstName?: string; lastName?: string; title?: string; phone?: string }) {
+export async function updateUserProfile(data: { firstName?: string; lastName?: string; title?: string; phone?: string; constituency?: string }) {
   return request('/auth/profile', { method: 'PUT', body: data });
 }
 

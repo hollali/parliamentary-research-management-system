@@ -48,6 +48,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [officers, setOfficers] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
+  const [activityPage, setActivityPage] = useState(1);
+  const activityPageSize = 5;
+  const [officerPage, setOfficerPage] = useState(1);
+  const officerPageSize = 5;
 
   useEffect(() => {
     getOfficers()
@@ -60,6 +64,28 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   useEffect(() => {
     setCurrentPage(1);
   }, [filterTab, showHighPriorityOnly]);
+
+  useEffect(() => {
+    setActivityPage(1);
+  }, [history.length]);
+
+  useEffect(() => {
+    setOfficerPage(1);
+  }, [officers.length]);
+
+  useEffect(() => {
+    if (!activeRequest) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActiveRequest(null);
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [activeRequest]);
 
   // Derive counts from requests state
   const totalPending = requests.filter(
@@ -76,7 +102,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   // Filter requests for display
   const filteredRequests = requests.filter((req) => {
     if (showHighPriorityOnly && req.priority !== "URGENT") return false;
-    if (filterTab === "PENDING" && req.status !== "SUBMITTED") return false;
+    if (filterTab === "PENDING" && !["SUBMITTED", "ASSIGNED"].includes(req.status)) return false;
     return true;
   });
 
@@ -88,6 +114,26 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const paginatedRequests = filteredRequests.slice(
     (currentPageClamped - 1) * pageSize,
     currentPageClamped * pageSize,
+  );
+
+  const activityTotalPages = Math.max(
+    1,
+    Math.ceil(history.length / activityPageSize),
+  );
+  const activityPageClamped = Math.min(activityPage, activityTotalPages);
+  const paginatedActivity = history.slice(
+    (activityPageClamped - 1) * activityPageSize,
+    activityPageClamped * activityPageSize,
+  );
+
+  const officerTotalPages = Math.max(
+    1,
+    Math.ceil(officers.length / officerPageSize),
+  );
+  const officerPageClamped = Math.min(officerPage, officerTotalPages);
+  const paginatedOfficers = officers.slice(
+    (officerPageClamped - 1) * officerPageSize,
+    officerPageClamped * officerPageSize,
   );
 
   const getStatusBadge = (status: ResearchRequest["status"]) => {
@@ -110,6 +156,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             In Progress
           </span>
         );
+      case "DRAFT_SUBMITTED":
+        return (
+          <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+            Draft Submitted
+          </span>
+        );
       case "REVISION_REQUESTED":
       case "REVISED":
         return (
@@ -127,6 +179,18 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         return (
           <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
             Completed
+          </span>
+        );
+      case "DELIVERED":
+        return (
+          <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+            Delivered
+          </span>
+        );
+      case "CLOSED":
+        return (
+          <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+            Closed
           </span>
         );
       default:
@@ -197,7 +261,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             {totalPending}
           </h3>
           <p className="text-xs text-gray-500 mt-2 italic">
-            Awaiting initial review
+            Awaiting review or assignment
           </p>
         </div>
 
@@ -553,11 +617,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           >
             <div className="flex items-start justify-between border-b border-[#c4c5d7] bg-[#f3f4f5] px-6 py-4">
               <div>
-                <div className="mb-2 flex items-center gap-2">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-[#dce1ff] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#0039b5]">
                     {activeRequest.id}
                   </span>
                   {getStatusBadge(activeRequest.status)}
+                  {activeRequest.priority === "URGENT" && (
+                    <span className="inline-flex items-center gap-1 bg-[#ffdad6] text-[#93000a] px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                      <Flag className="w-3 h-3 fill-[#93000a]" /> Urgent
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-lg font-bold text-[#191c1d]">
                   {activeRequest.title}
@@ -570,6 +639,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 onClick={() => setActiveRequest(null)}
                 className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700"
                 title="Close"
+                aria-label="Close request details"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -589,8 +659,103 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                     Assigned Officer
                   </p>
+                  <div className="mt-2">
+                    {activeRequest.teamName ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
+                            {activeRequest.teamName.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-sm font-semibold text-[#191c1d]">
+                            {activeRequest.teamName}
+                          </span>
+                          <span className="text-[10px] text-gray-400">Team</span>
+                        </div>
+                        {activeRequest.assignedOfficers &&
+                          activeRequest.assignedOfficers.length > 0 && (
+                            <div className="flex flex-wrap gap-x-2 gap-y-1 mt-1.5">
+                              {activeRequest.assignedOfficers.map((officer) => (
+                                <span
+                                  key={officer.id}
+                                  className="text-[11px] text-gray-500 font-semibold"
+                                >
+                                  {officer.firstName} {officer.lastName}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                      </>
+                    ) : activeRequest.assignedOfficers &&
+                      activeRequest.assignedOfficers.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeRequest.assignedOfficers.map((officer) => (
+                          <div
+                            key={officer.id}
+                            className="flex items-center gap-1.5 bg-[#f3f4f5] border border-[#c4c5d7] rounded-full px-2 py-0.5"
+                          >
+                            <div className="w-5 h-5 rounded-full bg-[#dce1ff] flex items-center justify-center text-[8px] font-bold text-[#001551]">
+                              {officer.initials}
+                            </div>
+                            <span className="text-[11px] font-semibold text-[#191c1d]">
+                              {officer.firstName} {officer.lastName}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : activeRequest.assignedOfficerName ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
+                          {activeRequest.assignedOfficerName
+                            ?.split(" ")
+                            .pop()
+                            ?.slice(0, 2)
+                            .toUpperCase() || "RO"}
+                        </div>
+                        <span className="text-sm font-semibold text-[#191c1d]">
+                          {activeRequest.assignedOfficerName}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-semibold text-gray-500">
+                        Unassigned
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-lg border border-[#c4c5d7] bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Priority
+                  </p>
                   <p className="mt-2 text-sm font-semibold text-[#191c1d]">
-                    {activeRequest.assignedOfficerName || "Unassigned"}
+                    {activeRequest.priority === "URGENT" ? (
+                      <span className="inline-flex items-center gap-1.5 text-[#ba1a1a]">
+                        <Flag className="w-4 h-4 fill-[#ba1a1a]" /> High Priority
+                      </span>
+                    ) : (
+                      <span className="text-[#434655]">Standard</span>
+                    )}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[#c4c5d7] bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Deadline
+                  </p>
+                  <p
+                    className={`mt-2 text-sm font-semibold ${
+                      activeRequest.status === "OVERDUE"
+                        ? "text-[#ba1a1a]"
+                        : "text-[#191c1d]"
+                    }`}
+                  >
+                    {activeRequest.deadline}
+                    {activeRequest.status === "OVERDUE" && (
+                      <span className="ml-2 inline-block bg-[#ffdad6] text-[#93000a] text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
+                        Overdue
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -601,15 +766,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </p>
                 <p className="mt-2 text-sm text-gray-700">
                   {activeRequest.description || "No description provided."}
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-[#c4c5d7] bg-white p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                  Deadline
-                </p>
-                <p className="mt-2 text-sm font-semibold text-[#191c1d]">
-                  {activeRequest.deadline}
                 </p>
               </div>
             </div>
@@ -631,7 +787,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </button>
           </div>
           <div className="space-y-6">
-            {history.map((log) => (
+            {paginatedActivity.map((log) => (
               <div className="flex gap-4" key={log.id}>
                 <div
                   className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${
@@ -653,6 +809,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </div>
             ))}
           </div>
+
+          <Pagination
+            currentPage={activityPageClamped}
+            totalPages={activityTotalPages}
+            pageSize={activityPageSize}
+            totalItems={history.length}
+            onPageChange={setActivityPage}
+            label="activity entries"
+          />
         </div>
 
         {/* Assigned Staff Capacity directories */}
@@ -662,8 +827,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               Officer Capacity
             </h4>
             <div className="space-y-5">
-              {officers.length > 0 ? (
-                officers.map((officer: any) => {
+              {paginatedOfficers.length > 0 ? (
+                paginatedOfficers.map((officer: any) => {
                   const activeCount = officer._count?.assignedRequests || 0;
                   const maxCapacity = 10;
                   const pct = Math.min((activeCount / maxCapacity) * 100, 100);
@@ -710,6 +875,17 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   No officers found
                 </p>
               )}
+            </div>
+
+            <div className="mt-6">
+              <Pagination
+                currentPage={officerPageClamped}
+                totalPages={officerTotalPages}
+                pageSize={officerPageSize}
+                totalItems={officers.length}
+                onPageChange={setOfficerPage}
+                label="officers"
+              />
             </div>
           </div>
 

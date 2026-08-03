@@ -1,4 +1,4 @@
-export type Role = 'ADMIN' | 'RESEARCH_OFFICER' | 'RESEARCH_ASSISTANT' | 'MP';
+export type Role = 'ADMIN' | 'RESEARCH_OFFICER' | 'MP';
 
 export interface Committee {
   id: string;
@@ -20,6 +20,7 @@ export interface User {
   avatarUrl?: string;
   initials: string;
   title: string;
+  constituency?: string;
 }
 
 export interface Attachment {

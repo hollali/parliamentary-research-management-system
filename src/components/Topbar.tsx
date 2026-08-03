@@ -60,9 +60,9 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
       {/* Navigation & Actions */}
       <div className="flex items-center gap-4 sm:gap-6 shrink-0">
         <nav className="hidden lg:flex items-center gap-8">
-          <a href="#directives" className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors">Directives</a>
-          <a href="#committees" className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors">Committees</a>
-          <a href="#library" className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors">Library</a>
+          <button onClick={() => onNavigate('notifications')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Directives</button>
+          <button onClick={() => onNavigate('committees')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Committees</button>
+          <button onClick={() => onNavigate('briefs')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Library</button>
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-4 lg:border-l lg:border-[#c4c5d7] lg:pl-6">
@@ -78,7 +78,7 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
           </button>
 
           {/* Help button */}
-          <button className="text-[#434655] hover:text-[#0037b0] transition-colors p-1.5 rounded-full hover:bg-gray-100 hidden sm:block">
+          <button onClick={() => onNavigate('support')} className="text-[#434655] hover:text-[#0037b0] transition-colors p-1.5 rounded-full hover:bg-gray-100 hidden sm:block" title="Help & Support">
             <HelpCircle className="w-5 h-5" />
           </button>
 

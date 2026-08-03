@@ -13,7 +13,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSignOut }) => {
   const { toast } = useToast();
   const [pName, setPName] = useState(currentUser.name);
   const [pEmail, setPEmail] = useState(currentUser.email);
-  const [pConstituency, setPConstituency] = useState((currentUser as any).constituency || '');
+  const [pConstituency, setPConstituency] = useState(currentUser.constituency || '');
   const [saving, setSaving] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');

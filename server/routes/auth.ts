@@ -59,6 +59,7 @@ router.post("/login", rateLimit(15 * 60 * 1000, 10), async (req, res) => {
         initials: user.initials,
         avatarUrl: user.avatarUrl,
         departmentId: user.departmentId,
+        constituency: user.constituency,
       },
     });
   } catch (error) {
@@ -284,6 +285,7 @@ router.post("/impersonate", authenticateToken, requireRole("ADMIN"), async (req,
         initials: user.initials,
         avatarUrl: user.avatarUrl,
         departmentId: user.departmentId,
+        constituency: user.constituency,
       },
     });
   } catch (error) {
