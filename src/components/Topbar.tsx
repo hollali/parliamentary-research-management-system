@@ -62,7 +62,9 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
         <nav className="hidden lg:flex items-center gap-8">
           <button onClick={() => onNavigate('notifications')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Directives</button>
           <button onClick={() => onNavigate('committees')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Committees</button>
-          <button onClick={() => onNavigate('briefs')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Library</button>
+          {currentUser.role === 'ADMIN' && (
+            <button onClick={() => onNavigate('briefs')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Library</button>
+          )}
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-4 lg:border-l lg:border-[#c4c5d7] lg:pl-6">

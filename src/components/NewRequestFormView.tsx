@@ -155,9 +155,16 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
         committeeId: committees.find(c => c.name === committee)?.id || null,
         templateId: selectedTemplateId || null,
         attachments: uploadedFiles.map(f => {
-          let type: 'pdf' | 'xlsx' | 'docx' = 'pdf';
-          if (f.name.toLowerCase().endsWith('.xlsx')) type = 'xlsx';
-          if (f.name.toLowerCase().endsWith('.docx')) type = 'docx';
+          let type: 'pdf' | 'xlsx' | 'docx' | 'pptx' | 'txt' | 'csv' | 'rtf' | 'odt' | 'zip' = 'pdf';
+          const lower = f.name.toLowerCase();
+          if (lower.endsWith('.xlsx')) type = 'xlsx';
+          if (lower.endsWith('.docx')) type = 'docx';
+          if (lower.endsWith('.pptx')) type = 'pptx';
+          if (lower.endsWith('.txt')) type = 'txt';
+          if (lower.endsWith('.csv')) type = 'csv';
+          if (lower.endsWith('.rtf')) type = 'rtf';
+          if (lower.endsWith('.odt')) type = 'odt';
+          if (lower.endsWith('.zip')) type = 'zip';
           return {
             name: f.name,
             size: f.size,
@@ -523,6 +530,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                       id="file-upload-input"
                       type="file" 
                       multiple 
+                      accept=".pdf,.docx,.xlsx,.pptx,.txt,.csv,.rtf,.odt,.zip"
                       onChange={handleFileInput}
                       className="hidden" 
                     />
@@ -531,7 +539,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                     </div>
                     <div>
                       <p className="text-xs font-bold text-gray-900">Drag & drop files here, or click to browse</p>
-                      <p className="text-[10px] text-gray-500 mt-1">Supports PDF, DOCX, XLSX, ZIP up to 50MB</p>
+                      <p className="text-[10px] text-gray-500 mt-1">Supports PDF, DOCX, XLSX, PPTX, TXT, CSV, RTF, ODT, ZIP up to 50MB</p>
                     </div>
                   </div>
 

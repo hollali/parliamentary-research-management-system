@@ -63,7 +63,11 @@ interface AppContextType extends AppState {
     teamId?: string,
     deadline?: string,
     notes?: string,
+    action?: "assign" | "reassign" | "add",
   ) => Promise<void> | void;
+  refreshRequests: () => Promise<void>;
+  requestRevisionForRequest: (requestId: string, commentText?: string) => Promise<void>;
+  approveRequestForReview: (requestId: string) => Promise<void>;
   updateRequestStatus: (
     requestId: string,
     status: ResearchRequest["status"],
@@ -72,7 +76,7 @@ interface AppContextType extends AppState {
     requestId: string,
     priority: ResearchRequest["priority"],
   ) => void;
-  extendRequestDeadline: (requestId: string, newDeadline: string) => void;
+  extendRequestDeadline: (requestId: string, newDeadline: string) => Promise<boolean>;
   addComment: (
     requestId: string,
     text: string,
@@ -155,15 +159,36 @@ function mapApiRequest(r: any): ResearchRequest {
       : null,
     teamId: r.teamId || null,
     teamName: r.team?.name || null,
-    assignedOfficers: (r.assignments || []).map((a: any) => ({
-      id: a.assignedTo?.id || "",
-      firstName: a.assignedTo?.firstName || "",
-      lastName: a.assignedTo?.lastName || "",
-      initials: a.assignedTo?.initials || "",
-    })),
+    assignedOfficers: (r.assignments || [])
+      .filter((a: any) => a.assignedTo && !a.declinedAt && !a.supersededAt)
+      .map((a: any) => ({
+        id: a.assignedTo?.id || "",
+        firstName: a.assignedTo?.firstName || "",
+        lastName: a.assignedTo?.lastName || "",
+        initials: a.assignedTo?.initials || "",
+      })),
+    declinedAssignments: (r.assignments || [])
+      .filter((a: any) => a.assignedTo && a.declinedAt)
+      .map((a: any) => ({
+        id: a.assignedTo?.id || "",
+        firstName: a.assignedTo?.firstName || "",
+        lastName: a.assignedTo?.lastName || "",
+        initials: a.assignedTo?.initials || "",
+        reason: a.declineReason || null,
+      })),
+    previousOfficers: (r.assignments || [])
+      .filter((a: any) => a.assignedTo && a.supersededAt && !a.declinedAt)
+      .map((a: any) => ({
+        id: a.assignedTo?.id || "",
+        firstName: a.assignedTo?.firstName || "",
+        lastName: a.assignedTo?.lastName || "",
+        initials: a.assignedTo?.initials || "",
+        reason: a.declineReason || null,
+      })),
     status: statusMap[r.status] || "SUBMITTED",
     priority: r.priority as ResearchRequest["priority"],
     dateSubmitted: formatDisplayDate(r.dateSubmitted),
+    dateSubmittedRaw: r.dateSubmitted || null,
     deadline: formatDisplayDate(r.deadline),
     description: r.description,
     scope: r.scope || undefined,
@@ -329,20 +354,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       );
   }, [isOnline]);
 
+  const fetchRequests = useCallback(async () => {
+    if (!isOnline || !getToken()) return;
+    const data = await getRequests();
+    const requestList = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.requests)
+        ? data.requests
+        : [];
+    setRequests(requestList.map(mapApiRequest));
+  }, [isOnline]);
+
+  const refreshRequests = useCallback(async () => {
+    await fetchRequests();
+  }, [fetchRequests]);
+
   // Fetch data from API if online and token exists
   useEffect(() => {
     if (!isOnline || !getToken()) return;
 
-    getRequests()
-      .then((data: any) => {
-        if (data?.requests) {
-          const mapped = data.requests.map(mapApiRequest);
-          setRequests(mapped);
-        }
-      })
-      .catch((err: any) =>
-        console.warn("Failed to load requests:", err?.message),
-      );
+    fetchRequests();
 
     fetchNotifications();
 
@@ -526,6 +557,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     teamId?: string,
     deadline?: string,
     notes?: string,
+    action: "assign" | "reassign" | "add" = "assign",
   ) => {
     if (isOnline) {
       try {
@@ -538,24 +570,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           requestId: internalId,
           assignedToIds: officerIds?.length ? officerIds : undefined,
           teamId,
+          action,
           deadline: resolvedDeadline,
           notes,
         });
-        const data = await getRequests();
-        const requestList = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.requests)
-            ? data.requests
-            : [];
-
-        if (requestList.length > 0) {
-          setRequests(requestList.map(mapApiRequest));
-        } else {
-          setRequests([]);
-        }
+        await refreshRequests();
       } catch (err: any) {
         throw err;
       }
+    }
+  };
+
+  const requestRevisionForRequest = async (
+    requestId: string,
+    commentText?: string,
+  ) => {
+    if (isOnline) {
+      const req = requests.find((r) => r.id === requestId);
+      if (req?.reportId) {
+        await requestRevision({
+          reportId: req.reportId,
+          requestId,
+          commentText,
+        });
+      }
+    }
+
+    setRequests((prev) =>
+      prev.map((req) =>
+        req.id === requestId ? { ...req, status: "REVISION_REQUESTED" } : req,
+      ),
+    );
+
+    if (isOnline) {
+      fetchNotifications();
+    }
+  };
+
+  const approveRequestForReview = async (requestId: string) => {
+    if (isOnline) {
+      const req = requests.find((r) => r.id === requestId);
+      if (req?.reportId) {
+        await approveReport({ reportId: req.reportId, requestId });
+      }
+    }
+
+    setRequests((prev) =>
+      prev.map((req) =>
+        req.id === requestId ? { ...req, status: "APPROVED" } : req,
+      ),
+    );
+
+    if (isOnline) {
+      fetchNotifications();
     }
   };
 
@@ -634,12 +701,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const extendRequestDeadline = async (
     requestId: string,
     newDeadline: string,
-  ) => {
+  ): Promise<boolean> => {
     if (isOnline) {
       try {
         await updateRequest(requestId, { deadline: newDeadline });
       } catch {
-        return;
+        return false;
       }
     }
 
@@ -655,6 +722,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     if (isOnline) {
       fetchNotifications();
     }
+
+    return true;
   };
 
   const addComment = async (
@@ -680,6 +749,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       time: "Just now",
       text,
       section,
+      highlightedText,
       resolved: false,
     };
 
@@ -864,6 +934,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         switchUser,
         addRequest,
         assignRequest,
+        refreshRequests,
+        requestRevisionForRequest,
+        approveRequestForReview,
         updateRequestStatus,
         updateRequestPriority,
         extendRequestDeadline,

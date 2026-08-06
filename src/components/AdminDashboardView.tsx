@@ -17,12 +17,15 @@ import {
   UserPlus,
   Eye,
   RefreshCw,
+  Pencil,
   MoreVertical,
   Activity,
   CheckCircle,
   MoreHorizontal,
   Flag,
   X,
+  XCircle,
+  History,
 } from "lucide-react";
 
 interface AdminDashboardViewProps {
@@ -140,62 +143,62 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     switch (status) {
       case "SUBMITTED":
         return (
-          <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             Pending Review
           </span>
         );
       case "ASSIGNED":
         return (
-          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             Assigned
           </span>
         );
       case "IN_PROGRESS":
         return (
-          <span className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             In Progress
           </span>
         );
       case "DRAFT_SUBMITTED":
         return (
-          <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             Draft Submitted
           </span>
         );
       case "REVISION_REQUESTED":
       case "REVISED":
         return (
-          <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             Revision
           </span>
         );
       case "OVERDUE":
         return (
-          <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             Overdue
           </span>
         );
       case "APPROVED":
         return (
-          <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             Completed
           </span>
         );
       case "DELIVERED":
         return (
-          <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             Delivered
           </span>
         );
       case "CLOSED":
         return (
-          <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             Closed
           </span>
         );
       default:
         return (
-          <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">
+          <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
             {status}
           </span>
         );
@@ -246,7 +249,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       </div>
 
       {/* Metrics Bento Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Pending */}
         <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 hover:border-blue-500/40 transition-all shadow-sm">
           <div className="flex justify-between items-start mb-4">
@@ -461,7 +464,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       <p className="font-semibold text-sm text-[#191c1d] truncate group-hover:text-[#0037b0] transition-colors">
                         {req.title}
                       </p>
-                      <p className="text-xs text-gray-500 truncate">
+                      <p className="text-xs text-gray-500 truncate" title={req.category}>
                         {req.category}
                       </p>
                     </div>
@@ -469,7 +472,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
                   {/* MP / Member */}
                   <td className="px-6 py-4 text-sm text-[#191c1d]">
-                    {honourable(req.member)}
+                    <span
+                      className="block max-w-40 truncate whitespace-nowrap"
+                      title={req.member}
+                    >
+                      {honourable(req.member)}
+                    </span>
                   </td>
 
                   {/* Assigned Officer */}
@@ -477,75 +485,121 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     className="px-6 py-4"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {req.teamName ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
-                          {req.teamName.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <span className="text-sm text-[#191c1d] font-semibold">
-                            {req.teamName}
-                          </span>
-                          <span className="text-[10px] text-gray-400 block">
+                    <div className="min-w-[150px]">
+                      {/* Active assignment — avatars only; names shown in the details modal */}
+                      {req.teamName ? (
+                        <div
+                          className="flex items-center cursor-pointer w-fit"
+                          onClick={() => setActiveRequest(req)}
+                          title="View assigned team"
+                        >
+                          <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
+                            {req.teamName.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="ml-1.5 shrink-0 text-[8px] font-bold uppercase tracking-wider bg-[#dce1ff] text-[#0037b0] px-1.5 py-0.5 rounded-full">
                             Team
                           </span>
-                          {req.assignedOfficers &&
-                            req.assignedOfficers.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {req.assignedOfficers.map((officer) => (
-                                  <span
-                                    key={officer.id}
-                                    className="text-[9px] text-gray-500 font-semibold"
-                                  >
-                                    {officer.firstName} {officer.lastName}
-                                  </span>
-                                ))}
+                        </div>
+                      ) : req.assignedOfficers &&
+                        req.assignedOfficers.length > 0 ? (
+                        <div
+                          className="flex items-center cursor-pointer w-fit"
+                          onClick={() => setActiveRequest(req)}
+                          title="View all assigned officers"
+                        >
+                          <div className="flex -space-x-1.5">
+                            {req.assignedOfficers
+                              .slice(0, 3)
+                              .map((officer) => (
+                                <div
+                                  key={officer.id}
+                                  title={`${officer.firstName} ${officer.lastName}`}
+                                  className="w-7 h-7 rounded-full bg-[#dce1ff] border-2 border-white flex items-center justify-center text-[9px] font-bold text-[#001551]"
+                                >
+                                  {officer.initials}
+                                </div>
+                              ))}
+                            {req.assignedOfficers.length > 3 && (
+                              <div
+                                className="w-7 h-7 rounded-full bg-[#e9eaf1] border-2 border-white flex items-center justify-center text-[9px] font-bold text-[#191c1d]"
+                                title={req.assignedOfficers
+                                  .map(
+                                    (o) =>
+                                      `${o.firstName} ${o.lastName}`,
+                                  )
+                                  .join(", ")}
+                              >
+                                +{req.assignedOfficers.length - 3}
                               </div>
                             )}
-                        </div>
-                      </div>
-                    ) : req.assignedOfficers &&
-                      req.assignedOfficers.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {req.assignedOfficers.map((officer) => (
-                          <div
-                            key={officer.id}
-                            className="flex items-center gap-1.5 bg-[#f3f4f5] border border-[#c4c5d7] rounded-full px-2 py-0.5"
-                          >
-                            <div className="w-5 h-5 rounded-full bg-[#dce1ff] flex items-center justify-center text-[8px] font-bold text-[#001551]">
-                              {officer.initials}
-                            </div>
-                            <span className="text-[10px] font-semibold text-[#191c1d]">
-                              {officer.firstName} {officer.lastName}
-                            </span>
                           </div>
-                        ))}
-                      </div>
-                    ) : req.assignedOfficerName ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
-                          {req.assignedOfficerName
-                            ?.split(" ")
-                            .pop()
-                            ?.slice(0, 2)
-                            .toUpperCase() || "RO"}
                         </div>
-                        <span className="text-sm text-[#191c1d]">
-                          {req.assignedOfficerName}
-                        </span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setAssignModalRequestId(req.id);
-                          setAssignModalRequestTitle(req.title);
-                        }}
-                        className="text-[#ba1a1a] hover:text-[#ba1a1a]/80 font-semibold text-xs flex items-center gap-1 hover:underline"
-                      >
-                        <UserPlus className="w-3.5 h-3.5" />
-                        Unassigned
-                      </button>
-                    )}
+                      ) : req.assignedOfficerName ? (
+                        <div
+                          className="flex items-center cursor-pointer w-fit"
+                          onClick={() => setActiveRequest(req)}
+                          title="View assigned officer"
+                        >
+                          <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
+                            {req.assignedOfficerName
+                              ?.split(" ")
+                              .pop()
+                              ?.slice(0, 2)
+                              .toUpperCase() || "RO"}
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setAssignModalRequestId(req.id);
+                            setAssignModalRequestTitle(req.title);
+                          }}
+                          className="text-[#ba1a1a] hover:text-[#ba1a1a]/80 font-semibold text-xs flex items-center gap-1 hover:underline"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          Unassigned
+                        </button>
+                      )}
+
+                      {/* Assignment history badges */}
+                      {((req.declinedAssignments &&
+                        req.declinedAssignments.length > 0) ||
+                        (req.previousOfficers &&
+                          req.previousOfficers.length > 0)) && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {req.declinedAssignments &&
+                            req.declinedAssignments.length > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full bg-[#ffdad6] text-[#93000a] px-2 py-0.5 text-[9px] font-bold cursor-default"
+                                title={req.declinedAssignments
+                                  .map(
+                                    (d) =>
+                                      `${d.firstName} ${d.lastName}${d.reason ? `: ${d.reason}` : ""}`,
+                                  )
+                                  .join("\n")}
+                              >
+                                <XCircle className="w-2.5 h-2.5" />
+                                {req.declinedAssignments.length} declined
+                              </span>
+                            )}
+                          {req.previousOfficers &&
+                            req.previousOfficers.length > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full bg-[#dce1ff] text-[#0037b0] px-2 py-0.5 text-[9px] font-bold cursor-default"
+                                title={req.previousOfficers
+                                  .map(
+                                    (d) =>
+                                      `${d.firstName} ${d.lastName}${d.reason ? `: ${d.reason}` : ""}`,
+                                  )
+                                  .join("\n")}
+                              >
+                                <History className="w-2.5 h-2.5" />
+                                {req.previousOfficers.length} reassigned
+                              </span>
+                            )}
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   {/* Status */}
@@ -553,7 +607,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
                   {/* Deadline */}
                   <td
-                    className={`px-6 py-4 text-sm font-semibold ${req.status === "OVERDUE" ? "text-[#ba1a1a]" : "text-[#191c1d]"}`}
+                    className={`px-6 py-4 text-sm font-semibold whitespace-nowrap ${req.status === "OVERDUE" ? "text-[#ba1a1a]" : "text-[#191c1d]"}`}
                   >
                     {req.deadline}
                   </td>
@@ -581,7 +635,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         title="Reassign Staff"
                         aria-label="Reassign Staff"
                       >
-                        <RefreshCw className="w-4 h-4" />
+                        <Pencil className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
@@ -724,6 +778,65 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </div>
               </div>
 
+              {activeRequest.declinedAssignments &&
+                activeRequest.declinedAssignments.length > 0 && (
+                  <div className="rounded-lg border border-[#ffdad6] bg-[#fff5f4] p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#ba1a1a] flex items-center gap-1.5">
+                      <XCircle className="w-3.5 h-3.5" /> Declined Assignments
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {activeRequest.declinedAssignments.map((d) => (
+                        <div
+                          key={d.id}
+                          className="flex items-start gap-2 text-sm"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-[#ffdad6] flex items-center justify-center text-[8px] font-bold text-[#93000a] shrink-0">
+                            {d.initials}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-[#191c1d]">
+                              {d.firstName} {d.lastName}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {d.reason || "No reason provided"}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {activeRequest.previousOfficers &&
+                activeRequest.previousOfficers.length > 0 && (
+                  <div className="rounded-lg border border-[#dce1ff] bg-[#f8f9ff] p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#0037b0] flex items-center gap-1.5">
+                      <History className="w-3.5 h-3.5" /> Previously Assigned
+                      Officers
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {activeRequest.previousOfficers.map((d) => (
+                        <div
+                          key={d.id}
+                          className="flex items-start gap-2 text-sm"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-[#dce1ff] flex items-center justify-center text-[8px] font-bold text-[#001551] shrink-0">
+                            {d.initials}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-[#191c1d]">
+                              {d.firstName} {d.lastName}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {d.reason || "Reassigned"}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-lg border border-[#c4c5d7] bg-white p-4">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
@@ -774,7 +887,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       )}
 
       {/* Bottom Layout: Notifications Feed & Officer Capacity Widgets */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Directorate Activity log */}
         <div className="lg:col-span-2 bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm">
           <div className="flex justify-between items-center mb-6">

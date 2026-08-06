@@ -58,8 +58,8 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
   const { requests } = useApp();
   const [search, setSearch] = useState('');
   const [statusGroup, setStatusGroup] = useState(0);
-  const [sortField, setSortField] = useState<'deadline' | 'title' | 'status'>('deadline');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortField, setSortField] = useState<'dateSubmitted' | 'deadline' | 'title' | 'status'>('dateSubmitted');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
@@ -89,7 +89,9 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
     // Sort
     list.sort((a, b) => {
       let cmp = 0;
-      if (sortField === 'deadline') cmp = new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      if (sortField === 'dateSubmitted') {
+        cmp = new Date(a.dateSubmittedRaw || a.dateSubmitted || 0).getTime() - new Date(b.dateSubmittedRaw || b.dateSubmitted || 0).getTime();
+      } else if (sortField === 'deadline') cmp = new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
       else if (sortField === 'title') cmp = a.title.localeCompare(b.title);
       else if (sortField === 'status') cmp = a.status.localeCompare(b.status);
       return sortDir === 'asc' ? cmp : -cmp;
@@ -185,7 +187,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
       {showFilters && (
         <div className="flex items-center gap-3 bg-white border border-[#e0e1e6] rounded-lg px-4 py-3">
           <span className="text-xs font-bold text-gray-400 uppercase">Sort by:</span>
-          {(['deadline', 'title', 'status'] as const).map((f) => (
+          {(['dateSubmitted', 'deadline', 'title', 'status'] as const).map((f) => (
             <button
               key={f}
               onClick={() => toggleSort(f)}
@@ -193,7 +195,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
                 sortField === f ? 'bg-[#0037b0] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {f === 'dateSubmitted' ? 'Latest' : f.charAt(0).toUpperCase() + f.slice(1)}
               {sortField === f && (sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
             </button>
           ))}
@@ -247,7 +249,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
                   </span>
                 </td>
                 <td className="px-5 py-4">
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${STATUS_COLORS[req.status] || 'bg-gray-100 text-gray-600'}`}>
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap ${STATUS_COLORS[req.status] || 'bg-gray-100 text-gray-600'}`}>
                     {STATUS_LABELS[req.status] || req.status}
                   </span>
                 </td>

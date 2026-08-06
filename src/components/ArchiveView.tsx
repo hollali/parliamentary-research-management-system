@@ -16,6 +16,7 @@ import {
 import { getRequests, downloadFile } from '../lib/api';
 import { honourable } from '../lib/format';
 import { useToast } from '../lib/toast';
+import { useApp } from '../context/AppContext';
 import { Pagination } from './Pagination';
 
 interface ArchiveViewProps {
@@ -23,6 +24,7 @@ interface ArchiveViewProps {
 }
 
 export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
+  const { currentUser } = useApp();
   const [archived, setArchived] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,13 +65,13 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'APPROVED':
-        return <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Approved</span>;
+        return <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Approved</span>;
       case 'DELIVERED':
-        return <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Delivered</span>;
+        return <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Delivered</span>;
       case 'CLOSED':
-        return <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Closed</span>;
+        return <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Closed</span>;
       default:
-        return <span className="bg-gray-100 text-gray-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">{status}</span>;
+        return <span className="bg-gray-100 text-gray-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">{status}</span>;
     }
   };
 
@@ -508,15 +510,17 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                 >
                   Close
                 </button>
-                <button
-                  onClick={() => {
-                    setViewRequest(null);
-                    onNavigate('briefs', viewRequest.id);
-                  }}
-                  className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-bold py-1.5 px-4 rounded transition-all cursor-pointer"
-                >
-                  Open Full Brief
-                </button>
+                {(currentUser.role === "ADMIN" || currentUser.role === "MP") && (
+                  <button
+                    onClick={() => {
+                      setViewRequest(null);
+                      onNavigate('briefs', viewRequest.id);
+                    }}
+                    className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-bold py-1.5 px-4 rounded transition-all cursor-pointer"
+                  >
+                    Open Full Brief
+                  </button>
+                )}
               </div>
             </div>
           </div>

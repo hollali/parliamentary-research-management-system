@@ -13,6 +13,11 @@ const ALLOWED_MIMETYPES: Record<string, string> = {
   "application/pdf": "pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/rtf": "rtf",
+  "application/vnd.oasis.opendocument.text": "odt",
   "application/zip": "zip",
   "application/x-zip-compressed": "zip",
 };
@@ -38,12 +43,20 @@ const fileFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
       ".pdf": "pdf",
       ".docx": "docx",
       ".xlsx": "xlsx",
+      ".pptx": "pptx",
+      ".txt": "txt",
+      ".csv": "csv",
+      ".rtf": "rtf",
+      ".odt": "odt",
       ".zip": "zip",
     };
     if (ALLOWED_EXTENSIONS[ext]) {
       cb(null, true);
     } else {
-      cb(new Error("Only PDF, DOCX, XLSX, and ZIP files are allowed"));
+      const err = new Error("Only PDF, DOCX, XLSX, PPTX, TXT, CSV, RTF, ODT, and ZIP files are allowed");
+      (err as any).statusCode = 400;
+      (err as any).expose = true;
+      cb(err);
     }
   }
 };

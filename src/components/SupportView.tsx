@@ -8,7 +8,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'How do I upload a research draft?',
-    a: 'Open your assigned request from the Officer Workflow view. Use the "Briefing Attachment Slots" area to drag and drop files or click to browse. Accepted formats: PDF, DOCX, XLSX, and ZIP (max 50 MB).',
+    a: 'Open your assigned request from the Officer Workflow view. Use the "Briefing Attachment Slots" area to drag and drop files or click to browse. Accepted formats: PDF, DOCX, XLSX, PPTX, TXT, CSV, RTF, ODT, and ZIP (max 50 MB).',
   },
   {
     q: 'How do I accept or decline an assignment?',
@@ -24,7 +24,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'What file formats are accepted for uploads?',
-    a: 'The system accepts PDF (.pdf), Microsoft Word (.docx), Microsoft Excel (.xlsx), and ZIP archives (.zip). All other file types are rejected during upload.',
+    a: 'The system accepts PDF (.pdf), Microsoft Word (.docx), Microsoft Excel (.xlsx), Microsoft PowerPoint (.pptx), plain text (.txt), CSV (.csv), Rich Text (.rtf), OpenDocument (.odt), and ZIP archives (.zip). All other file types are rejected during upload.',
   },
 ];
 

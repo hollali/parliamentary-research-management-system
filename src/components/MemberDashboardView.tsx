@@ -101,6 +101,8 @@ interface DetailedRequest {
     notes: string | null;
     deadline: string;
     acceptedAt: string | null;
+    declinedAt: string | null;
+    supersededAt: string | null;
     createdAt: string;
     assignedBy: { id: string; firstName: string; lastName: string };
     assignedTo: { id: string; firstName: string; lastName: string } | null;
@@ -211,8 +213,40 @@ function getDaysRemaining(deadline: string): {
   };
 }
 
+function extendDeadlineStr(currentDeadline: string, days: number): string {
+  try {
+    const d = new Date(currentDeadline);
+    if (isNaN(d.getTime())) {
+      const fallback = new Date();
+      fallback.setDate(fallback.getDate() + days);
+      return fallback.toLocaleDateString("en-US", {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+      });
+    }
+    d.setDate(d.getDate() + days);
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    const fallback = new Date();
+    fallback.setDate(fallback.getDate() + days);
+    return fallback.toLocaleDateString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    });
+  }
+}
+
+const isClosedStatus = (status: ResearchRequest["status"]) =>
+  ["APPROVED", "DELIVERED", "CLOSED"].includes(status);
+
 export const MemberDashboardView: React.FC = () => {
-  const { requests, currentUser, addComment, updateRequestPriority } = useApp();
+  const { requests, currentUser, addComment, updateRequestPriority, refreshRequests, extendRequestDeadline } = useApp();
   const { toast } = useToast();
   const memberRequests = filterRequestsForCurrentUser(requests, currentUser);
 
@@ -280,6 +314,24 @@ export const MemberDashboardView: React.FC = () => {
     addComment(activeRequest.id, feedbackText);
     setFeedbackText("");
     toast.success("Your feedback has been appended to the request timeline.");
+  };
+
+  const handleExtendDeadline = async (
+    requestId: string,
+    currentDeadline: string,
+    days: number,
+  ) => {
+    const newDate = extendDeadlineStr(currentDeadline, days);
+    const ok = await extendRequestDeadline(requestId, newDate);
+    if (ok) {
+      toast.success(`Deadline extended by ${days} days to ${newDate}.`);
+      refreshRequests();
+      if (trackingModalRequest) {
+        fetchModalData(trackingModalRequest.id);
+      }
+    } else {
+      toast.error("Failed to extend the deadline. Please try again.");
+    }
   };
 
   const getStatusLabel = (status: ResearchRequest["status"]) => {
@@ -593,11 +645,15 @@ export const MemberDashboardView: React.FC = () => {
                     const file = e.target.files?.[0];
                     if (file && activeRequest) {
                       uploadFile(activeRequest.id, file)
-                        .then(() =>
+                        .then(() => {
                           toast.success(
                             `"${file.name}" uploaded successfully.`,
-                          ),
-                        )
+                          );
+                          refreshRequests();
+                          if (trackingModalRequest) {
+                            fetchModalData(trackingModalRequest.id);
+                          }
+                        })
                         .catch(() => toast.error("Failed to upload file"));
                     }
                   }}
@@ -725,7 +781,7 @@ export const MemberDashboardView: React.FC = () => {
                   </td>
                   <td className="px-6 py-3.5">
                     <span
-                      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
                         ["APPROVED", "DELIVERED", "CLOSED"].includes(req.status)
                           ? "bg-emerald-100 text-emerald-800"
                           : "bg-blue-100 text-blue-800"
@@ -738,17 +794,58 @@ export const MemberDashboardView: React.FC = () => {
                     {req.deadline}
                   </td>
                   <td className="px-6 py-3.5 text-right">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedRequestId(req.id);
-                        setTrackingModalRequest(req);
-                      }}
-                      className="text-[#0037b0] hover:underline text-xs font-bold flex items-center justify-end gap-1"
-                    >
-                      <span>Track</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      {!isClosedStatus(req.status) && (
+                        <div className="relative group/extend">
+                          <button
+                            onClick={(e) => e.stopPropagation()}
+                            className={`p-1.5 rounded transition-all cursor-pointer ${
+                              req.status === "OVERDUE"
+                                ? "text-[#ba1a1a] hover:bg-red-50"
+                                : "text-[#0037b0] hover:bg-blue-50"
+                            }`}
+                            title="Extend Deadline"
+                            aria-label="Extend Deadline"
+                          >
+                            <Clock className="w-4 h-4" />
+                          </button>
+                          <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1 hidden group-hover/extend:block">
+                            <div className="px-2.5 py-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                              Extend Due Date
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExtendDeadline(req.id, req.deadline, 7);
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
+                            >
+                              +7 Days
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExtendDeadline(req.id, req.deadline, 14);
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
+                            >
+                              +14 Days
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRequestId(req.id);
+                          setTrackingModalRequest(req);
+                        }}
+                        className="text-[#0037b0] hover:underline text-xs font-bold flex items-center justify-end gap-1"
+                      >
+                        <span>Track</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -854,22 +951,31 @@ export const MemberDashboardView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* ── Assigned Officer ── */}
-                  {detail.officer && (
+                  {/* ── Assigned Officers ── */}
+                  {(detail.officer || detail.assignments.length > 0) && (
                     <div className="flex items-center gap-3 bg-gray-50 border border-[#c4c5d7] rounded-lg p-3">
-                      <div className="w-9 h-9 rounded-full bg-[#0037b0] text-white flex items-center justify-center text-xs font-bold">
-                        {detail.officer.initials}
+                      <div className="w-9 h-9 rounded-full bg-[#0037b0] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                        {detail.officer?.initials || "GRP"}
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">
-                          Assigned Research Officer
+                          Research Team
                         </p>
-                        <p className="text-xs font-bold text-gray-900">
-                          {detail.officer.title
-                            ? `${detail.officer.title} `
-                            : ""}
-                          {detail.officer.firstName} {detail.officer.lastName}
-                        </p>
+                        {detail.officer && (
+                          <p className="text-xs font-bold text-gray-900">
+                            {detail.officer.title ? `${detail.officer.title} ` : ""}
+                            {detail.officer.firstName} {detail.officer.lastName}
+                            <span className="text-[10px] font-semibold text-gray-400 ml-1.5">Lead Researcher</span>
+                          </p>
+                        )}
+                        {detail.assignments
+                          .filter((a) => a.assignedTo && !a.declinedAt && !a.supersededAt)
+                          .filter((a) => a.assignedTo?.id !== detail.officer?.id)
+                          .map((a) => (
+                            <p key={a.id} className="text-xs text-gray-700 mt-0.5">
+                              {a.assignedTo?.firstName} {a.assignedTo?.lastName}
+                            </p>
+                          ))}
                       </div>
                     </div>
                   )}
@@ -1159,7 +1265,42 @@ export const MemberDashboardView: React.FC = () => {
             </div>
 
             {/* ── Modal Footer ── */}
-            <div className="px-6 py-4 bg-[#f3f4f5] border-t border-[#c4c5d7] flex justify-end shrink-0">
+            <div className="px-6 py-4 bg-[#f3f4f5] border-t border-[#c4c5d7] flex justify-end items-center gap-2 shrink-0">
+              {detail && !isClosedStatus(detail.status) && (
+                <div className="relative group/extend-modal">
+                  <button
+                    className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded border transition-colors cursor-pointer ${
+                      detail.status === "OVERDUE"
+                        ? "border-[#ba1a1a] text-[#ba1a1a] hover:bg-red-50"
+                        : "border-[#0037b0] text-[#0037b0] hover:bg-blue-50"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    Extend Deadline
+                  </button>
+                  <div className="absolute right-0 bottom-full mb-1 w-36 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1 hidden group-hover/extend-modal:block">
+                    <div className="px-2.5 py-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                      Extend Due Date
+                    </div>
+                    <button
+                      onClick={() =>
+                        handleExtendDeadline(detail.id, detail.deadline, 7)
+                      }
+                      className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
+                    >
+                      +7 Days
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleExtendDeadline(detail.id, detail.deadline, 14)
+                      }
+                      className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
+                    >
+                      +14 Days
+                    </button>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => setTrackingModalRequest(null)}
                 className="text-xs font-semibold px-4 py-2 rounded bg-white border border-[#c4c5d7] text-[#191c1d] hover:bg-gray-50 transition-colors"

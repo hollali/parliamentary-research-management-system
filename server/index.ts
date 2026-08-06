@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { logger } from "./lib/logger.js";
 import { isSmtpConfigured } from "./lib/email.js";
+import multer from "multer";
 
 import authRoutes from "./routes/auth.js";
 import requestRoutes from "./routes/requests.js";
@@ -63,6 +64,22 @@ if (process.env.NODE_ENV === "production") {
     res.sendFile(path.join(__dirname, "../dist/index.html"));
   });
 }
+
+// Central error handler — converts multer/file-filter rejections into clean JSON
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    const message =
+      err.code === "LIMIT_FILE_SIZE"
+        ? "File is too large. Maximum size is 50MB"
+        : `Upload failed: ${err.message}`;
+    return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: message });
+  }
+  if (err && err.expose) {
+    return res.status(err.statusCode || 400).json({ error: err.message });
+  }
+  logger.error("Unhandled server error", { error: err });
+  res.status(500).json({ error: "Internal server error" });
+});
 
 app.listen(PORT, () => {
   logger.info(`PRRMS API server running on port ${PORT}`, { route: `/`, method: 'START' });

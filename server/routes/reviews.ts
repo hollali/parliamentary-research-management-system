@@ -1,8 +1,9 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { authenticateToken } from "../middleware/auth.js";
 import { sendEmail, revisionRequestedEmail, commentAddedEmail } from "../lib/email.js";
 import { shouldNotify, shouldEmail, createNotification } from "../lib/notifications.js";
+import { lookupByIdOrNumber } from "../lib/requestUtils.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -11,8 +12,16 @@ const router = Router();
 // List reviews for a request
 router.get("/request/:requestId", authenticateToken, async (req, res) => {
   try {
+    const request = await prisma.researchRequest.findUnique({
+      where: lookupByIdOrNumber(req.params.requestId),
+      select: { id: true },
+    });
+    if (!request) {
+      return res.json([]);
+    }
+
     const comments = await prisma.reviewComment.findMany({
-      where: { requestId: req.params.requestId, parentId: null },
+      where: { requestId: request.id, parentId: null },
       include: {
         author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
         replies: {
@@ -29,8 +38,8 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
   }
 });
 
-// Add review comment
-router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
+// Add review comment — admins and the requesting MP may comment
+router.post("/", authenticateToken, async (req, res) => {
   try {
     const { reportId, requestId, section, text, highlightedText, startOffset, endOffset, parentId } = req.body;
 
@@ -38,11 +47,39 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
       return res.status(400).json({ error: "reportId, requestId, and text are required" });
     }
 
+    const request = await prisma.researchRequest.findUnique({
+      where: lookupByIdOrNumber(requestId),
+      select: { id: true, title: true, requestNumber: true, assignedOfficerId: true, submitterId: true },
+    });
+    if (!request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    // Access control: admins and the requesting MP may comment
+    const { role, userId } = req.user!;
+    const isAdmin = role === "ADMIN";
+    const isSubmitter = role === "MP" && request.submitterId === userId;
+    if (!isAdmin && !isSubmitter) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // The report must belong to the request
+    const report = await prisma.researchReport.findUnique({
+      where: { id: reportId },
+      select: { id: true, requestId: true },
+    });
+    if (!report) {
+      return res.status(404).json({ error: "Report not found" });
+    }
+    if (report.requestId !== request.id) {
+      return res.status(400).json({ error: "Report does not belong to this request" });
+    }
+
     const comment = await prisma.reviewComment.create({
       data: {
         reportId,
-        requestId,
-        authorId: req.user!.userId,
+        requestId: request.id,
+        authorId: userId,
         section,
         text,
         highlightedText: highlightedText || null,
@@ -55,7 +92,7 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
 
     await prisma.activityLog.create({
       data: {
-        authorId: req.user!.userId,
+        authorId: userId,
         action: "COMMENT_ADDED",
         entityType: "ReviewComment",
         entityId: comment.id,
@@ -64,15 +101,14 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
     });
 
     // Notify the assigned officer (respecting preferences)
-    const request = await prisma.researchRequest.findUnique({ where: { id: requestId } });
-    if (request?.assignedOfficerId) {
+    if (request.assignedOfficerId) {
       if (await shouldNotify(request.assignedOfficerId, 'draftMentions')) {
         await createNotification({
           recipientId: request.assignedOfficerId,
           type: "REPORT_UPLOADED",
           title: "New Review Comment",
-          message: `Admin commented on "${request.title}": ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`,
-          requestId,
+          message: `New comment on "${request.title}": ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`,
+          requestId: request.id,
         });
       }
 
@@ -126,8 +162,8 @@ router.put("/:commentId/resolve", authenticateToken, async (req, res) => {
   }
 });
 
-// Request revision
-router.post("/request-revision", authenticateToken, requireRole("ADMIN"), async (req, res) => {
+// Request revision — admins and the requesting MP may request revisions
+router.post("/request-revision", authenticateToken, async (req, res) => {
   try {
     const { requestId, commentText } = req.body;
 
@@ -135,28 +171,38 @@ router.post("/request-revision", authenticateToken, requireRole("ADMIN"), async 
       return res.status(400).json({ error: "requestId is required" });
     }
 
-    const requestObj = await prisma.researchRequest.findUnique({ where: { id: requestId } });
-    if (!requestObj) {
+    const resolvedRequest = await prisma.researchRequest.findUnique({
+      where: lookupByIdOrNumber(requestId),
+    });
+    if (!resolvedRequest) {
       return res.status(404).json({ error: "Request not found" });
     }
 
+    // Access control: admins and the requesting MP may request revisions
+    const { role, userId } = req.user!;
+    const isAdmin = role === "ADMIN";
+    const isSubmitter = role === "MP" && resolvedRequest.submitterId === userId;
+    if (!isAdmin && !isSubmitter) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     await prisma.researchRequest.update({
-      where: { id: requestId },
+      where: { id: resolvedRequest.id },
       data: { status: "REVISION_REQUESTED" },
     });
 
     await prisma.activityLog.create({
       data: {
-        authorId: req.user!.userId,
+        authorId: userId,
         action: "STATUS_CHANGED",
         entityType: "ResearchRequest",
-        entityId: requestId,
-        description: "Revision requested",
+        entityId: resolvedRequest.id,
+        description: `${isAdmin ? "Admin" : "Member"} requested revision${commentText ? `: ${commentText.slice(0, 160)}` : ""}`,
       },
     });
 
     const request = await prisma.researchRequest.findUnique({
-      where: { id: requestId },
+      where: { id: resolvedRequest.id },
       include: {
         assignments: { include: { assignedTo: { select: { id: true, firstName: true, email: true } } } },
         team: { include: { members: { include: { user: { select: { id: true, firstName: true, email: true } } } } } },
@@ -194,14 +240,37 @@ router.post("/request-revision", authenticateToken, requireRole("ADMIN"), async 
           recipientId,
           type: "REVISION_REQUESTED",
           title: "Revision Requested",
-          message: `Revision requested for: ${request!.title}`,
-          requestId,
+          message: `${isAdmin ? "An administrator" : "The requesting member"} requested a revision for: ${request!.title}`,
+          requestId: request!.id,
         });
       }
 
       if (await shouldEmail(recipientId)) {
         const email = revisionRequestedEmail(recipient.firstName, request!.requestNumber, request!.title, emailText);
         sendEmail({ to: recipient.email, ...email }).catch((err) => logger.requestError("POST", "/request-revision (email)", err));
+      }
+    }
+
+    // Notify all admins when the revision was requested by the MP
+    if (isSubmitter) {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ["ADMIN"] }, isActive: true },
+        select: { id: true, email: true, firstName: true },
+      });
+      for (const admin of admins) {
+        if (await shouldNotify(admin.id, 'statusChanges')) {
+          await createNotification({
+            recipientId: admin.id,
+            type: "REVISION_REQUESTED",
+            title: "Member Requested Revision",
+            message: `The member requested a revision for: ${request!.title}`,
+            requestId: request!.id,
+          });
+        }
+        if (await shouldEmail(admin.id)) {
+          const email = revisionRequestedEmail(admin.firstName, request!.requestNumber, request!.title, emailText);
+          sendEmail({ to: admin.email, ...email }).catch((err) => logger.requestError("POST", "/request-revision (email)", err));
+        }
       }
     }
 
@@ -212,52 +281,90 @@ router.post("/request-revision", authenticateToken, requireRole("ADMIN"), async 
   }
 });
 
-// Approve report
-router.post("/approve", authenticateToken, requireRole("ADMIN"), async (req, res) => {
+// Approve / accept report — admins and the requesting MP may accept
+router.post("/approve", authenticateToken, async (req, res) => {
   try {
     const { reportId, requestId } = req.body;
+
+    const request = await prisma.researchRequest.findUnique({
+      where: lookupByIdOrNumber(requestId),
+    });
+    if (!request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    // Access control: admins and the requesting MP may accept
+    const { role, userId } = req.user!;
+    const isAdmin = role === "ADMIN";
+    const isSubmitter = role === "MP" && request.submitterId === userId;
+    if (!isAdmin && !isSubmitter) {
+      return res.status(403).json({ error: "Access denied" });
+    }
 
     const report = await prisma.researchReport.findUnique({ where: { id: reportId } });
     if (!report) {
       return res.status(404).json({ error: "Report not found" });
     }
 
+    const acceptedAt = new Date();
     const [updatedReport, updatedRequest] = await prisma.$transaction([
       prisma.researchReport.update({
         where: { id: reportId },
         data: {
           isApproved: true,
-          approvedAt: new Date(),
-          approvedById: req.user!.userId,
+          approvedAt: acceptedAt,
+          approvedById: userId,
           isDraft: false,
         },
       }),
       prisma.researchRequest.update({
-        where: { id: requestId },
-        data: { status: "APPROVED", dateCompleted: new Date() },
+        where: { id: request.id },
+        data: { status: "APPROVED", dateCompleted: acceptedAt },
       }),
     ]);
 
-    const request = await prisma.researchRequest.findUnique({ where: { id: requestId } });
-
     await prisma.activityLog.create({
       data: {
-        authorId: req.user!.userId,
+        authorId: userId,
         action: "APPROVED",
         entityType: "ResearchReport",
         entityId: reportId,
-        description: `Report approved for ${request?.requestNumber}`,
+        description: `Report approved/accepted for ${request.requestNumber}${isSubmitter ? " by the requesting member" : ""}`,
       },
     });
 
-    if (request?.submitterId) {
+    // Notify the submitting MP (when approved by an admin)
+    if (isAdmin && request.submitterId) {
       if (await shouldNotify(request.submitterId, 'statusChanges')) {
         await createNotification({
           recipientId: request.submitterId,
           type: "REPORT_APPROVED",
           title: "Report Approved",
           message: `Your research request has been approved: ${request.title}`,
-          requestId,
+          requestId: request.id,
+        });
+      }
+    }
+
+    // Notify assigned officers that their report was accepted
+    const assigneeIds = new Set<string>();
+    if (request.assignedOfficerId) assigneeIds.add(request.assignedOfficerId);
+    const assignments = await prisma.assignment.findMany({
+      where: { requestId: request.id, assignedToId: { not: null }, declinedAt: null, supersededAt: null },
+      select: { assignedToId: true },
+    });
+    for (const a of assignments) {
+      if (a.assignedToId) assigneeIds.add(a.assignedToId);
+    }
+
+    for (const assigneeId of assigneeIds) {
+      if (await shouldNotify(assigneeId, 'statusChanges')) {
+        await createNotification({
+          recipientId: assigneeId,
+          type: "REPORT_APPROVED",
+          title: "Report Accepted",
+          message: `Your research brief for "${request.title}" has been accepted`,
+          requestId: request.id,
         });
       }
     }

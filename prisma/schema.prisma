@@ -46,6 +46,11 @@ enum FileType {
   PDF
   DOCX
   XLSX
+  PPTX
+  TXT
+  CSV
+  RTF
+  ODT
   ZIP
 }
 
@@ -53,6 +58,7 @@ enum ActivityAction {
   CREATED
   UPDATED
   ASSIGNED
+  REASSIGNED
   STATUS_CHANGED
   FILE_UPLOADED
   COMMENT_ADDED
@@ -236,6 +242,7 @@ model Assignment {
   acceptedAt    DateTime?
   declinedAt    DateTime?
   declineReason String?
+  supersededAt  DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

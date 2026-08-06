@@ -26,7 +26,7 @@ export interface User {
 export interface Attachment {
   id?: string;
   name: string;
-  type: 'pdf' | 'xlsx' | 'docx' | 'zip';
+  type: 'pdf' | 'xlsx' | 'docx' | 'pptx' | 'txt' | 'csv' | 'rtf' | 'odt' | 'zip';
   size: string;
   url?: string;
 }
@@ -67,9 +67,12 @@ export interface ResearchRequest {
   teamId?: string | null;
   teamName?: string | null;
   assignedOfficers?: { id: string; firstName: string; lastName: string; initials: string }[];
+  declinedAssignments?: { id: string; firstName: string; lastName: string; initials: string; reason: string | null }[];
+  previousOfficers?: { id: string; firstName: string; lastName: string; initials: string; reason: string | null }[];
   status: 'SUBMITTED' | 'ASSIGNED' | 'IN_PROGRESS' | 'DRAFT_SUBMITTED' | 'REVISION_REQUESTED' | 'REVISED' | 'APPROVED' | 'DELIVERED' | 'CLOSED' | 'OVERDUE';
   priority: 'STANDARD' | 'URGENT';
   dateSubmitted: string;
+  dateSubmittedRaw?: string | null;
   deadline: string;
   description: string;
   scope?: string;

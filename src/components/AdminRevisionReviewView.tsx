@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { getRequest, getReviews } from '../lib/api';
 import { highlightText } from '../lib/highlight';
+import { normalizeFetchedRequest } from '../lib/requestNormalize';
 import { ResearchRequest } from '../types';
 import { 
   FileText, 
@@ -53,7 +54,9 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
   const [popoverPosition, setPopoverPosition] = useState({ x: 0, y: 0 });
   const documentRef = useRef<HTMLDivElement>(null);
 
-  const request = requests.find(r => r.id === requestId) || requests[0];
+  const request = requests.find(r => r.id === requestId) || requests[0] || null;
+  const [fetchedRequest, setFetchedRequest] = useState<ResearchRequest | null>(null);
+  const displayRequest = request || fetchedRequest;
 
   useEffect(() => {
     if (!requestId) {
@@ -64,6 +67,7 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
 
     getRequest(requestId)
       .then((data: any) => {
+        setFetchedRequest(normalizeFetchedRequest(data, requestId));
         if (data?.reports?.[0]) {
           setReport({
             id: data.reports[0].id,
@@ -77,12 +81,12 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
         setLoading(false);
       })
       .catch(() => {
-        if (request?.content) {
+        if (displayRequest?.content) {
           setReport({
-            id: request.reportId || request.id,
-            content: request.content,
-            title: request.title,
-            version: request.draftVersion,
+            id: displayRequest.reportId || displayRequest.id,
+            content: displayRequest.content,
+            title: displayRequest.title,
+            version: displayRequest.draftVersion,
             isDraft: true,
             isApproved: false,
           });
@@ -120,8 +124,8 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
         }
       })
       .catch(() => {
-        if (request?.comments) {
-          setReviewComments(request.comments.map(c => ({
+        if (displayRequest?.comments) {
+          setReviewComments(displayRequest.comments.map(c => ({
             ...c,
             resolved: c.resolved ?? false,
           })));
@@ -129,7 +133,7 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
       });
   }, [requestId]);
 
-  const allComments = reviewComments.length > 0 ? reviewComments : (request?.comments || []);
+  const allComments = reviewComments.length > 0 ? reviewComments : (displayRequest?.comments || []);
 
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
@@ -156,7 +160,7 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
   const handlePostComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-    addComment(request.id, commentText, selectedSection, highlightedText || undefined);
+    addComment(requestId, commentText, selectedSection, highlightedText || undefined);
     setReviewComments(prev => [...prev, {
       id: 'comment_' + Date.now(),
       userName: 'You',
@@ -175,17 +179,17 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
   };
 
   const handleApprove = () => {
-    updateRequestStatus(request.id, 'APPROVED');
+    updateRequestStatus(requestId, 'APPROVED');
     onBack();
   };
 
   const handleRequestRevision = () => {
-    updateRequestStatus(request.id, 'REVISION_REQUESTED');
+    updateRequestStatus(requestId, 'REVISION_REQUESTED');
     onBack();
   };
 
   const renderDocumentContent = () => {
-    const content = report?.content || request?.content || '';
+    const content = report?.content || displayRequest?.content || '';
     if (!content) {
       return (
         <div className="text-center py-20 text-gray-400">
@@ -201,10 +205,10 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
     return (
       <div className="space-y-6">
         <h1 className="text-xl font-sans font-bold text-center text-gray-900 leading-tight">
-          {report?.title || request.title}
+          {report?.title || displayRequest.title}
         </h1>
         <p className="text-xs text-center font-sans text-gray-500 font-bold uppercase tracking-wider">
-          PRRMS Legislative Briefing Draft v{report?.version || request.draftVersion}.00
+          PRRMS Legislative Briefing Draft v{report?.version || displayRequest.draftVersion}.00
         </p>
 
         {sections.map((section, idx) => {
@@ -251,6 +255,25 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
     );
   }
 
+  if (!displayRequest) {
+    return (
+      <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center space-y-4">
+        <FileText className="w-12 h-12 text-gray-300 mx-auto" />
+        <h3 className="text-lg font-bold text-gray-900">Request Not Found</h3>
+        <p className="text-sm text-[#434655] max-w-md mx-auto">
+          Unable to load this request. It may have been removed or is no longer
+          accessible.
+        </p>
+        <button
+          onClick={onBack}
+          className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded"
+        >
+          Back to Briefs
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex justify-between items-center pb-4 border-b border-[#c4c5d7]">
@@ -265,16 +288,16 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
           <div>
             <div className="flex items-center gap-2">
               <span className="bg-[#dce1ff] text-[#001551] font-bold text-xs px-2 py-0.5 rounded uppercase tracking-wider">
-                {request.id}
+                {displayRequest.id}
               </span>
-              <span className="text-xs text-gray-500 font-semibold">{request.category}</span>
+              <span className="text-xs text-gray-500 font-semibold">{displayRequest.category}</span>
               {report && (
                 <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold">
                   v{report.version} {report.isDraft ? '(Draft)' : '(Final)'}
                 </span>
               )}
             </div>
-            <h2 className="font-sans font-bold text-lg text-[#191c1d] mt-1">{request.title}</h2>
+            <h2 className="font-sans font-bold text-lg text-[#191c1d] mt-1">{displayRequest.title}</h2>
           </div>
         </div>
         <div className="flex gap-2">
@@ -308,7 +331,7 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
                 <Highlighter className="w-3.5 h-3.5" />
                 Select text to annotate
               </span>
-              <span>Version {report?.version || request.draftVersion}</span>
+              <span>Version {report?.version || displayRequest.draftVersion}</span>
             </div>
           </div>
 
@@ -347,9 +370,9 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
           )}
 
           <div className="bg-[#f3f4f5] border-t border-[#c4c5d7] px-6 py-2.5 text-[11px] text-[#434655] font-semibold flex items-center gap-1.5">
-            <span>Assigned Officer: {request.assignedOfficerName || 'Unassigned'}</span>
+            <span>Assigned Officer: {displayRequest.assignedOfficerName || 'Unassigned'}</span>
             <span className="text-gray-300">|</span>
-            <span>Deadline: {request.deadline}</span>
+            <span>Deadline: {displayRequest.deadline}</span>
           </div>
 
         </div>

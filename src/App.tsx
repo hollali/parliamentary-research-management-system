@@ -29,6 +29,9 @@ const ParliamentaryCalendarView = lazy(() => import('./components/ParliamentaryC
 const ResearchTemplatesView = lazy(() => import('./components/ResearchTemplatesView').then(m => ({ default: m.ResearchTemplatesView })));
 const DocumentVersionDiffView = lazy(() => import('./components/DocumentVersionDiffView').then(m => ({ default: m.DocumentVersionDiffView })));
 const ActivityLogView = lazy(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })));
+const MemberResearchReviewView = lazy(() => import('./components/MemberResearchReviewView').then(m => ({ default: m.MemberResearchReviewView })));
+const TeamsView = lazy(() => import('./components/TeamsView').then(m => ({ default: m.TeamsView })));
+const OfficerDashboardView = lazy(() => import('./components/OfficerDashboardView').then(m => ({ default: m.OfficerDashboardView })));
 
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -38,7 +41,7 @@ const VIEW_TITLES: Record<string, string> = {
   workspace: 'Revision Workspace Editor',
   settings: 'System Configuration',
   statistics: 'Legislative Intelligence & Analytics',
-  projects: 'Inquiry Pipeline Directory',
+  projects: 'Research',
   members: 'Parliamentary Directories',
   archive: 'Document Archival Vault',
   committees: 'Committee Workbench',
@@ -46,6 +49,9 @@ const VIEW_TITLES: Record<string, string> = {
   templates: 'Research Templates',
   'version-diff': 'Version Diff',
   audit: 'Activity Audit Log',
+  review: 'Research Review Center',
+  teams: 'Research Teams',
+  workflow: 'Officer Workflow',
   support: 'Support',
 };
 
@@ -91,7 +97,7 @@ function AppContent() {
       return currentUser.role === 'ADMIN'
         ? 'Admin Overview'
         : currentUser.role === 'RESEARCH_OFFICER'
-          ? 'Officer Workspace'
+          ? 'Officer Dashboard'
           : 'Parliamentary Member Portal';
     }
     return base;
@@ -103,10 +109,22 @@ function AppContent() {
         if (currentUser.role === 'ADMIN') {
           return <AdminDashboardView onNavigate={handleNavigate} />;
         } else if (currentUser.role === 'RESEARCH_OFFICER') {
-          return <OfficerWorkflowView onNavigate={handleNavigate} />;
+          return <OfficerDashboardView onNavigate={handleNavigate} />;
         } else {
           return <MemberDashboardView />;
         }
+
+      case 'workflow':
+        if (currentUser.role !== 'RESEARCH_OFFICER') {
+          return <Navigate to="/dashboard" replace />;
+        }
+        const workflowRequestId = currentPath.split('/')[2] || '';
+        return (
+          <OfficerWorkflowView
+            onNavigate={handleNavigate}
+            initialRequestId={workflowRequestId || undefined}
+          />
+        );
 
       case 'briefs':
         if (currentUser.role === 'ADMIN') {
@@ -120,6 +138,12 @@ function AppContent() {
             );
           }
           return <LegislativeBriefsView onNavigate={handleNavigate} />;
+        }
+        if (currentUser.role === 'MP') {
+          return <Navigate to="/review" replace />;
+        }
+        if (currentUser.role === 'RESEARCH_OFFICER') {
+          return <Navigate to="/dashboard" replace />;
         }
         return (
           <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center space-y-4">
@@ -139,7 +163,7 @@ function AppContent() {
         return (
           <OfficerRevisionWorkspaceView
             requestId={wsRequestId}
-            onBack={() => handleNavigate('dashboard')}
+            onBack={() => handleNavigate('workflow', wsRequestId)}
           />
         );
 
@@ -197,12 +221,24 @@ function AppContent() {
         ) : (
           <div className="text-center text-gray-400 py-20">
             <p className="text-sm">No report selected.</p>
-            <button onClick={() => handleNavigate('projects')} className="text-[#0037b0] text-xs font-bold mt-2 hover:underline">Go to Projects</button>
+            <button onClick={() => handleNavigate('projects')} className="text-[#0037b0] text-xs font-bold mt-2 hover:underline">Go to Research</button>
           </div>
         );
 
       case 'audit':
         return <ActivityLogView />;
+
+      case 'review':
+        if (currentUser.role !== 'MP') {
+          return <Navigate to="/dashboard" replace />;
+        }
+        return <MemberResearchReviewView />;
+
+      case 'teams':
+        if (currentUser.role !== 'ADMIN') {
+          return <Navigate to="/dashboard" replace />;
+        }
+        return <TeamsView />;
 
       default:
         return (
@@ -251,7 +287,7 @@ function AppContent() {
           onClose={() => setIsSearchOpen(false)}
         />
 
-        <main className="flex-1 pt-24 px-4 sm:px-6 lg:px-10 pb-12 overflow-y-auto max-w-350 mx-auto w-full min-w-0">
+        <main className="flex-1 pt-24 px-4 sm:px-6 lg:px-8 pb-12 overflow-y-auto max-w-[120rem] mx-auto w-full min-w-0">
           <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-[#0037b0]" /></div>}>
             {renderView()}
           </Suspense>

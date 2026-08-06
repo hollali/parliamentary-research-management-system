@@ -64,7 +64,33 @@ router.get("/", authenticateToken, async (req, res) => {
               assignedTo: { select: { id: true, firstName: true, lastName: true, initials: true } },
             },
           },
-          reports: { select: { id: true }, orderBy: { createdAt: "desc" }, take: 1 },
+          reports: {
+            select: {
+              id: true,
+              title: true,
+              version: true,
+              content: true,
+              filePath: true,
+              fileType: true,
+              isDraft: true,
+              isApproved: true,
+              createdAt: true,
+              author: { select: { id: true, firstName: true, lastName: true } },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+          attachments: {
+            select: {
+              id: true,
+              name: true,
+              fileType: true,
+              fileSize: true,
+              createdAt: true,
+              uploader: { select: { id: true, firstName: true, lastName: true } },
+            },
+            orderBy: { createdAt: "desc" },
+          },
           _count: { select: { reports: true, comments: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -142,12 +168,23 @@ router.get("/:id/activity", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Request not found" });
     }
 
+    const [reportIds, commentIds] = await Promise.all([
+      prisma.researchReport.findMany({
+        where: { requestId: request.id },
+        select: { id: true },
+      }),
+      prisma.reviewComment.findMany({
+        where: { requestId: request.id },
+        select: { id: true },
+      }),
+    ]);
+
     const logs = await prisma.activityLog.findMany({
       where: {
         OR: [
           { entityType: "ResearchRequest", entityId: request.id },
-          { entityType: "ResearchReport", entityId: request.id },
-          { entityType: "ReviewComment", entityId: request.id },
+          { entityType: "ResearchReport", entityId: { in: reportIds.map(r => r.id) } },
+          { entityType: "ReviewComment", entityId: { in: commentIds.map(c => c.id) } },
         ],
       },
       include: {

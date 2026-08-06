@@ -206,6 +206,7 @@ export async function createAssignment(data: {
   assignedToId?: string;
   assignedToIds?: string[];
   teamId?: string;
+  action?: 'assign' | 'reassign' | 'add';
   deadline: string;
   notes?: string;
 }) {
@@ -479,12 +480,21 @@ export async function getAttachments(requestId: string) {
 }
 
 export async function uploadFile(requestId: string, file: File, onUploaded?: (attachment: any) => void) {
+  const validationError = validateUploadFile(file);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
   const formData = new FormData();
   formData.append('file', file);
 
   const data = await uploadRequest(`/uploads/${requestId}`, formData);
   if (onUploaded) onUploaded(data);
   return data;
+}
+
+export async function deleteAttachment(attachmentId: string) {
+  return request(`/uploads/${attachmentId}`, { method: 'DELETE' });
 }
 
 export function getDownloadUrl(attachmentId: string) {
@@ -494,17 +504,10 @@ export function getDownloadUrl(attachmentId: string) {
 export async function downloadFile(attachmentId: string, fileName: string): Promise<void> {
   const token = getToken();
   const url = `${API_BASE}/uploads/${attachmentId}/download`;
-  console.log(`[downloadFile] Requesting: ${url}`);
-  console.log(`[downloadFile] Token present: ${!!token}`);
 
   const res = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-
-  console.log(`[downloadFile] Response status: ${res.status} ${res.statusText}`);
-  console.log(`[downloadFile] Content-Type: ${res.headers.get("content-type")}`);
-  console.log(`[downloadFile] Content-Length: ${res.headers.get("content-length")}`);
-  console.log(`[downloadFile] Content-Disposition: ${res.headers.get("content-disposition")}`);
 
   if (!res.ok) {
     const errorText = await res.text();
@@ -516,15 +519,12 @@ export async function downloadFile(attachmentId: string, fileName: string): Prom
         errorBody = { error: errorText };
       }
     }
-    console.error(`[downloadFile] Error body:`, errorBody);
     throw new Error(errorBody.error || errorBody.message || `Download failed (${res.status})`);
   }
 
   const blob = await res.blob();
-  console.log(`[downloadFile] Blob size: ${blob.size}, type: ${blob.type}`);
 
   const blobUrl = URL.createObjectURL(blob);
-  console.log(`[downloadFile] Blob URL created: ${blobUrl.substring(0, 60)}...`);
 
   const link = document.createElement("a");
   link.href = blobUrl;
@@ -532,15 +532,27 @@ export async function downloadFile(attachmentId: string, fileName: string): Prom
   link.style.display = "none";
   document.body.appendChild(link);
 
-  console.log(`[downloadFile] Triggering click with download="${fileName}"`);
   link.click();
 
   // Revoke after the browser has started the download
   setTimeout(() => {
     document.body.removeChild(link);
     URL.revokeObjectURL(blobUrl);
-    console.log(`[downloadFile] Cleaned up link and blob URL`);
   }, 500);
+}
+
+const ALLOWED_UPLOAD_EXTENSIONS = ["pdf", "docx", "xlsx", "pptx", "txt", "csv", "rtf", "odt", "zip"];
+
+// Client-side validation for uploads (mirrors the server rules: PDF/DOCX/XLSX/PPTX/TXT/CSV/RTF/ODT/ZIP up to 50MB)
+export function validateUploadFile(file: File): string | null {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  if (!ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
+    return "Only PDF, DOCX, XLSX, PPTX, TXT, CSV, RTF, ODT, and ZIP files are allowed";
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    return "File is too large. Maximum size is 50MB";
+  }
+  return null;
 }
 
 // ─── Utility ────────────────────────────────────────────

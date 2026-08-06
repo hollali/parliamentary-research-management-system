@@ -101,6 +101,29 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
           sendEmail({ to: admin.email, ...email }).catch((err) => logger.requestError("POST", "/ (email)", err));
         }
       }
+
+      // Notify the requesting member that a new draft awaits their review
+      if (request.submitterId) {
+        const submitter = await prisma.user.findUnique({
+          where: { id: request.submitterId },
+          select: { id: true, email: true, firstName: true },
+        });
+        if (submitter) {
+          if (await shouldNotify(submitter.id, 'statusChanges')) {
+            await createNotification({
+              recipientId: submitter.id,
+              type: "REPORT_UPLOADED",
+              title: "Research Brief Ready for Review",
+              message: `A new draft (v${nextVersion}) of your research brief is ready: ${request.title}`,
+              requestId: request.id,
+            });
+          }
+          if (await shouldEmail(submitter.id)) {
+            const email = draftSubmittedEmail(submitter.firstName, request.requestNumber, request.title, nextVersion);
+            sendEmail({ to: submitter.email, ...email }).catch((err) => logger.requestError("POST", "/ (email)", err));
+          }
+        }
+      }
     }
 
     res.status(201).json(report);

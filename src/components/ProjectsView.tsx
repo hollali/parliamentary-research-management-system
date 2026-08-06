@@ -17,7 +17,7 @@ import {
   Download,
   ShieldCheck,
   Flag,
-  RefreshCw,
+  Pencil,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -51,8 +51,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
 
-  const [sortField, setSortField] = useState<string>("id");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [sortField, setSortField] = useState<string>("dateSubmittedRaw");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   const [viewRequest, setViewRequest] = useState<any | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -313,49 +313,49 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
     switch (status) {
       case "SUBMITTED":
         return (
-          <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
             Pending Review
           </span>
         );
       case "ASSIGNED":
         return (
-          <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
             Assigned
           </span>
         );
       case "IN_PROGRESS":
         return (
-          <span className="bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <span className="bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
             In Progress
           </span>
         );
       case "REVISION_REQUESTED":
         return (
-          <span className="bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider animate-pulse">
+          <span className="bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap animate-pulse">
             Revision Needed
           </span>
         );
       case "REVISED":
         return (
-          <span className="bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <span className="bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
             Revised
           </span>
         );
       case "OVERDUE":
         return (
-          <span className="bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <span className="bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
             Overdue
           </span>
         );
       case "APPROVED":
         return (
-          <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
             Completed
           </span>
         );
       default:
         return (
-          <span className="bg-gray-100 text-gray-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <span className="bg-gray-100 text-gray-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
             {status.replace(/_/g, " ")}
           </span>
         );
@@ -384,6 +384,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   const sortedRequests = React.useMemo(() => {
     const arr = [...filteredRequests];
     arr.sort((a, b) => {
+      if (sortField === "dateSubmittedRaw") {
+        const aTime = new Date(a.dateSubmittedRaw || 0).getTime();
+        const bTime = new Date(b.dateSubmittedRaw || 0).getTime();
+        return sortDirection === "asc" ? aTime - bTime : bTime - aTime;
+      }
       let aVal: string, bVal: string;
       switch (sortField) {
         case "id":
@@ -806,7 +811,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                               title="Reassign Staff"
                               aria-label="Reassign Staff"
                             >
-                              <RefreshCw className="w-4 h-4" />
+                              <Pencil className="w-4 h-4" />
                             </button>
                           )}
                           <button
@@ -1121,15 +1126,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                 >
                   Close
                 </button>
-                <button
-                  onClick={() => {
-                    setViewRequest(null);
-                    onNavigate("briefs", viewRequest.id);
-                  }}
-                  className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-bold py-1.5 px-4 rounded transition-all cursor-pointer"
-                >
-                  Open Full Brief
-                </button>
+                {(currentUser.role === "ADMIN" || currentUser.role === "MP") && (
+                  <button
+                    onClick={() => {
+                      setViewRequest(null);
+                      onNavigate("briefs", viewRequest.id);
+                    }}
+                    className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-bold py-1.5 px-4 rounded transition-all cursor-pointer"
+                  >
+                    Open Full Brief
+                  </button>
+                )}
               </div>
             </div>
           </div>

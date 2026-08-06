@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
-import { getRequest, getReviews, createReport, updateReport, getAttachments, uploadFile, downloadFile } from '../lib/api';
+import { getRequest, getReviews, createReport, updateReport, getAttachments, uploadFile, downloadFile, deleteAttachment } from '../lib/api';
 import { highlightText } from '../lib/highlight';
+import { normalizeFetchedRequest } from '../lib/requestNormalize';
+import { ResearchRequest } from '../types';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
@@ -19,6 +21,7 @@ import {
   Loader2,
   Upload,
   Download,
+  Trash2,
   Paperclip,
   Bold,
   Italic,
@@ -55,7 +58,9 @@ interface ReviewComment {
 export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceViewProps> = ({ requestId, onBack }) => {
   const { requests, updateRequestContent, resolveComment, addComment, updateRequestStatus, templates } = useApp();
   const { toast } = useToast();
-  const request = requests.find(r => r.id === requestId) || requests[0];
+  const contextRequest = requests.find(r => r.id === requestId) || requests[0] || null;
+  const [fetchedRequest, setFetchedRequest] = useState<ResearchRequest | null>(null);
+  const request = contextRequest || fetchedRequest;
   
   const [editorText, setEditorText] = useState('');
   const [replyText, setReplyText] = useState('');
@@ -71,29 +76,39 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedText = useRef('');
+  const reportIdRef = useRef<string | null>(null);
+  const draftVersionRef = useRef(1);
+  const requestRef = useRef<ResearchRequest | null>(request);
 
   const autoSave = useCallback(async (text: string) => {
     if (text === lastSavedText.current || text.trim().length < 10) return;
     lastSavedText.current = text;
-    updateRequestContent(request.id, text);
+    updateRequestContent(requestId, text);
     try {
-      if (reportId) {
-        await updateReport(reportId, { content: text, notes: 'Auto-saved' });
+      if (reportIdRef.current) {
+        await updateReport(reportIdRef.current, { content: text, notes: 'Auto-saved' });
       } else {
         const data = await createReport({
           requestId,
-          title: request.title,
+          title: requestRef.current?.title || 'Research Brief',
           content: text,
           isDraft: true,
           notes: 'Auto-saved',
         });
-        if (data?.id) setReportId(data.id);
+        if (data?.id) {
+          reportIdRef.current = data.id;
+          setReportId(data.id);
+        }
+        if (data?.version) {
+          draftVersionRef.current = data.version;
+          setDraftVersion(data.version);
+        }
       }
       setLastSaved(new Date());
     } catch {
       // silent — manual save still available
     }
-  }, [reportId, requestId, request?.title, updateRequestContent]);
+  }, [requestId, updateRequestContent]);
 
   const editor = useEditor({
     extensions: [StarterKit, Highlight.configure({ multicolor: true })],
@@ -119,6 +134,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   }, []);
 
   useEffect(() => {
+    let ignore = false;
     if (!requestId) {
       setLoading(false);
       return;
@@ -126,17 +142,34 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
 
     setLoading(true);
 
+    // Safety net: never leave the loading spinner stuck forever if a request stalls.
+    const watchdog = setTimeout(() => {
+      if (!ignore) setLoading(false);
+    }, 10000);
+    const finishLoading = () => {
+      clearTimeout(watchdog);
+      if (!ignore) setLoading(false);
+    };
+
     // Fetch full request with reports
     getRequest(requestId)
       .then((data: any) => {
+        if (ignore) return;
+        const normalized = normalizeFetchedRequest(data, requestId);
+        setFetchedRequest(normalized);
+        requestRef.current = normalized;
         let content = '';
         if (data?.reports?.[0]) {
           content = data.reports[0].content || '';
+          reportIdRef.current = data.reports[0].id;
           setReportId(data.reports[0].id);
+          draftVersionRef.current = data.reports[0].version || 1;
           setDraftVersion(data.reports[0].version || 1);
         } else if (request?.content) {
           content = request.content;
+          reportIdRef.current = request.reportId || null;
           setReportId(request.reportId || null);
+          draftVersionRef.current = request.draftVersion;
           setDraftVersion(request.draftVersion);
         } else {
           // Try to pre-fill from the assigned template
@@ -155,19 +188,21 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
         }
         setEditorText(content);
         if (editor && content) {
-          editor.commands.setContent(content);
+          editor.commands.setContent(content, { emitUpdate: false });
         }
-        setLoading(false);
+        finishLoading();
       })
       .catch(() => {
         const fallback = request?.content || '';
         setEditorText(fallback);
+        reportIdRef.current = request?.reportId || null;
         setReportId(request?.reportId || null);
+        draftVersionRef.current = request?.draftVersion || 1;
         setDraftVersion(request?.draftVersion || 1);
         if (editor && fallback) {
-          editor.commands.setContent(fallback);
+          editor.commands.setContent(fallback, { emitUpdate: false });
         }
-        setLoading(false);
+        finishLoading();
       });
 
     // Fetch reviews from API
@@ -218,6 +253,11 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
         }
       })
       .catch(() => console.warn('Failed to load attachments'));
+
+    return () => {
+      clearTimeout(watchdog);
+      ignore = true;
+    };
   }, [requestId]);
 
   const unresolvedComments = reviewComments.filter(c => !c.resolved);
@@ -233,28 +273,38 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     if (editor && highlightedContent) {
       const currentContent = editor.getHTML();
       if (currentContent !== highlightedContent) {
-        editor.commands.setContent(highlightedContent);
+        editor.commands.setContent(highlightedContent, { emitUpdate: false });
       }
     }
   }, [highlightedContent]);
 
   const handleSaveDraft = async () => {
-    updateRequestContent(request.id, editorText);
-    lastSavedText.current = editorText;
-    
+    const text = editor?.getText() ?? editorText;
+    if (!text.trim()) {
+      toast.error('Nothing to save — the draft is empty.');
+      return;
+    }
+    updateRequestContent(requestId, text);
+    lastSavedText.current = text;
+
     try {
-      if (reportId) {
-        await updateReport(reportId, { content: editorText, notes: `Draft saved (v${draftVersion})` });
+      if (reportIdRef.current) {
+        await updateReport(reportIdRef.current, { content: text, notes: `Draft saved (v${draftVersionRef.current})` });
       } else {
         const data = await createReport({
           requestId,
-          title: request.title,
-          content: editorText,
+          title: requestRef.current?.title || 'Research Brief',
+          content: text,
           isDraft: true,
-          notes: `Draft saved (v${draftVersion})`,
+          notes: `Draft saved (v${draftVersionRef.current})`,
         });
         if (data?.id) {
+          reportIdRef.current = data.id;
           setReportId(data.id);
+        }
+        if (data?.version) {
+          draftVersionRef.current = data.version;
+          setDraftVersion(data.version);
         }
       }
       setLastSaved(new Date());
@@ -266,12 +316,12 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
 
   const handleSubmitReview = async () => {
     setSubmitting(true);
-    updateRequestContent(request.id, editorText);
+    updateRequestContent(requestId, editorText);
     
     // Get latest attachment info if available
     let latestAttachment: any = null;
     try {
-      const data = await getAttachments(request.id);
+      const data = await getAttachments(requestId);
       if (Array.isArray(data) && data.length > 0) {
         latestAttachment = data[0];
       }
@@ -281,7 +331,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     try {
       await createReport({
           requestId,
-          title: request.title,
+          title: requestRef.current?.title || 'Research Brief',
           content: editorText,
           isDraft: false,
           filePath: latestAttachment?.filePath || undefined,
@@ -293,13 +343,13 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
       // Fall through to local-only
     }
     
-    updateRequestStatus(request.id, 'SUBMITTED');
+    updateRequestStatus(requestId, 'SUBMITTED');
     setSubmitting(false);
     onBack();
   };
 
   const handleResolveComment = async (commentId: string) => {
-    await resolveComment(request.id, commentId);
+    await resolveComment(requestId, commentId);
     // Update local state
     setReviewComments(prev => prev.map(c => 
       c.id === commentId ? { ...c, resolved: true } : c
@@ -308,7 +358,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
 
   const handlePostReply = (parentId: string) => {
     if (!replyText.trim()) return;
-    addComment(request.id, replyText, undefined, undefined, undefined, undefined, parentId);
+    addComment(requestId, replyText, undefined, undefined, undefined, undefined, parentId);
     // Add reply nested under parent comment
     const newReply: ReviewComment = {
       id: 'comment_' + Date.now(),
@@ -336,7 +386,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     setUploadProgress(0);
     for (let i = 0; i < files.length; i++) {
       try {
-        const result = await uploadFile(request.id, files[i]);
+        const result = await uploadFile(requestId, files[i]);
         setAttachments(prev => [result, ...prev]);
         setUploadProgress(Math.round(((i + 1) / files.length) * 100));
       } catch {
@@ -347,10 +397,40 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     e.target.value = '';
   };
 
+  const handleRemoveAttachment = async (att: any) => {
+    if (!att?.id) return;
+    try {
+      await deleteAttachment(att.id);
+      setAttachments(prev => prev.filter(a => a.id !== att.id));
+      toast.success(`"${att.name}" removed.`);
+    } catch (err: any) {
+      toast.error(err?.message || `Failed to remove "${att.name}"`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 text-[#0037b0] animate-spin" />
+      </div>
+    );
+  }
+
+  if (!request) {
+    return (
+      <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center space-y-4">
+        <FileText className="w-12 h-12 text-gray-300 mx-auto" />
+        <h3 className="text-lg font-bold text-gray-900">Request Not Found</h3>
+        <p className="text-sm text-[#434655] max-w-md mx-auto">
+          Unable to load this request. It may have been removed or is no longer
+          accessible.
+        </p>
+        <button
+          onClick={onBack}
+          className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded"
+        >
+          Back to Assignments
+        </button>
       </div>
     );
   }
@@ -641,7 +721,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             <span>{uploading ? `Uploading... ${uploadProgress}%` : 'Upload File'}</span>
             <input
               type="file"
-              accept=".pdf,.docx,.xlsx,.zip"
+              accept=".pdf,.docx,.xlsx,.pptx,.txt,.csv,.rtf,.odt,.zip"
               multiple
               onChange={handleUpload}
               disabled={uploading}
@@ -668,13 +748,22 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
                 <div className="flex items-center gap-3">
                   <span className="text-gray-500 font-bold">{att.fileSize ? `${(att.fileSize / 1024 / 1024).toFixed(1)} MB` : ''}</span>
                   {att.id && (
-                    <button
-                      onClick={() => downloadFile(att.id, att.name).catch(() => toast.error(`Failed to download "${att.name}"`))}
-                      className="p-1 hover:bg-gray-200 rounded text-gray-600 hover:text-[#0037b0] transition-colors"
-                      title="Download"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleRemoveAttachment(att)}
+                        className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-600 transition-colors"
+                        title="Remove file"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => downloadFile(att.id, att.name).catch(() => toast.error(`Failed to download "${att.name}"`))}
+                        className="p-1 hover:bg-gray-200 rounded text-gray-600 hover:text-[#0037b0] transition-colors"
+                        title="Download"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
