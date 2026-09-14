@@ -5,11 +5,15 @@ import { lookupByIdOrNumber } from "../lib/requestUtils.js";
 import upload from "../middleware/upload.js";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { fileURLToPath } from "url";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { logger } from "../lib/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "../../uploads");
+const execFileAsync = promisify(execFile);
 
 const router = Router();
 
@@ -72,6 +76,8 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
 
 // Download an attachment — requires Authorization header only
 router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
+  let tempPdfDir: string | null = null;
+
   try {
     const { attachmentId } = req.params;
     const userId = req.user!.userId;
@@ -106,25 +112,51 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "File not found on disk" });
     }
 
-const mimeTypes: Record<string, string> = {
-  PDF: "application/pdf",
-  DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  PPTX: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  TXT: "text/plain",
-  CSV: "text/csv",
-  RTF: "application/rtf",
-  ODT: "application/vnd.oasis.opendocument.text",
-  ZIP: "application/zip",
-};
+    let servePath = filePath;
+    let contentType = "application/pdf";
+    let downloadName = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const pdfName = downloadName.replace(/\.[^.]+$/, "") + ".pdf";
 
-    const safeName = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    res.setHeader("Content-Type", mimeTypes[attachment.fileType] || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(attachment.name)}`);
-    res.setHeader("Content-Length", fs.statSync(filePath).size);
+    // Convert non-PDF, non-ZIP files to PDF via LibreOffice headless
+    if (attachment.fileType !== "PDF" && attachment.fileType !== "ZIP") {
+      try {
+        tempPdfDir = fs.mkdtempSync(path.join(os.tmpdir(), "prrms-pdf-"));
+        await execFileAsync(
+          "soffice",
+          ["--headless", "--convert-to", "pdf", "--outdir", tempPdfDir, filePath],
+          { timeout: 60_000 },
+        );
+        const converted = path.join(tempPdfDir, path.basename(filePath, path.extname(filePath)) + ".pdf");
+        if (fs.existsSync(converted)) {
+          servePath = converted;
+          downloadName = pdfName;
+        } else {
+          logger.requestError("PDF conversion", attachment.name, new Error("Converted file not found"));
+          tempPdfDir = null;
+        }
+      } catch (convErr) {
+        logger.requestError("PDF conversion", attachment.name, convErr);
+        tempPdfDir = null;
+      }
+    } else if (attachment.fileType === "PDF") {
+      contentType = "application/pdf";
+    } else {
+      contentType = "application/zip";
+    }
 
-    const stream = fs.createReadStream(filePath);
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"; filename*=UTF-8''${encodeURIComponent(pdfName)}`);
+    res.setHeader("Content-Length", fs.statSync(servePath).size);
+
+    const stream = fs.createReadStream(servePath);
     stream.pipe(res);
+
+    // Clean up temp directory after response completes
+    if (tempPdfDir) {
+      res.on("finish", () => {
+        try { fs.rmSync(tempPdfDir!, { recursive: true, force: true }); } catch {}
+      });
+    }
   } catch (error) {
     logger.requestError("GET", "/:attachmentId/download", error);
     res.status(500).json({ error: "Internal server error" });

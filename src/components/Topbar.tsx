@@ -61,7 +61,6 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
       <div className="flex items-center gap-4 sm:gap-6 shrink-0">
         <nav className="hidden lg:flex items-center gap-8">
           <button onClick={() => onNavigate('notifications')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Directives</button>
-          <button onClick={() => onNavigate('committees')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Committees</button>
           {currentUser.role === 'ADMIN' && (
             <button onClick={() => onNavigate('briefs')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Library</button>
           )}
@@ -75,7 +74,9 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#ba1a1a] rounded-full border-2 border-white animate-pulse" />
+              <span className="absolute -top-1.5 -right-1.5 bg-[#ba1a1a] text-white text-[9px] font-bold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 border-2 border-white">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             )}
           </button>
 

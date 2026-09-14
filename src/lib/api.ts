@@ -187,14 +187,6 @@ export async function getCommittees() {
   return request('/requests/meta/committees');
 }
 
-export async function getCommitteeStats() {
-  return request('/requests/meta/committees/stats');
-}
-
-export async function getRequestsByCommittee(committeeId: string) {
-  return request(`/requests/committee/${committeeId}`);
-}
-
 // ─── Assignments ────────────────────────────────────────
 
 export async function getPendingAssignments() {
@@ -272,23 +264,6 @@ export async function getReportVersions(reportId: string) {
 
 export async function compareReportVersions(reportId: string, v1: number, v2: number) {
   return request(`/reports/${reportId}/versions/${v1}/compare/${v2}`);
-}
-
-// ─── Cross-Committee Sharing ────────────────────────────
-
-export async function shareWithCommittee(requestId: string, committeeId: string, notes?: string) {
-  return request(`/requests/${requestId}/share`, {
-    method: 'POST',
-    body: { committeeId, notes },
-  });
-}
-
-export async function getSharedCommittees(requestId: string) {
-  return request(`/requests/${requestId}/shared`);
-}
-
-export async function getRequestsSharedWithCommittee(committeeId: string) {
-  return request(`/requests/shared/committee/${committeeId}`);
 }
 
 // ─── Global Search ──────────────────────────────────────

@@ -105,14 +105,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   // Filter requests for display
   const filteredRequests = requests.filter((req) => {
     if (showHighPriorityOnly && req.priority !== "URGENT") return false;
-    if (filterTab === "PENDING" && !["SUBMITTED", "ASSIGNED"].includes(req.status)) return false;
+    if (
+      filterTab === "PENDING" &&
+      !["SUBMITTED", "ASSIGNED"].includes(req.status)
+    )
+      return false;
     return true;
   });
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredRequests.length / pageSize),
-  );
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / pageSize));
   const currentPageClamped = Math.min(currentPage, totalPages);
   const paginatedRequests = filteredRequests.slice(
     (currentPageClamped - 1) * pageSize,
@@ -464,7 +465,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       <p className="font-semibold text-sm text-[#191c1d] truncate group-hover:text-[#0037b0] transition-colors">
                         {req.title}
                       </p>
-                      <p className="text-xs text-gray-500 truncate" title={req.category}>
+                      <p
+                        className="text-xs text-gray-500 truncate"
+                        title={req.category}
+                      >
                         {req.category}
                       </p>
                     </div>
@@ -485,7 +489,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     className="px-6 py-4"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <div className="min-w-[150px]">
+                    <div className="min-w-37.5">
                       {/* Active assignment — avatars only; names shown in the details modal */}
                       {req.teamName ? (
                         <div
@@ -499,40 +503,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           <span className="ml-1.5 shrink-0 text-[8px] font-bold uppercase tracking-wider bg-[#dce1ff] text-[#0037b0] px-1.5 py-0.5 rounded-full">
                             Team
                           </span>
-                        </div>
-                      ) : req.assignedOfficers &&
-                        req.assignedOfficers.length > 0 ? (
-                        <div
-                          className="flex items-center cursor-pointer w-fit"
-                          onClick={() => setActiveRequest(req)}
-                          title="View all assigned officers"
-                        >
-                          <div className="flex -space-x-1.5">
-                            {req.assignedOfficers
-                              .slice(0, 3)
-                              .map((officer) => (
-                                <div
-                                  key={officer.id}
-                                  title={`${officer.firstName} ${officer.lastName}`}
-                                  className="w-7 h-7 rounded-full bg-[#dce1ff] border-2 border-white flex items-center justify-center text-[9px] font-bold text-[#001551]"
-                                >
-                                  {officer.initials}
-                                </div>
-                              ))}
-                            {req.assignedOfficers.length > 3 && (
-                              <div
-                                className="w-7 h-7 rounded-full bg-[#e9eaf1] border-2 border-white flex items-center justify-center text-[9px] font-bold text-[#191c1d]"
-                                title={req.assignedOfficers
-                                  .map(
-                                    (o) =>
-                                      `${o.firstName} ${o.lastName}`,
-                                  )
-                                  .join(", ")}
-                              >
-                                +{req.assignedOfficers.length - 3}
-                              </div>
-                            )}
-                          </div>
                         </div>
                       ) : req.assignedOfficerName ? (
                         <div
@@ -723,39 +693,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           <span className="text-sm font-semibold text-[#191c1d]">
                             {activeRequest.teamName}
                           </span>
-                          <span className="text-[10px] text-gray-400">Team</span>
+                          <span className="text-[10px] text-gray-400">
+                            Team
+                          </span>
                         </div>
-                        {activeRequest.assignedOfficers &&
-                          activeRequest.assignedOfficers.length > 0 && (
-                            <div className="flex flex-wrap gap-x-2 gap-y-1 mt-1.5">
-                              {activeRequest.assignedOfficers.map((officer) => (
-                                <span
-                                  key={officer.id}
-                                  className="text-[11px] text-gray-500 font-semibold"
-                                >
-                                  {officer.firstName} {officer.lastName}
-                                </span>
-                              ))}
-                            </div>
-                          )}
                       </>
-                    ) : activeRequest.assignedOfficers &&
-                      activeRequest.assignedOfficers.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeRequest.assignedOfficers.map((officer) => (
-                          <div
-                            key={officer.id}
-                            className="flex items-center gap-1.5 bg-[#f3f4f5] border border-[#c4c5d7] rounded-full px-2 py-0.5"
-                          >
-                            <div className="w-5 h-5 rounded-full bg-[#dce1ff] flex items-center justify-center text-[8px] font-bold text-[#001551]">
-                              {officer.initials}
-                            </div>
-                            <span className="text-[11px] font-semibold text-[#191c1d]">
-                              {officer.firstName} {officer.lastName}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
                     ) : activeRequest.assignedOfficerName ? (
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-[#dce1ff] flex items-center justify-center text-[10px] font-bold text-[#001551]">
@@ -845,7 +787,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   <p className="mt-2 text-sm font-semibold text-[#191c1d]">
                     {activeRequest.priority === "URGENT" ? (
                       <span className="inline-flex items-center gap-1.5 text-[#ba1a1a]">
-                        <Flag className="w-4 h-4 fill-[#ba1a1a]" /> High Priority
+                        <Flag className="w-4 h-4 fill-[#ba1a1a]" /> High
+                        Priority
                       </span>
                     ) : (
                       <span className="text-[#434655]">Standard</span>

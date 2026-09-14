@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { getCommittees, getUsers } from '../lib/api';
+import { getUsers } from '../lib/api';
 import { honourable } from '../lib/format';
-import type { Committee, TemplateItem } from '../types';
+import type { TemplateItem } from '../types';
 import { validateForm, validateRequired, validateMinLength, validateDeadline, type ValidationError } from '../lib/validation';
 import { 
   FileText, 
@@ -28,22 +28,11 @@ interface NewRequestFormViewProps {
 export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSuccess }) => {
   const { currentUser, addRequest, templates } = useApp();
   const [step, setStep] = useState(1);
-  
-  // Committees from API
-  const [committees, setCommittees] = useState<Committee[]>([]);
-  const [loadingCommittees, setLoadingCommittees] = useState(true);
 
   // Members list (admin only)
   const [members, setMembers] = useState<Array<{ id: string; firstName: string; lastName: string }>>([]);
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
-
-  useEffect(() => {
-    getCommittees().then((data) => {
-      setCommittees(Array.isArray(data) ? data : []);
-      setLoadingCommittees(false);
-    }).catch(() => { setLoadingCommittees(false); console.warn('Failed to load committees'); });
-  }, []);
 
   useEffect(() => {
     if (currentUser.role === 'ADMIN') {
@@ -152,7 +141,6 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
         deadline,
         description,
         language,
-        committeeId: committees.find(c => c.name === committee)?.id || null,
         templateId: selectedTemplateId || null,
         attachments: uploadedFiles.map(f => {
           let type: 'pdf' | 'xlsx' | 'docx' | 'pptx' | 'txt' | 'csv' | 'rtf' | 'odt' | 'zip' = 'pdf';
@@ -256,33 +244,17 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
               <div className="space-y-5 animate-fadeIn">
                 <h3 className="font-sans font-bold text-lg text-[#191c1d] border-b border-gray-100 pb-3">Basic Information</h3>
                 
-                {/* Committee Selector */}
+                {/* Target Committee */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Target Committee Jurisdiction</label>
-                  <div className="relative">
-                    <select 
-                      value={committee}
-                      onChange={(e) => setCommittee(e.target.value)}
-                      disabled={loadingCommittees}
-                      className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 appearance-none text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
-                    >
-                      <option value="">
-                        {loadingCommittees ? 'Loading committees...' : 'Select a committee'}
-                      </option>
-                      {committees.map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.shortName ? `${c.shortName} - ` : ''}{c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#747686]" />
-                  </div>
-                  {committee && committees.find(c => c.name === committee) && (
-                    <div className="mt-1.5 p-2 bg-gray-50 border border-gray-100 rounded text-[10px] text-gray-500">
-                      <span className="font-semibold">Chairperson:</span> {committees.find(c => c.name === committee)?.chairperson || 'N/A'} •{' '}
-                      <span className="font-semibold">Clerk:</span> {committees.find(c => c.name === committee)?.clerk || 'N/A'}
-                    </div>
-                  )}
+                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Target Committee</label>
+                  <input 
+                    type="text"
+                    value={committee}
+                    onChange={(e) => setCommittee(e.target.value)}
+                    placeholder="e.g. Constitutional, Legal and Parliamentary Affairs"
+                    className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
+                  />
+                  <p className="text-[10px] text-gray-500">Enter the name of the committee this inquiry is directed to.</p>
                 </div>
 
                 {/* Submitting Requestor */}

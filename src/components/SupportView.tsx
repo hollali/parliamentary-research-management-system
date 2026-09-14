@@ -20,7 +20,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'How do I share a completed research report with another committee?',
-    a: 'Open the request from the Committee Workbench or Archive, and use the "Share with Committee" option. Select the target committee(s) and confirm. They will receive a notification.',
+    a: 'Open the request from the Archive view, and use the "Share with Committee" option. Select the target committee(s) and confirm. They will receive a notification.',
   },
   {
     q: 'What file formats are accepted for uploads?',

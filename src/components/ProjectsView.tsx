@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { ExportButton } from "./ExportButton";
 import { Pagination } from "./Pagination";
+import { Document, Packer, Paragraph, TextRun } from "docx";
 
 interface ProjectsViewProps {
   onNavigate: (view: string, id: string) => void;
@@ -450,13 +451,20 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
           }
         }
       } else if (req.content) {
-        const blob = new Blob([req.content], {
-          type: "text/plain;charset=utf-8",
+        const paragraphs = req.content.split("\n").map(
+          (line: string) =>
+            new Paragraph({
+              children: [new TextRun(line)],
+            })
+        );
+        const doc = new Document({
+          sections: [{ properties: {}, children: paragraphs }],
         });
+        const blob = await Packer.toBlob(doc);
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${req.title || req.id}_brief.txt`;
+        link.download = `${req.title || req.id}_brief.docx`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -974,16 +982,6 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                           <p className="text-sm font-semibold text-[#191c1d]">
                             {viewRequest.teamName}
                           </p>
-                          {viewRequest.assignedOfficers &&
-                            viewRequest.assignedOfficers.length > 0 && (
-                              <p className="text-[10px] text-gray-500">
-                                {viewRequest.assignedOfficers
-                                  .map(
-                                    (o: any) => `${o.firstName} ${o.lastName}`,
-                                  )
-                                  .join(", ")}
-                              </p>
-                            )}
                         </div>
                       </div>
                     ) : viewRequest.assignedOfficerName ? (

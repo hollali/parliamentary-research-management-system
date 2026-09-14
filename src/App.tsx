@@ -24,7 +24,6 @@ const StatisticsView = lazy(() => import('./components/StatisticsView').then(m =
 const ProjectsView = lazy(() => import('./components/ProjectsView').then(m => ({ default: m.ProjectsView })));
 const MembersView = lazy(() => import('./components/MembersView').then(m => ({ default: m.MembersView })));
 const ArchiveView = lazy(() => import('./components/ArchiveView').then(m => ({ default: m.ArchiveView })));
-const CommitteeWorkbenchView = lazy(() => import('./components/CommitteeWorkbenchView').then(m => ({ default: m.CommitteeWorkbenchView })));
 const ParliamentaryCalendarView = lazy(() => import('./components/ParliamentaryCalendarView').then(m => ({ default: m.ParliamentaryCalendarView })));
 const ResearchTemplatesView = lazy(() => import('./components/ResearchTemplatesView').then(m => ({ default: m.ResearchTemplatesView })));
 const DocumentVersionDiffView = lazy(() => import('./components/DocumentVersionDiffView').then(m => ({ default: m.DocumentVersionDiffView })));
@@ -44,7 +43,6 @@ const VIEW_TITLES: Record<string, string> = {
   projects: 'Research',
   members: 'Parliamentary Directories',
   archive: 'Document Archival Vault',
-  committees: 'Committee Workbench',
   calendar: 'Parliamentary Calendar',
   templates: 'Research Templates',
   'version-diff': 'Version Diff',
@@ -204,9 +202,6 @@ function AppContent() {
 
       case 'archive':
         return <ArchiveView onNavigate={handleNavigate} />;
-
-      case 'committees':
-        return <CommitteeWorkbenchView onNavigate={handleNavigate} />;
 
       case 'calendar':
         return <ParliamentaryCalendarView />;

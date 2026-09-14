@@ -31,7 +31,8 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpenMobile, onCloseMobile, isCollapsed, onToggleCollapse }) => {
-  const { currentUser, switchUser, requests } = useApp();
+  const { currentUser, switchUser, requests, notifications } = useApp();
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'RESEARCH_OFFICER', 'MP'] },
@@ -43,7 +44,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
     { id: 'notifications', label: 'Notifications', icon: Bell, roles: ['ADMIN', 'RESEARCH_OFFICER', 'MP'] },
     { id: 'members', label: 'Members', icon: Users, roles: ['ADMIN'] },
     { id: 'archive', label: 'Archive', icon: Archive, roles: ['ADMIN', 'RESEARCH_OFFICER', 'MP'] },
-    { id: 'committees', label: 'Committees', icon: Users, roles: ['ADMIN', 'RESEARCH_OFFICER', 'MP'] },
     { id: 'teams', label: 'Research Teams', icon: Users2, roles: ['ADMIN'] },
     { id: 'calendar', label: 'Calendar', icon: Calendar, roles: ['ADMIN', 'RESEARCH_OFFICER', 'MP'] },
     { id: 'templates', label: 'Templates', icon: FileText, roles: ['ADMIN', 'RESEARCH_OFFICER'] },
@@ -146,6 +146,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
                     isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'
                   } ${isCollapsed ? 'mx-auto' : 'mr-3'}`} />
                   {!isCollapsed && <span className="font-sans text-sm whitespace-nowrap overflow-hidden">{item.label}</span>}
+                  {!isCollapsed && item.id === 'notifications' && unreadCount > 0 && (
+                    <span className="ml-auto bg-[#ba1a1a] text-white text-[9px] font-bold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 shrink-0">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                  {isCollapsed && item.id === 'notifications' && unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#ba1a1a] rounded-full border-2 border-[#3a485c]" />
+                  )}
                 </button>
               </li>
             );
