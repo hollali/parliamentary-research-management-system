@@ -36,10 +36,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'RESEARCH_OFFICER', 'MP'] },
-    { id: 'workflow', label: 'My Work', icon: Inbox, roles: ['RESEARCH_OFFICER'] },
-    { id: 'briefs', label: 'Legislative Briefs', icon: FileText, roles: ['ADMIN'] },
+    { id: 'workflow', label: 'Officer Workflow', icon: Inbox, roles: ['RESEARCH_OFFICER'] },
+    { id: 'briefs', label: 'Research Briefs', icon: FileText, roles: ['ADMIN'] },
     { id: 'review', label: 'Review Briefs', icon: BookOpen, roles: ['MP'] },
-    { id: 'projects', label: 'Research', icon: Layers, roles: ['ADMIN', 'MP'] },
+    { id: 'projects', label: 'Research Requests', icon: Layers, roles: ['ADMIN', 'MP'] },
     { id: 'statistics', label: 'Statistics', icon: BarChart3, roles: ['ADMIN'] },
     { id: 'notifications', label: 'Notifications', icon: Bell, roles: ['ADMIN', 'RESEARCH_OFFICER', 'MP'] },
     { id: 'members', label: 'Members', icon: Users, roles: ['ADMIN'] },

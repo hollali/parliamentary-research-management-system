@@ -117,6 +117,8 @@ export interface AppState {
   preferences: {
     pushNotifications: boolean;
     emailSummaries: boolean;
+    emailNotifications: boolean;
+    whatsappNotifications: boolean;
     triggers: {
       newAssignments: boolean;
       statusChanges: boolean;

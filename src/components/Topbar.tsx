@@ -60,9 +60,9 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
       {/* Navigation & Actions */}
       <div className="flex items-center gap-4 sm:gap-6 shrink-0">
         <nav className="hidden lg:flex items-center gap-8">
-          <button onClick={() => onNavigate('notifications')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Directives</button>
+          <button onClick={() => onNavigate('notifications')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Notifications</button>
           {currentUser.role === 'ADMIN' && (
-            <button onClick={() => onNavigate('briefs')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Library</button>
+            <button onClick={() => onNavigate('briefs')} className="font-sans font-medium text-sm text-[#434655] hover:text-[#0037b0] transition-colors cursor-pointer">Research Briefs</button>
           )}
         </nav>
 

@@ -150,7 +150,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
         <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex justify-between items-center">
           <div>
             <h3 className="font-sans font-bold text-gray-900">Legislative Archival Vault</h3>
-            <p className="text-[10px] text-gray-500 mt-0.5">Historical repository of delivered briefings and completed inquiries.</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Historical repository of delivered briefings and completed requests.</p>
           </div>
           <span className="text-xs text-gray-500 font-semibold">
             {isFiltered 

@@ -33,7 +33,7 @@ async function notifyOfficer(officer: { id: string; email: string; firstName: st
       title,
       message,
       requestId: request.id,
-    });
+    }, { dispatchEmail: false });
   }
   if (await shouldEmail(officer.id)) {
     const email = assignmentEmail(officer.firstName, request.requestNumber, request.title, deadline);
@@ -49,7 +49,7 @@ async function notifyUnassigned(officer: { id: string; email: string; firstName:
       title: "Assignment Reassigned",
       message: `You have been replaced on "${request.title}" by ${replacement}`,
       requestId: request.id,
-    });
+    }, { dispatchEmail: false });
   }
   if (await shouldEmail(officer.id)) {
     sendEmail({

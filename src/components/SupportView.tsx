@@ -4,7 +4,7 @@ import { HelpCircle, ChevronDown, ChevronUp, Phone, Mail, BookOpen, MessageSquar
 const FAQ_ITEMS = [
   {
     q: 'How do I submit a new research request?',
-    a: 'Navigate to the Requests section and click "New Research Request". Fill in the title, description, priority, deadline, and any relevant committee. Only ADMIN and MP roles can submit requests.',
+    a: 'Navigate to the Research Requests section and click "New Research Request". Fill in the Research Topic, Specific Request Topic, Request Scope, priority, and deadline. Only ADMIN and MP roles can submit requests.',
   },
   {
     q: 'How do I upload a research draft?',
@@ -58,7 +58,7 @@ export const SupportView: React.FC = () => {
               <BookOpen className="w-4 h-4 text-[#0037b0]" />
               <h4 className="font-bold text-sm text-[#191c1d]">Research Directorate</h4>
             </div>
-            <p className="text-xs text-gray-500">For questions regarding inquiry formatting, deadlines, or jurisdiction.</p>
+            <p className="text-xs text-gray-500">For questions regarding request formatting, deadlines, or jurisdiction.</p>
             <p className="text-sm font-semibold text-[#0037b0] pt-1">Extension: +4199</p>
             <p className="text-sm font-semibold text-[#0037b0]">Email: research-desk@parliament.gov</p>
             <p className="text-[10px] text-gray-400 pt-1">Available: Mon–Fri, 8:00 AM – 5:00 PM GMT</p>

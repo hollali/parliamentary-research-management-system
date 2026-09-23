@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { downloadFile, getAttachments, getWorkloadStats } from "../lib/api";
 import { honourable } from "../lib/format";
+import { formatRequestStatus } from "../lib/status";
+import { toPlainText } from "../lib/content";
 import { useToast } from "../lib/toast";
 import { AssignModal } from "./AssignModal";
 import {
@@ -85,14 +87,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
     if (!previewRequest) return [];
 
     const text: string =
-      previewRequest.content ||
+      toPlainText(previewRequest.content) ||
       `
       1. Executive Summary: This research document was commissioned by ${honourable(previewRequest.member)} to assess the statutory framework of ${previewRequest.title}.
       
       The analysis explores regulatory blockages, regional implementation histories, and the administrative feasibility of proposed adjustments.
       
       2. Legislative Context: Under current parliamentary standing orders, policy submissions require dual-directorate clearance. 
-      This inquiry aligns with current national growth policies and addresses critical gaps in enforcement and standard-setting.
+      This request aligns with current national growth policies and addresses critical gaps in enforcement and standard-setting.
       
       3. Financial Scope & Outlook: Fiscal allocations are projected to remain within standard ministerial limits. 
       A structured budget assessment suggests a 4.2% optimization index if structural recommendations are enacted in full.
@@ -166,7 +168,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   const pdfPages = React.useMemo(() => {
     if (!previewRequest) return [];
 
-    const content: string = previewRequest.content || "";
+    const content: string = toPlainText(previewRequest.content);
     if (!content) {
       return [
         {
@@ -214,10 +216,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
     { value: "SUBMITTED", label: "Submitted" },
     { value: "ASSIGNED", label: "Assigned" },
     { value: "IN_PROGRESS", label: "In Progress" },
+    { value: "DRAFT_SUBMITTED", label: "Draft Submitted" },
     { value: "REVISION_REQUESTED", label: "Revision Requested" },
     { value: "REVISED", label: "Revised" },
     { value: "OVERDUE", label: "Overdue" },
     { value: "APPROVED", label: "Approved" },
+    { value: "DELIVERED", label: "Delivered" },
+    { value: "CLOSED", label: "Closed" },
   ];
 
   const filteredRequests = React.useMemo(() => {
@@ -247,32 +252,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   };
 
   const extendDeadlineStr = (currentDeadline: string, days: number): string => {
+    let d: Date;
     try {
-      const d = new Date(currentDeadline);
-      if (isNaN(d.getTime())) {
-        const fallback = new Date();
-        fallback.setDate(fallback.getDate() + days);
-        return fallback.toLocaleDateString("en-US", {
-          month: "short",
-          day: "2-digit",
-          year: "numeric",
-        });
-      }
-      d.setDate(d.getDate() + days);
-      return d.toLocaleDateString("en-US", {
-        month: "short",
-        day: "2-digit",
-        year: "numeric",
-      });
+      d = new Date(currentDeadline);
+      if (isNaN(d.getTime())) d = new Date();
     } catch {
-      const fallback = new Date();
-      fallback.setDate(fallback.getDate() + days);
-      return fallback.toLocaleDateString("en-US", {
-        month: "short",
-        day: "2-digit",
-        year: "numeric",
-      });
+      d = new Date();
     }
+    d.setDate(d.getDate() + days);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   };
 
   const getProgressPercentage = (status: string): number => {
@@ -315,7 +306,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
       case "SUBMITTED":
         return (
           <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
-            Pending Review
+            Submitted
           </span>
         );
       case "ASSIGNED":
@@ -330,10 +321,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
             In Progress
           </span>
         );
+      case "DRAFT_SUBMITTED":
+        return (
+          <span className="bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
+            Draft Submitted
+          </span>
+        );
       case "REVISION_REQUESTED":
         return (
           <span className="bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap animate-pulse">
-            Revision Needed
+            Revision Requested
           </span>
         );
       case "REVISED":
@@ -351,13 +348,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
       case "APPROVED":
         return (
           <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
-            Completed
+            Approved
           </span>
         );
       default:
         return (
           <span className="bg-gray-100 text-gray-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
-            {status.replace(/_/g, " ")}
+            {formatRequestStatus(status)}
           </span>
         );
     }
@@ -451,7 +448,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
           }
         }
       } else if (req.content) {
-        const paragraphs = req.content.split("\n").map(
+        const paragraphs = toPlainText(req.content).split("\n").map(
           (line: string) =>
             new Paragraph({
               children: [new TextRun(line)],
@@ -484,7 +481,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
       <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm">
         <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex justify-between items-center">
           <h3 className="font-sans font-bold text-gray-900">
-            Research Inquiry Pipeline
+            Research Requests
           </h3>
           <span className="text-xs text-gray-500 font-semibold">
             {isFiltered
@@ -566,14 +563,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
 
           {/* Dropdowns */}
           <div className="flex flex-col sm:flex-row gap-3">
-            {/* Category Filter */}
+            {/* Research Topic Filter */}
             <div className="relative min-w-35">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full bg-white border border-[#c4c5d7] rounded-md pl-3 pr-8 py-1.5 text-xs font-sans font-semibold text-gray-700 focus:outline-none focus:border-[#0037b0] appearance-none cursor-pointer"
               >
-                <option value="">All Categories</option>
+                <option value="">All Research Topics</option>
                 {categories.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
@@ -667,7 +664,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                       <Filter className="w-8 h-8 text-gray-400 animate-pulse" />
                       <div className="space-y-1">
                         <h5 className="text-xs font-bold text-gray-900">
-                          No inquiry records match your criteria
+                          No request records match your criteria
                         </h5>
                         <p className="text-[10px] text-gray-500 max-w-sm">
                           Try modifying your search text, selecting a different
@@ -784,24 +781,48 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                                 Extend Due Date
                               </div>
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   const newDate = extendDeadlineStr(
                                     req.deadline,
                                     7,
                                   );
-                                  extendRequestDeadline(req.id, newDate);
+                                  const ok = await extendRequestDeadline(
+                                    req.id,
+                                    newDate,
+                                  );
+                                  if (ok) {
+                                    toast.success(
+                                      `Deadline extended to ${newDate}.`,
+                                    );
+                                  } else {
+                                    toast.error(
+                                      "Failed to extend the deadline.",
+                                    );
+                                  }
                                 }}
                                 className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
                               >
                                 +7 Days
                               </button>
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   const newDate = extendDeadlineStr(
                                     req.deadline,
                                     14,
                                   );
-                                  extendRequestDeadline(req.id, newDate);
+                                  const ok = await extendRequestDeadline(
+                                    req.id,
+                                    newDate,
+                                  );
+                                  if (ok) {
+                                    toast.success(
+                                      `Deadline extended to ${newDate}.`,
+                                    );
+                                  } else {
+                                    toast.error(
+                                      "Failed to extend the deadline.",
+                                    );
+                                  }
                                 }}
                                 className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
                               >
@@ -822,19 +843,32 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                               <Pencil className="w-4 h-4" />
                             </button>
                           )}
-                          <button
-                            onClick={(e) => handleDownload(e, req)}
-                            disabled={downloadingId !== null}
-                            className={`p-1.5 rounded transition-all cursor-pointer ${
-                              downloadingId === req.id
-                                ? "text-amber-600 animate-pulse bg-amber-50"
-                                : "text-gray-500 hover:bg-gray-100"
-                            }`}
-                            title="Download Brief"
-                            aria-label="Download Brief"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
+                          {(() => {
+                            const hasDownloadable =
+                              (req.attachments && req.attachments.length > 0) ||
+                              !!req.content;
+                            return (
+                              <button
+                                onClick={(e) => handleDownload(e, req)}
+                                disabled={downloadingId !== null || !hasDownloadable}
+                                className={`p-1.5 rounded transition-all cursor-pointer ${
+                                  downloadingId === req.id
+                                    ? "text-amber-600 animate-pulse bg-amber-50"
+                                    : hasDownloadable
+                                      ? "text-gray-500 hover:bg-gray-100"
+                                      : "text-gray-300 cursor-not-allowed"
+                                }`}
+                                title={
+                                  hasDownloadable
+                                    ? "Download Brief"
+                                    : "No brief available yet"
+                                }
+                                aria-label="Download Brief"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -867,7 +901,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                 title: req.title,
                 member: honourable(req.member),
                 officer: req.assignedOfficerName || "Unassigned",
-                status: req.status.replace(/_/g, " "),
+                status: formatRequestStatus(req.status),
                 deadline: req.deadline,
                 category: req.category,
                 priority: req.priority,
@@ -879,11 +913,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                 { key: "officer", label: "Assigned Officer" },
                 { key: "status", label: "Status" },
                 { key: "deadline", label: "Deadline" },
-                { key: "category", label: "Category" },
+                { key: "category", label: "Research Topic" },
                 { key: "priority", label: "Priority" },
               ]}
-              filename="Research_Inquiries"
-              title="Research Inquiry Pipeline"
+              filename="Research_Requests"
+              title="Research Requests"
             />
           }
         />

@@ -214,32 +214,18 @@ function getDaysRemaining(deadline: string): {
 }
 
 function extendDeadlineStr(currentDeadline: string, days: number): string {
+  let d: Date;
   try {
-    const d = new Date(currentDeadline);
-    if (isNaN(d.getTime())) {
-      const fallback = new Date();
-      fallback.setDate(fallback.getDate() + days);
-      return fallback.toLocaleDateString("en-US", {
-        month: "short",
-        day: "2-digit",
-        year: "numeric",
-      });
-    }
-    d.setDate(d.getDate() + days);
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-    });
+    d = new Date(currentDeadline);
+    if (isNaN(d.getTime())) d = new Date();
   } catch {
-    const fallback = new Date();
-    fallback.setDate(fallback.getDate() + days);
-    return fallback.toLocaleDateString("en-US", {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-    });
+    d = new Date();
   }
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 const isClosedStatus = (status: ResearchRequest["status"]) =>
@@ -324,7 +310,7 @@ export const MemberDashboardView: React.FC = () => {
     const newDate = extendDeadlineStr(currentDeadline, days);
     const ok = await extendRequestDeadline(requestId, newDate);
     if (ok) {
-      toast.success(`Deadline extended by ${days} days to ${newDate}.`);
+      toast.success(`Deadline extended by ${days} days to ${formatDate(newDate)}.`);
       refreshRequests();
       if (trackingModalRequest) {
         fetchModalData(trackingModalRequest.id);
@@ -337,7 +323,7 @@ export const MemberDashboardView: React.FC = () => {
   const getStatusLabel = (status: ResearchRequest["status"]) => {
     switch (status) {
       case "SUBMITTED":
-        return "Under Review";
+        return "Submitted";
       case "ASSIGNED":
         return "Assigned";
       case "IN_PROGRESS":
@@ -345,10 +331,11 @@ export const MemberDashboardView: React.FC = () => {
       case "DRAFT_SUBMITTED":
         return "Draft Submitted";
       case "REVISION_REQUESTED":
+        return "Revision Requested";
       case "REVISED":
-        return "Under Revision";
+        return "Revised";
       case "APPROVED":
-        return "Completed";
+        return "Approved";
       case "DELIVERED":
         return "Delivered";
       case "CLOSED":
@@ -743,7 +730,7 @@ export const MemberDashboardView: React.FC = () => {
                   Title
                 </th>
                 <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
-                  Committee
+                  Research Topic
                 </th>
                 <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
                   Status

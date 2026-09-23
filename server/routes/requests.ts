@@ -277,6 +277,15 @@ router.put("/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "Cannot change status" });
     }
 
+    // Officers may only move their assigned work between working/editable
+    // statuses (accept, start, submit draft, resubmit revision). Review
+    // outcomes (APPROVED / REVISION_REQUESTED / DELIVERED / CLOSED) must go
+    // through the dedicated review endpoints or an admin.
+    const officerAllowedStatuses = ["ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISED"];
+    if (role === "RESEARCH_OFFICER" && status && status !== existing.status && !officerAllowedStatuses.includes(status)) {
+      return res.status(403).json({ error: "Officers cannot change the request to this status" });
+    }
+
     // Populate milestone timestamps on status transitions
     const now = new Date();
     const milestoneDates: Record<string, any> = {};

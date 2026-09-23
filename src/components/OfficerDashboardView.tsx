@@ -18,7 +18,7 @@ interface OfficerDashboardViewProps {
 const getStatusLabel = (status: ResearchRequest["status"]) => {
   switch (status) {
     case "SUBMITTED":
-      return "Under Review";
+      return "Submitted";
     case "ASSIGNED":
       return "Assigned";
     case "IN_PROGRESS":
@@ -26,10 +26,11 @@ const getStatusLabel = (status: ResearchRequest["status"]) => {
     case "DRAFT_SUBMITTED":
       return "Draft Submitted";
     case "REVISION_REQUESTED":
+      return "Revision Requested";
     case "REVISED":
-      return "Under Revision";
+      return "Revised";
     case "APPROVED":
-      return "Completed";
+      return "Approved";
     case "DELIVERED":
       return "Delivered";
     case "CLOSED":

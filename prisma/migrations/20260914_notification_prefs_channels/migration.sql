@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "users" ALTER COLUMN "notificationPrefs" SET DEFAULT '{"pushNotifications":true,"emailSummaries":true,"emailNotifications":true,"whatsappNotifications":false,"triggers":{"newAssignments":true,"statusChanges":true,"draftMentions":true,"deadlineReminders":true}}';

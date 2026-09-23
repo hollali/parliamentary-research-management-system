@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { formatRequestStatus } from '../lib/status';
 import { 
   Calendar, 
   ChevronLeft, 
@@ -27,10 +28,13 @@ const STATUS_COLORS: Record<string, string> = {
   SUBMITTED: 'bg-blue-100 text-blue-700 border-blue-200',
   ASSIGNED: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   IN_PROGRESS: 'bg-amber-100 text-amber-700 border-amber-200',
+  DRAFT_SUBMITTED: 'bg-purple-100 text-purple-700 border-purple-200',
   REVISION_REQUESTED: 'bg-orange-100 text-orange-700 border-orange-200',
   REVISED: 'bg-purple-100 text-purple-700 border-purple-200',
   OVERDUE: 'bg-red-100 text-red-700 border-red-200',
   APPROVED: 'bg-green-100 text-green-700 border-green-200',
+  DELIVERED: 'bg-green-100 text-green-700 border-green-200',
+  CLOSED: 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
 export const ParliamentaryCalendarView: React.FC = () => {
@@ -179,7 +183,7 @@ export const ParliamentaryCalendarView: React.FC = () => {
                           <p className="text-[10px] text-gray-500">{r.id.slice(0, 8)}</p>
                         </div>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>
-                          {r.status.replace(/_/g, ' ')}
+                          {formatRequestStatus(r.status)}
                         </span>
                       </div>
                     ))}
@@ -250,7 +254,7 @@ export const ParliamentaryCalendarView: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2 mt-1.5">
                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>
-                          {r.status.replace(/_/g, ' ')}
+                          {formatRequestStatus(r.status)}
                         </span>
                         <span className="text-[9px] text-gray-400">
                           Due {new Date(r.deadline!).toLocaleDateString('en-US', { month: 'short', day: '2-digit' })}
@@ -272,7 +276,7 @@ export const ParliamentaryCalendarView: React.FC = () => {
               {Object.entries(STATUS_COLORS).map(([status, cls]) => (
                 <div key={status} className="flex items-center gap-2">
                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${cls}`}>
-                    {status.replace(/_/g, ' ')}
+                    {formatRequestStatus(status)}
                   </span>
                 </div>
               ))}

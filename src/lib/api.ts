@@ -394,6 +394,8 @@ export async function getNotificationPrefs() {
 export async function updateNotificationPrefs(prefs: {
   pushNotifications: boolean;
   emailSummaries: boolean;
+  emailNotifications: boolean;
+  whatsappNotifications: boolean;
   triggers: {
     newAssignments: boolean;
     statusChanges: boolean;

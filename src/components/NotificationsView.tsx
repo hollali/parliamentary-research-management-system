@@ -111,6 +111,8 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
   // Preferences local state
   const [pushNotifs, setPushNotifs] = useState(preferences.pushNotifications);
   const [emailDigest, setEmailDigest] = useState(preferences.emailSummaries);
+  const [emailNotifs, setEmailNotifs] = useState(preferences.emailNotifications);
+  const [whatsappNotifs, setWhatsappNotifs] = useState(preferences.whatsappNotifications);
   const [triggers, setTriggers] = useState(preferences.triggers);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -162,7 +164,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
   };
 
   const handleSaveSettings = () => {
-    savePreferences(pushNotifs, emailDigest, triggers);
+    savePreferences(pushNotifs, emailDigest, emailNotifs, whatsappNotifs, triggers);
     toast.success('Notification preferences saved');
   };
 
@@ -421,6 +423,48 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
                   <div
                     className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
                       emailDigest ? 'translate-x-[22px]' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-3 border-b border-gray-50">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Email Notifications</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Send an email for every new notification in real time
+                  </p>
+                </div>
+                <button
+                  onClick={() => setEmailNotifs(!emailNotifs)}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                    emailNotifs ? 'bg-[#0037b0]' : 'bg-gray-200'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
+                      emailNotifs ? 'translate-x-[22px]' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-3 border-b border-gray-50">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">WhatsApp Notifications</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Receive notifications via WhatsApp (requires a phone number on your profile)
+                  </p>
+                </div>
+                <button
+                  onClick={() => setWhatsappNotifs(!whatsappNotifs)}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                    whatsappNotifs ? 'bg-[#25d366]' : 'bg-gray-200'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
+                      whatsappNotifs ? 'translate-x-[22px]' : 'translate-x-0.5'
                     }`}
                   />
                 </button>

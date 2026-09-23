@@ -12,6 +12,23 @@ const transporter = nodemailer.createTransport({
 const FROM = process.env.SMTP_FROM || "PRRMS <noreply@parliament.gov.gh>";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
+const STATUS_LABELS: Record<string, string> = {
+  SUBMITTED: "Submitted",
+  ASSIGNED: "Assigned",
+  IN_PROGRESS: "In Progress",
+  DRAFT_SUBMITTED: "Draft Submitted",
+  REVISION_REQUESTED: "Revision Requested",
+  REVISED: "Revised",
+  APPROVED: "Approved",
+  DELIVERED: "Delivered",
+  CLOSED: "Closed",
+  OVERDUE: "Overdue",
+};
+
+function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status.replace(/_/g, " ");
+}
+
 // Escape HTML entities to prevent injection in email templates
 export function esc(str: string | number | null | undefined): string {
   if (str == null) return '';
@@ -51,6 +68,27 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
 
 // ─── Email Templates ────────────────────────────────────
 
+export function notificationEmail(recipientName: string, title: string, message: string, link?: string | null) {
+  const subject = title;
+  const target = link ? `${FRONTEND_URL}${link}` : FRONTEND_URL;
+  const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #3a485c; padding: 20px; text-align: center;">
+        <h1 style="color: white; font-size: 18px; margin: 0;">PRRMS Notification</h1>
+      </div>
+      <div style="padding: 24px; background: #f9fafb;">
+        <p>Dear ${esc(recipientName)},</p>
+        <p style="margin: 0;"><strong>${esc(title)}</strong></p>
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <p style="margin: 0; color: #555;">${esc(message)}</p>
+        </div>
+        <a href="${target}" style="display: inline-block; background: #0037b0; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px;">View in Portal</a>
+        <p style="color: #888; font-size: 11px; margin-top: 24px;">Parliamentary Research Department — PRRMS</p>
+      </div>
+    </div>`;
+  return { subject, html, text: `${title}\n\n${message}\n\n${target}` };
+}
+
 export function assignmentEmail(officerName: string, requestNumber: string, title: string, deadline: string) {
   const subject = `New Research Assignment: ${esc(requestNumber)}`;
   const html = `
@@ -75,7 +113,7 @@ export function assignmentEmail(officerName: string, requestNumber: string, titl
 }
 
 export function statusChangeEmail(recipientName: string, requestNumber: string, title: string, newStatus: string) {
-  const subject = `Request ${esc(requestNumber)} status updated to ${esc(newStatus.replace(/_/g, ' ').toLowerCase())}`;
+  const subject = `Request ${esc(requestNumber)} status updated to ${esc(statusLabel(newStatus).toLowerCase())}`;
   const html = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #3a485c; padding: 20px; text-align: center;">
@@ -87,7 +125,7 @@ export function statusChangeEmail(recipientName: string, requestNumber: string, 
         <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0;">
           <p style="margin: 0;"><strong>Request:</strong> ${esc(requestNumber)}</p>
           <p style="margin: 8px 0 0 0;"><strong>Title:</strong> ${esc(title)}</p>
-          <p style="margin: 8px 0 0 0;"><strong>New Status:</strong> <span style="color: #0037b0; font-weight: bold;">${esc(newStatus.replace(/_/g, ' '))}</span></p>
+          <p style="margin: 8px 0 0 0;"><strong>New Status:</strong> <span style="color: #0037b0; font-weight: bold;">${esc(statusLabel(newStatus))}</span></p>
         </div>
         <a href="${FRONTEND_URL}" style="display: inline-block; background: #0037b0; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px;">View in Portal</a>
         <p style="color: #888; font-size: 11px; margin-top: 24px;">Parliamentary Research Department — PRRMS</p>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { globalSearch } from '../lib/api';
+import { formatRequestStatus } from '../lib/status';
 import { 
   Search, 
   X, 
@@ -86,7 +87,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((i) => Math.min(i + 1, allResults.length - 1));
+      setSelectedIndex((i) => Math.max(0, Math.min(i + 1, allResults.length - 1)));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex((i) => Math.max(i - 1, 0));
@@ -153,7 +154,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
                         <FileText className="w-4 h-4 text-[#0037b0] shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-gray-900 truncate">{r.title}</p>
-                          <p className="text-[10px] text-gray-500">{r.requestNumber} • {r.status.replace(/_/g, ' ')}</p>
+                          <p className="text-[10px] text-gray-500">{r.requestNumber} • {formatRequestStatus(r.status)}</p>
                         </div>
                         <ArrowRight className="w-3 h-3 text-gray-300 shrink-0" />
                       </button>

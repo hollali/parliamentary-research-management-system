@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { getOfficers } from "../lib/api";
 import { honourable } from "../lib/format";
+import { formatRequestStatus } from "../lib/status";
 import { ResearchRequest } from "../types";
 import { AssignModal } from "./AssignModal";
 import { ExportButton } from "./ExportButton";
@@ -145,7 +146,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       case "SUBMITTED":
         return (
           <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
-            Pending Review
+            Submitted
           </span>
         );
       case "ASSIGNED":
@@ -167,10 +168,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </span>
         );
       case "REVISION_REQUESTED":
+        return (
+          <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+            Revision Requested
+          </span>
+        );
       case "REVISED":
         return (
           <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
-            Revision
+            Revised
           </span>
         );
       case "OVERDUE":
@@ -182,7 +188,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       case "APPROVED":
         return (
           <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
-            Completed
+            Approved
           </span>
         );
       case "DELIVERED":
@@ -200,7 +206,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       default:
         return (
           <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
-            {status}
+            {formatRequestStatus(status)}
           </span>
         );
     }
@@ -283,7 +289,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             {totalAssigned}
           </h3>
           <p className="text-xs text-gray-500 mt-2 italic">
-            Active research in pipeline
+            Active research requests
           </p>
         </div>
 
@@ -381,7 +387,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     : "text-[#434655] hover:bg-gray-50"
                 }`}
               >
-                Pending Review
+                Pending
               </button>
             </div>
           </div>
@@ -838,7 +844,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               <Activity className="w-5 h-5 text-[#0037b0]" />
               Directorate Activity
             </h4>
-            <button className="text-[#0037b0] text-sm font-semibold hover:underline">
+            <button
+              onClick={() => onNavigate('audit')}
+              className="text-[#0037b0] text-sm font-semibold hover:underline"
+            >
               View Log
             </button>
           </div>

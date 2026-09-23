@@ -34,13 +34,13 @@ const OfficerDashboardView = lazy(() => import('./components/OfficerDashboardVie
 
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
-  briefs: 'Review Legislative Briefs',
-  new_request: 'Inquiry Intake System',
+  briefs: 'Review Research Briefs',
+  new_request: 'Research Request Intake',
   notifications: 'Activity & Alert Center',
   workspace: 'Revision Workspace Editor',
   settings: 'System Configuration',
   statistics: 'Legislative Intelligence & Analytics',
-  projects: 'Research',
+  projects: 'Research Requests',
   members: 'Parliamentary Directories',
   archive: 'Document Archival Vault',
   calendar: 'Parliamentary Calendar',
@@ -146,7 +146,7 @@ function AppContent() {
         return (
           <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center space-y-4">
             <FileText className="w-12 h-12 text-[#0037b0] mx-auto" />
-            <h3 className="text-lg font-bold text-gray-900">Legislative Briefs Catalog</h3>
+            <h3 className="text-lg font-bold text-gray-900">Research Briefs Catalog</h3>
             <p className="text-sm text-[#434655] max-w-md mx-auto">
               Review available peer-reviewed legal briefing documents compiled by the legislative services.
             </p>
@@ -158,6 +158,9 @@ function AppContent() {
 
       case 'workspace':
         const wsRequestId = currentPath.split('/')[2] || '';
+        if (!wsRequestId) {
+          return <Navigate to="/workflow" replace />;
+        }
         return (
           <OfficerRevisionWorkspaceView
             requestId={wsRequestId}
@@ -216,7 +219,7 @@ function AppContent() {
         ) : (
           <div className="text-center text-gray-400 py-20">
             <p className="text-sm">No report selected.</p>
-            <button onClick={() => handleNavigate('projects')} className="text-[#0037b0] text-xs font-bold mt-2 hover:underline">Go to Research</button>
+            <button onClick={() => handleNavigate('projects')} className="text-[#0037b0] text-xs font-bold mt-2 hover:underline">Go to Research Requests</button>
           </div>
         );
 

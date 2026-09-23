@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getReportVersions, compareReportVersions } from '../lib/api';
+import { toPlainText } from '../lib/content';
 import { 
   GitCompare, 
   ChevronDown, 
@@ -101,8 +102,8 @@ export const DocumentVersionDiffView: React.FC<DocumentVersionDiffProps> = ({ re
       compareReportVersions(reportId, v1, v2)
         .then((data) => {
           if (data?.versionA && data?.versionB) {
-            const oldText = data.versionA.content || '(No text content)';
-            const newText = data.versionB.content || '(No text content)';
+            const oldText = toPlainText(data.versionA.content) || '(No text content)';
+            const newText = toPlainText(data.versionB.content) || '(No text content)';
             const d = computeDiff(oldText, newText);
             setDiff(d);
             setStats({

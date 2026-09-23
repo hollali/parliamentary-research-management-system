@@ -99,7 +99,7 @@ model User {
   isActive          Boolean   @default(true)
   departmentId      String?
   constituency      String?
-  notificationPrefs Json?     @default("{\"pushNotifications\":true,\"emailSummaries\":true,\"triggers\":{\"newAssignments\":true,\"statusChanges\":true,\"draftMentions\":true,\"deadlineReminders\":true}}")
+  notificationPrefs Json?     @default("{\"pushNotifications\":true,\"emailSummaries\":true,\"emailNotifications\":true,\"whatsappNotifications\":false,\"triggers\":{\"newAssignments\":true,\"statusChanges\":true,\"draftMentions\":true,\"deadlineReminders\":true}}")
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   lastLoginAt       DateTime?

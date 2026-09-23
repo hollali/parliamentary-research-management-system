@@ -133,7 +133,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-sans font-bold text-3xl text-[#191c1d]">Legislative Briefs</h2>
+          <h2 className="font-sans font-bold text-3xl text-[#191c1d]">Research Briefs</h2>
           <p className="font-sans text-base text-[#434655] mt-1.5">
             All research requests and their brief status.
             <span className="text-gray-400 ml-1.5">({filtered.length} shown)</span>
@@ -169,7 +169,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by ID, title, member, officer, or category..."
+            placeholder="Search by ID, title, member, officer, or research topic..."
             className="w-full bg-white border border-[#c4c5d7] rounded-lg pl-10 pr-4 py-2.5 text-sm outline-none focus:border-[#0037b0] transition-colors"
           />
         </div>
@@ -211,7 +211,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
               <th className="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Member</th>
               <th className="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Officer</th>
               <th className="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Category</th>
+              <th className="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Research Topic</th>
               <th className="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Deadline</th>
               <th className="text-right px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
@@ -259,7 +259,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
                 <td className="px-5 py-4">
                   <div className={`flex items-center gap-1.5 text-sm ${isOverdue(req) ? 'text-[#ba1a1a] font-bold' : 'text-[#434655]'}`}>
                     <Calendar className="w-3.5 h-3.5 shrink-0" />
-                    {new Date(req.deadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {req.deadline ? new Date(req.deadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'}
                     {isOverdue(req) && <AlertTriangle className="w-3.5 h-3.5 text-[#ba1a1a] shrink-0" />}
                   </div>
                 </td>

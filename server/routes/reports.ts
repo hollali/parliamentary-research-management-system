@@ -8,6 +8,22 @@ import { lookupByIdOrNumber } from "../lib/requestUtils.js";
 
 const router = Router();
 
+async function officerCanWorkRequest(requestId: string, userId: string): Promise<boolean> {
+  const request = await prisma.researchRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      assignedOfficerId: true,
+      assignments: { select: { assignedToId: true, declinedAt: true, supersededAt: true } },
+      team: { select: { members: { select: { userId: true } } } },
+    },
+  });
+  if (!request) return false;
+  if (request.assignedOfficerId === userId) return true;
+  if (request.assignments?.some((a) => a.assignedToId === userId && !a.declinedAt && !a.supersededAt)) return true;
+  if (request.team?.members?.some((m) => m.userId === userId)) return true;
+  return false;
+}
+
 // Upload report
 router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), async (req, res) => {
   try {
@@ -20,6 +36,19 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
     const request = await prisma.researchRequest.findUnique({ where: lookupByIdOrNumber(requestId) });
     if (!request) {
       return res.status(404).json({ error: "Request not found" });
+    }
+
+    // Only working/officer-owned states are editable; reviews must be submitted
+    // from these states and never resurface from APPROVED/DELIVERED/CLOSED.
+    const editableStatuses = ["ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"];
+    if (req.user!.role === "RESEARCH_OFFICER" && !editableStatuses.includes(request.status)) {
+      return res.status(409).json({ error: "Request is not in an editable state" });
+    }
+
+    // RESEARCH_OFFICERs may only upload reports for requests they are assigned
+    // to — directly, as the named officer, or via the assigned team.
+    if (req.user!.role === "RESEARCH_OFFICER" && !(await officerCanWorkRequest(request.id, req.user!.userId))) {
+      return res.status(403).json({ error: "Not assigned to this request" });
     }
 
     // Get next version number
@@ -60,11 +89,19 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
       },
     });
 
-    // Update request status
+    // Workflow status only advances on an explicit submission. Auto-save and
+    // Save Draft (isDraft true) must not move the request to "Draft Submitted"
+    // nor notify reviewers. A resubmission after a revision request becomes
+    // REVISED; a first submission becomes DRAFT_SUBMITTED.
+    const isSubmission = isDraft === false;
+    const nextStatus = isSubmission
+      ? request.status === "REVISION_REQUESTED" ? "REVISED" : "DRAFT_SUBMITTED"
+      : request.status;
+
     await prisma.researchRequest.update({
       where: { id: request.id },
       data: {
-        status: isDraft !== false ? "DRAFT_SUBMITTED" : "IN_PROGRESS",
+        ...(isSubmission ? { status: nextStatus } : {}),
         draftVersion: nextVersion,
       },
     });
@@ -79,8 +116,9 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
       },
     });
 
-    // Notify all admins that a draft was submitted
-    if (isDraft !== false) {
+    // Notify all admins that a draft was submitted (only on real submissions,
+    // not on every auto-save / Save Draft)
+    if (isSubmission) {
       const admins = await prisma.user.findMany({
         where: { role: { in: ["ADMIN"] }, isActive: true },
         select: { id: true, email: true, firstName: true },
@@ -94,7 +132,7 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
             title: "Draft Submitted for Review",
             message: `A new draft (v${nextVersion}) has been submitted for: ${request.title}`,
             requestId,
-          });
+          }, { dispatchEmail: false });
         }
         if (await shouldEmail(admin.id)) {
           const email = draftSubmittedEmail(admin.firstName, request.requestNumber, request.title, nextVersion);
@@ -116,7 +154,7 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
               title: "Research Brief Ready for Review",
               message: `A new draft (v${nextVersion}) of your research brief is ready: ${request.title}`,
               requestId: request.id,
-            });
+            }, { dispatchEmail: false });
           }
           if (await shouldEmail(submitter.id)) {
             const email = draftSubmittedEmail(submitter.firstName, request.requestNumber, request.title, nextVersion);
@@ -139,6 +177,17 @@ router.put("/:reportId", authenticateToken, requireRole("RESEARCH_OFFICER", "ADM
     const { content, isDraft, notes } = req.body;
     const report = await prisma.researchReport.findUnique({ where: { id: req.params.reportId } });
     if (!report) return res.status(404).json({ error: "Report not found" });
+
+    // RESEARCH_OFFICERs may edit their own reports, or reports for requests
+    // they are currently assigned to (e.g. taking over a reassigned request).
+    if (req.user!.role === "RESEARCH_OFFICER") {
+      const canEdit =
+        report.authorId === req.user!.userId ||
+        (await officerCanWorkRequest(report.requestId, req.user!.userId));
+      if (!canEdit) {
+        return res.status(403).json({ error: "You can only edit reports assigned to you" });
+      }
+    }
 
     const updated = await prisma.researchReport.update({
       where: { id: report.id },

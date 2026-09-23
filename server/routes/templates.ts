@@ -1,6 +1,6 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { authenticateToken } from "../middleware/auth.js";
+import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -41,7 +41,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
 });
 
 // Create a custom template
-router.post("/", authenticateToken, async (req, res) => {
+router.post("/", authenticateToken, requireRole("ADMIN", "RESEARCH_OFFICER"), async (req, res) => {
   try {
     const { name, description, category, sections } = req.body;
     if (!name || !category) {

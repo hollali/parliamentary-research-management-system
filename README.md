@@ -124,7 +124,7 @@ The system has 3 roles with different permissions:
 
 - **Admin** — Full access: assign research, manage requests, review reports, manage teams, view statistics, manage users, audit log
 - **Research Officer** — Accept/decline assignments, submit drafts, manage revisions, view briefs
-- **MP** — Submit research requests, track progress, view briefs, manage projects
+- **MP** — Submit research requests, track progress, view briefs, manage research
 
 ### Research Request Lifecycle
 

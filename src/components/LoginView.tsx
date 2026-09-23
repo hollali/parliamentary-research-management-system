@@ -154,7 +154,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               Securing the future of legislative insight.
             </h2>
             <p className="text-base text-gray-300 leading-relaxed max-w-md">
-              Access the unified management system for parliamentary research projects, statistics, and legislative briefs.
+              Access the unified management system for parliamentary research requests, statistics, and research briefs.
             </p>
           </div>
 

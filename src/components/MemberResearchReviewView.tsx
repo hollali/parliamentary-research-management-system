@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../lib/toast";
+import { formatRequestStatus } from "../lib/status";
 import {
   getRequest,
   downloadFile,
@@ -10,6 +11,7 @@ import {
   getReviews,
 } from "../lib/api";
 import { honourable } from "../lib/format";
+import { toPlainText } from "../lib/content";
 import { ResearchRequest } from "../types";
 import { filterRequestsForCurrentUser } from "../lib/requestAccess";
 import {
@@ -71,10 +73,10 @@ interface ReviewDetail {
 const REVIEW_STATUSES = ["DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED", "APPROVED"];
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
-  DRAFT_SUBMITTED: { label: "Draft Submitted — Awaiting Your Review", color: "bg-blue-100 text-blue-800" },
-  REVISION_REQUESTED: { label: "Under Revision", color: "bg-orange-100 text-orange-800" },
-  REVISED: { label: "Revised — Awaiting Your Review", color: "bg-indigo-100 text-indigo-800" },
-  APPROVED: { label: "Accepted & Completed", color: "bg-emerald-100 text-emerald-800" },
+  DRAFT_SUBMITTED: { label: "Draft Submitted", color: "bg-blue-100 text-blue-800" },
+  REVISION_REQUESTED: { label: "Revision Requested", color: "bg-orange-100 text-orange-800" },
+  REVISED: { label: "Revised", color: "bg-indigo-100 text-indigo-800" },
+  APPROVED: { label: "Approved", color: "bg-emerald-100 text-emerald-800" },
 };
 
 function formatDate(dateStr: string | null): string {
@@ -154,7 +156,7 @@ export const MemberResearchReviewView: React.FC = () => {
   }, [selectedRequest?.id, loadDetail]);
 
   const latestReport = detail?.reports?.find((r) => r.id === detail.reports[0]?.id) || detail?.reports?.[0];
-  const previewText = latestReport?.content || "";
+  const previewText = toPlainText(latestReport?.content);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -236,7 +238,7 @@ export const MemberResearchReviewView: React.FC = () => {
   };
 
   const isAwaitingReview = selectedRequest && ["DRAFT_SUBMITTED", "REVISED"].includes(selectedRequest.status);
-  const isAccepted = selectedRequest?.status === "APPROVED";
+  const isApproved = selectedRequest?.status === "APPROVED";
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -281,7 +283,7 @@ export const MemberResearchReviewView: React.FC = () => {
                     <div className="flex justify-between items-start gap-2">
                       <span className="text-xs font-bold text-gray-400">{req.id}</span>
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${STATUS_META[req.status]?.color || "bg-gray-100 text-gray-600"}`}>
-                        {req.status === "REVISION_REQUESTED" ? "Under Revision" : req.status === "REVISED" ? "Revised" : req.status === "APPROVED" ? "Accepted" : "Draft Submitted"}
+                        {req.status === "REVISION_REQUESTED" ? "Revision Requested" : req.status === "REVISED" ? "Revised" : req.status === "APPROVED" ? "Approved" : "Draft Submitted"}
                       </span>
                     </div>
                     <h5 className="font-semibold text-xs text-gray-900 mt-1.5 leading-snug">{req.title}</h5>
@@ -311,7 +313,7 @@ export const MemberResearchReviewView: React.FC = () => {
                       <h3 className="font-sans font-bold text-gray-900 text-sm">{selectedRequest.title}</h3>
                     </div>
                     <span className={`inline-block w-fit px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${STATUS_META[selectedRequest.status]?.color || "bg-gray-100 text-gray-600"}`}>
-                      {STATUS_META[selectedRequest.status]?.label || selectedRequest.status.replace(/_/g, " ")}
+                      {STATUS_META[selectedRequest.status]?.label || formatRequestStatus(selectedRequest.status)}
                     </span>
                   </div>
                 </div>
@@ -328,25 +330,25 @@ export const MemberResearchReviewView: React.FC = () => {
                         {[
                           { label: "Submitted", date: detail.dateSubmitted },
                           { label: "Deadline", date: detail.deadline },
-                          { label: "Accepted", date: detail.dateCompleted },
+                          { label: "Approved", date: detail.dateCompleted },
                         ].map((m) => (
                           <div key={m.label} className={`rounded-lg p-2.5 text-center border ${m.date ? "bg-blue-50/50 border-blue-100" : "bg-gray-50 border-gray-100"}`}>
                             <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">{m.label}</p>
                             <p className={`text-xs font-bold mt-0.5 ${m.date ? "text-gray-900" : "text-gray-400"}`}>
-                              {m.label === "Accepted" ? formatDateTime(m.date) : formatDate(m.date)}
+                              {m.label === "Approved" ? formatDateTime(m.date) : formatDate(m.date)}
                             </p>
                           </div>
                         ))}
                       </div>
 
                       {/* Accepted banner — read-only */}
-                      {isAccepted && (
+                      {isApproved && (
                         <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                           <div>
-                            <p className="text-sm font-bold text-emerald-800">Research brief accepted</p>
+                            <p className="text-sm font-bold text-emerald-800">Research brief approved</p>
                             <p className="text-xs text-emerald-700 mt-0.5">
-                              Accepted on {formatDateTime(detail.dateCompleted)}. This brief is final and read-only — the latest version remains available for download.
+                              Approved on {formatDateTime(detail.dateCompleted)}. This brief is final and read-only — the latest version remains available for download.
                             </p>
                           </div>
                         </div>
@@ -445,7 +447,7 @@ export const MemberResearchReviewView: React.FC = () => {
                       </div>
 
                       {/* Upload additional document */}
-                      {!isAccepted && (
+                      {!isApproved && (
                         <div className="border-t border-gray-100 pt-4">
                           <input
                             type="file"
@@ -523,7 +525,7 @@ export const MemberResearchReviewView: React.FC = () => {
             )}
 
             {/* Directive / feedback */}
-            {selectedRequest && !isAccepted && (
+            {selectedRequest && !isApproved && (
               <form onSubmit={handleFeedback} className="bg-white border border-[#c4c5d7] rounded-lg p-5 space-y-3">
                 <h5 className="font-sans font-bold text-xs text-gray-700 flex items-center gap-1.5">
                   <MessageSquare className="w-3.5 h-3.5 text-[#0037b0]" />

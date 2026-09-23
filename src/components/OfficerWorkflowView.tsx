@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../lib/toast";
+import { formatRequestStatus } from "../lib/status";
 import {
   acceptAssignment,
   declineAssignment,
@@ -104,7 +105,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
         handleStatusChange("IN_PROGRESS");
       } else {
         handleStatusChange("IN_PROGRESS");
-        toast.success("Assignment accepted");
+        toast.success("Request moved to In Progress");
       }
     } catch {
       toast.error("Failed to accept assignment");
@@ -189,10 +190,10 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
       {/* View Header */}
       <div>
         <h2 className="font-sans font-bold text-2xl text-[#191c1d]">
-          Officer Workspace & Daily Assignments
+          Officer Workflow
         </h2>
         <p className="font-sans text-sm text-[#434655] mt-1">
-          Manage assigned inquiries, review feedback, and upload final
+          Manage assigned requests, review feedback, and upload final
           briefings.
         </p>
       </div>
@@ -261,7 +262,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
                         <Clock className="w-3 h-3" /> {req.deadline}
                       </span>
                       <span className="uppercase text-[10px] text-[#0037b0] font-bold">
-                        {req.status.replace("_", " ")}
+                        {formatRequestStatus(req.status)}
                       </span>
                     </div>
                   </button>
@@ -325,18 +326,17 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
                       >
                         <option value="ASSIGNED">Assigned</option>
                         <option value="IN_PROGRESS">In Progress</option>
-                        <option value="APPROVED">Approved</option>
                       </select>
                     </>
                   )}
                 </div>
               </header>
 
-              {/* Inquiry Description */}
+              {/* Request Description */}
               <div className="space-y-1.5">
                 <h5 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <BookOpen className="w-4 h-4 text-gray-400" /> Inquiry Scope
-                  Description
+<BookOpen className="w-4 h-4 text-gray-400" /> Request Scope
+              Description
                 </h5>
                 <p className="text-xs text-gray-700 leading-relaxed bg-[#f3f4f5]/50 p-4 rounded-lg">
                   {activeRequest.description}

@@ -56,7 +56,7 @@ interface AppContextType extends AppState {
       ResearchRequest,
       "id" | "dateSubmitted" | "draftVersion" | "comments" | "content"
     >,
-  ) => Promise<void> | void;
+  ) => Promise<boolean>;
   assignRequest: (
     requestId: string,
     officerIds?: string[],
@@ -95,6 +95,8 @@ interface AppContextType extends AppState {
   savePreferences: (
     push: boolean,
     email: boolean,
+    emailRealTime: boolean,
+    whatsapp: boolean,
     triggers: AppState["preferences"]["triggers"],
   ) => void;
   addTemplate: (
@@ -148,7 +150,7 @@ function mapApiRequest(r: any): ResearchRequest {
     id: r.requestNumber || r.id,
     title: r.title,
     topic: r.subject || r.title,
-    category: r.category?.name || r.category || "",
+    category: r.category?.name || r.category || r.scope || "",
     member: r.submitter
       ? `${r.submitter.firstName} ${r.submitter.lastName}`
       : "",
@@ -271,10 +273,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const savedPrefs = localStorage.getItem("prrms_prefs");
         return savedPrefs
-          ? JSON.parse(savedPrefs)
+          ? {
+              ...{
+                pushNotifications: true,
+                emailSummaries: false,
+                emailNotifications: true,
+                whatsappNotifications: false,
+                triggers: {
+                  newAssignments: true,
+                  statusChanges: true,
+                  draftMentions: false,
+                  deadlineReminders: true,
+                },
+              },
+              ...JSON.parse(savedPrefs),
+            }
           : {
               pushNotifications: true,
               emailSummaries: false,
+              emailNotifications: true,
+              whatsappNotifications: false,
               triggers: {
                 newAssignments: true,
                 statusChanges: true,
@@ -286,6 +304,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         return {
           pushNotifications: true,
           emailSummaries: false,
+          emailNotifications: true,
+          whatsappNotifications: false,
           triggers: {
             newAssignments: true,
             statusChanges: true,
@@ -310,8 +330,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     getNotificationPrefs()
       .then((data: any) => {
         if (data) {
-          setPreferences(data);
-          localStorage.setItem("prrms_prefs", JSON.stringify(data));
+          const merged = {
+            pushNotifications: true,
+            emailSummaries: false,
+            emailNotifications: true,
+            whatsappNotifications: false,
+            triggers: {
+              newAssignments: true,
+              statusChanges: true,
+              draftMentions: false,
+              deadlineReminders: true,
+            },
+            ...data,
+          };
+          setPreferences(merged);
+          localStorage.setItem("prrms_prefs", JSON.stringify(merged));
         }
       })
       .catch((err: any) =>
@@ -514,7 +547,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       ResearchRequest,
       "id" | "dateSubmitted" | "draftVersion" | "comments" | "content"
     >,
-  ) => {
+  ): Promise<boolean> => {
     // Persist to backend if online
     if (isOnline) {
       try {
@@ -544,11 +577,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         } else {
           setRequests([]);
         }
-        return;
+        return true;
       } catch {
-        // Fall through to local-only
+        return false;
       }
     }
+    return false;
   };
 
   const assignRequest = async (
@@ -635,9 +669,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       SUBMITTED: "SUBMITTED",
       ASSIGNED: "ASSIGNED",
       IN_PROGRESS: "IN_PROGRESS",
+      DRAFT_SUBMITTED: "DRAFT_SUBMITTED",
       REVISION_REQUESTED: "REVISION_REQUESTED",
       REVISED: "REVISED",
       APPROVED: "APPROVED",
+      DELIVERED: "DELIVERED",
+      CLOSED: "CLOSED",
     };
 
     // Persist to backend if online
@@ -883,11 +920,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const savePreferences = (
     push: boolean,
     email: boolean,
+    emailRealTime: boolean,
+    whatsapp: boolean,
     triggers: AppState["preferences"]["triggers"],
   ) => {
     const newPrefs = {
       pushNotifications: push,
       emailSummaries: email,
+      emailNotifications: emailRealTime,
+      whatsappNotifications: whatsapp,
       triggers,
     };
     setPreferences(newPrefs);

@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { getRequest, getReviews } from '../lib/api';
 import { highlightText } from '../lib/highlight';
 import { normalizeFetchedRequest } from '../lib/requestNormalize';
+import { toPlainText } from '../lib/content';
 import { ResearchRequest } from '../types';
 import { 
   FileText, 
@@ -183,13 +184,23 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
     onBack();
   };
 
+  const handleDeliver = () => {
+    updateRequestStatus(requestId, 'DELIVERED');
+    onBack();
+  };
+
+  const handleClose = () => {
+    updateRequestStatus(requestId, 'CLOSED');
+    onBack();
+  };
+
   const handleRequestRevision = () => {
     updateRequestStatus(requestId, 'REVISION_REQUESTED');
     onBack();
   };
 
   const renderDocumentContent = () => {
-    const content = report?.content || displayRequest?.content || '';
+    const content = toPlainText(report?.content || displayRequest?.content || '');
     if (!content) {
       return (
         <div className="text-center py-20 text-gray-400">
@@ -301,18 +312,36 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
           </div>
         </div>
         <div className="flex gap-2">
-          <button 
-            onClick={handleRequestRevision}
-            className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-semibold text-xs rounded transition-all"
-          >
-            Request Revision
-          </button>
-          <button 
-            onClick={handleApprove}
-            className="px-4 py-2 bg-[#006b2c] hover:bg-[#00501f] text-white font-semibold text-xs rounded transition-all shadow-sm"
-          >
-            Approve & Deliver
-          </button>
+          {displayRequest.status === "DELIVERED" ? (
+            <button
+              onClick={handleClose}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white font-semibold text-xs rounded transition-all"
+            >
+              Close Request
+            </button>
+          ) : displayRequest.status === "APPROVED" ? (
+            <button
+              onClick={handleDeliver}
+              className="px-4 py-2 bg-[#0037b0] hover:bg-[#1d4ed8] text-white font-semibold text-xs rounded transition-all shadow-sm"
+            >
+              Mark as Delivered
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleRequestRevision}
+                className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-semibold text-xs rounded transition-all"
+              >
+                Request Revision
+              </button>
+              <button
+                onClick={handleApprove}
+                className="px-4 py-2 bg-[#006b2c] hover:bg-[#00501f] text-white font-semibold text-xs rounded transition-all shadow-sm"
+              >
+                Approve Brief
+              </button>
+            </>
+          )}
         </div>
       </div>
 

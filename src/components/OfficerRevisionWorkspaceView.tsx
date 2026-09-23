@@ -80,18 +80,18 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   const draftVersionRef = useRef(1);
   const requestRef = useRef<ResearchRequest | null>(request);
 
-  const autoSave = useCallback(async (text: string) => {
-    if (text === lastSavedText.current || text.trim().length < 10) return;
-    lastSavedText.current = text;
-    updateRequestContent(requestId, text);
+  const autoSave = useCallback(async (html: string, plain: string) => {
+    if (html === lastSavedText.current || plain.trim().length < 10) return;
+    lastSavedText.current = html;
+    updateRequestContent(requestId, html);
     try {
       if (reportIdRef.current) {
-        await updateReport(reportIdRef.current, { content: text, notes: 'Auto-saved' });
+        await updateReport(reportIdRef.current, { content: html, notes: 'Auto-saved' });
       } else {
         const data = await createReport({
           requestId,
           title: requestRef.current?.title || 'Research Brief',
-          content: text,
+          content: html,
           isDraft: true,
           notes: 'Auto-saved',
         });
@@ -119,10 +119,11 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
       },
     },
     onUpdate: ({ editor }) => {
-      const text = editor.getText();
-      setEditorText(text);
+      const html = editor.getHTML();
+      const plain = editor.getText();
+      setEditorText(plain);
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(() => autoSave(text), 3000);
+      autoSaveTimer.current = setTimeout(() => autoSave(html, plain), 3000);
     },
   });
 
@@ -262,39 +263,54 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
 
   const unresolvedComments = reviewComments.filter(c => !c.resolved);
 
-  const highlightedContent = useMemo(() => {
-    const content = editorText;
-    if (!content || reviewComments.length === 0) return content;
-    return highlightText(content, reviewComments);
-  }, [editorText, reviewComments]);
+  // Rebuild highlights only when the set of annotated comments changes,
+  // never while the officer is typing (avoids resetting the caret each keystroke).
+  const highlightSignature = useMemo(
+    () => JSON.stringify(reviewComments.map(c => c.highlightedText || '')),
+    [reviewComments],
+  );
 
-  // Apply highlights to editor when content or comments change
   useEffect(() => {
-    if (editor && highlightedContent) {
-      const currentContent = editor.getHTML();
-      if (currentContent !== highlightedContent) {
-        editor.commands.setContent(highlightedContent, { emitUpdate: false });
-      }
+    if (!editor) return;
+    // Only rewrite the document when there are actual annotations; with none,
+    // the document may contain rich formatting we must not flatten.
+    const hasHighlights = reviewComments.some(
+      (c) => c.highlightedText && c.highlightedText.length > 2,
+    );
+    if (!hasHighlights) return;
+    const content = highlightText(editor.getText(), reviewComments);
+    if (!content.trim() || editor.getHTML() === content) return;
+    const { from, to } = editor.state.selection;
+    editor.commands.setContent(content, { emitUpdate: false });
+    const size = editor.state.doc.content.size;
+    try {
+      editor.commands.setTextSelection({
+        from: Math.min(from, size),
+        to: Math.min(to, size),
+      });
+    } catch {
+      // Selection may be outside the new doc; ignore.
     }
-  }, [highlightedContent]);
+  }, [highlightSignature]);
 
   const handleSaveDraft = async () => {
-    const text = editor?.getText() ?? editorText;
-    if (!text.trim()) {
+    const plain = editor?.getText() ?? editorText;
+    const html = editor?.getHTML() ?? editorText;
+    if (!plain.trim()) {
       toast.error('Nothing to save — the draft is empty.');
       return;
     }
-    updateRequestContent(requestId, text);
-    lastSavedText.current = text;
+    updateRequestContent(requestId, html);
+    lastSavedText.current = html;
 
     try {
       if (reportIdRef.current) {
-        await updateReport(reportIdRef.current, { content: text, notes: `Draft saved (v${draftVersionRef.current})` });
+        await updateReport(reportIdRef.current, { content: html, notes: `Draft saved (v${draftVersionRef.current})` });
       } else {
         const data = await createReport({
           requestId,
           title: requestRef.current?.title || 'Research Brief',
-          content: text,
+          content: html,
           isDraft: true,
           notes: `Draft saved (v${draftVersionRef.current})`,
         });
@@ -316,7 +332,14 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
 
   const handleSubmitReview = async () => {
     setSubmitting(true);
-    updateRequestContent(requestId, editorText);
+    const html = editor?.getHTML() ?? editorText;
+    const plain = editor?.getText() ?? editorText;
+    if (!plain.trim()) {
+      setSubmitting(false);
+      toast.error('Cannot submit an empty brief.');
+      return;
+    }
+    updateRequestContent(requestId, html);
     
     // Get latest attachment info if available
     let latestAttachment: any = null;
@@ -332,7 +355,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
       await createReport({
           requestId,
           title: requestRef.current?.title || 'Research Brief',
-          content: editorText,
+          content: html,
           isDraft: false,
           filePath: latestAttachment?.filePath || undefined,
           fileType: latestAttachment?.fileType || undefined,
@@ -343,7 +366,13 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
       // Fall through to local-only
     }
     
-    updateRequestStatus(requestId, 'SUBMITTED');
+    // First submission lands on DRAFT_SUBMITTED (waiting for review); a
+    // resubmission after a revision request lands on REVISED so the reviewer
+    // queue can pick it back up.
+    const targetStatus: ResearchRequest["status"] =
+      request?.status === "REVISION_REQUESTED" ? "REVISED" : "DRAFT_SUBMITTED";
+
+    updateRequestStatus(requestId, targetStatus);
     setSubmitting(false);
     onBack();
   };
@@ -412,6 +441,24 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 text-[#0037b0] animate-spin" />
+      </div>
+    );
+  }
+
+  if (!requestId) {
+    return (
+      <div className="bg-white border border-[#c4c5d7] rounded-lg p-10 text-center space-y-4">
+        <FileText className="w-12 h-12 text-gray-300 mx-auto" />
+        <h3 className="text-lg font-bold text-gray-900">No Request Selected</h3>
+        <p className="text-sm text-[#434655] max-w-md mx-auto">
+          Select a request from your workflow to start drafting.
+        </p>
+        <button
+          onClick={onBack}
+          className="bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold py-2 px-4 rounded"
+        >
+          Back to Workflow
+        </button>
       </div>
     );
   }

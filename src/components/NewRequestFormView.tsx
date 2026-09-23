@@ -4,6 +4,7 @@ import { getUsers } from '../lib/api';
 import { honourable } from '../lib/format';
 import type { TemplateItem } from '../types';
 import { validateForm, validateRequired, validateMinLength, validateDeadline, type ValidationError } from '../lib/validation';
+import { useToast } from '../lib/toast';
 import { 
   FileText, 
   BookOpen, 
@@ -27,6 +28,7 @@ interface NewRequestFormViewProps {
 
 export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSuccess }) => {
   const { currentUser, addRequest, templates } = useApp();
+  const { toast } = useToast();
   const [step, setStep] = useState(1);
 
   // Members list (admin only)
@@ -50,7 +52,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
   };
 
   // Form state
-  const [committee, setCommittee] = useState('');
+  const [researchTopic, setResearchTopic] = useState('');
   const [topic, setTopic] = useState('');
   const [description, setDescription] = useState('');
   const [language, setLanguage] = useState('English');
@@ -69,13 +71,13 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
   const validateStep = (stepToValidate: number): ValidationError[] => {
     const fieldsToValidate: Record<string, { value: string; validators: ((val: string) => string | null)[] }> = {};
     if (stepToValidate === 1) {
-      fieldsToValidate.topic = { value: topic, validators: [v => validateRequired(v, 'Inquiry topic'), v => validateMinLength(v, 5, 'Inquiry topic')] };
+      fieldsToValidate.topic = { value: topic, validators: [v => validateRequired(v, 'Specific Request Topic'), v => validateMinLength(v, 5, 'Specific Request Topic')] };
       if (currentUser.role === 'ADMIN') {
-        fieldsToValidate.selectedMemberId = { value: selectedMemberId, validators: [v => validateRequired(v, 'Requesting on behalf of')] };
+        fieldsToValidate.selectedMemberId = { value: selectedMemberId, validators: [v => validateRequired(v, 'On Behalf Of')] };
       }
     }
     if (stepToValidate === 2) {
-      fieldsToValidate.description = { value: description, validators: [v => validateRequired(v, 'Inquiry scope'), v => validateMinLength(v, 10, 'Inquiry scope')] };
+      fieldsToValidate.description = { value: description, validators: [v => validateRequired(v, 'Request scope'), v => validateMinLength(v, 10, 'Request scope')] };
     }
     if (stepToValidate === 3) {
       fieldsToValidate.deadline = { value: deadline, validators: [validateDeadline] };
@@ -129,10 +131,11 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
         ? members.find(m => m.id === selectedMemberId)?.firstName + ' ' + members.find(m => m.id === selectedMemberId)?.lastName
         : currentUser.name;
 
-      await addRequest({
-        title: topic || 'Legislative Inquiry: ' + committee,
-        topic: topic || committee + ' Inquiry',
-        category: committee,
+      const ok = await addRequest({
+        title: topic || 'Research Request: ' + researchTopic,
+        topic: topic || researchTopic + ' Research Request',
+        scope: researchTopic,
+        category: researchTopic,
         member: memberName,
         assignedOfficerId: null,
         assignedOfficerName: null,
@@ -160,9 +163,13 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
           };
         })
       } as any);
+      if (!ok) {
+        toast.error('Failed to submit your request. Please try again.');
+        return;
+      }
       setShowSuccess(true);
     } catch {
-      // Error handled by context
+      toast.error('Failed to submit your request. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -175,9 +182,9 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
           <Check className="w-8 h-8" />
         </div>
         <div className="space-y-2">
-          <h3 className="text-2xl font-bold text-[#191c1d]">Legislative Inquiry Filed</h3>
+          <h3 className="text-2xl font-bold text-[#191c1d]">Research Request Filed</h3>
           <p className="text-sm text-[#434655] max-w-md mx-auto">
-            Your inquiry has been successfully registered and routed to the research desk. An administrative officer will assign a researcher shortly.
+            Your request has been successfully registered and routed to the research desk. An administrative officer will assign a researcher shortly.
           </p>
         </div>
         <div className="pt-4">
@@ -197,7 +204,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
       {/* Page Header */}
       <div>
         <h2 className="font-sans font-bold text-2xl text-[#191c1d]">New Research Request</h2>
-        <p className="font-sans text-sm text-[#434655] mt-1">Initiate a new high-fidelity legislative inquiry with the research directorate.</p>
+        <p className="font-sans text-sm text-[#434655] mt-1">Initiate a new high-fidelity research request with the research directorate.</p>
       </div>
 
       {/* 3 Step Progress Indicator */}
@@ -226,7 +233,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-sans font-bold text-xs ${
             step === 3 ? 'bg-[#0037b0] text-white' : 'bg-white text-gray-500 border border-gray-300'
           }`}>
-            '3'
+            {'3'}
           </div>
           <span className={`text-sm font-bold ${step === 3 ? 'text-[#0037b0]' : 'text-gray-500'}`}>Timeline & Attachments</span>
         </div>
@@ -244,22 +251,22 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
               <div className="space-y-5 animate-fadeIn">
                 <h3 className="font-sans font-bold text-lg text-[#191c1d] border-b border-gray-100 pb-3">Basic Information</h3>
                 
-                {/* Target Committee */}
+                {/* Research Topic */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Target Committee</label>
+                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Research Topic</label>
                   <input 
                     type="text"
-                    value={committee}
-                    onChange={(e) => setCommittee(e.target.value)}
-                    placeholder="e.g. Constitutional, Legal and Parliamentary Affairs"
+                    value={researchTopic}
+                    onChange={(e) => setResearchTopic(e.target.value)}
+                    placeholder="e.g. Climate policy and carbon taxation"
                     className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
                   />
-                  <p className="text-[10px] text-gray-500">Enter the name of the committee this inquiry is directed to.</p>
+                  <p className="text-[10px] text-gray-500">Enter the primary research topic this request covers.</p>
                 </div>
 
-                {/* Submitting Requestor */}
+                {/* Submitting Requester */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Requestor Name</label>
+                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Requester Name</label>
                   <input 
                     type="text" 
                     value={currentUser.role === 'MP' ? honourable(currentUser.name) : currentUser.name} 
@@ -301,14 +308,14 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
 
                 {/* Specific Topic / Title */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Specific inquiry topic</label>
+                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Specific Request Topic</label>
                   <input 
                     type="text" 
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     onBlur={() => {
                       const fieldErrors = validateForm({
-                        topic: { value: topic, validators: [v => validateRequired(v, 'Inquiry topic'), v => validateMinLength(v, 5, 'Inquiry topic')] }
+                        topic: { value: topic, validators: [v => validateRequired(v, 'Specific Request Topic'), v => validateMinLength(v, 5, 'Specific Request Topic')] }
                       });
                       setErrors(prev => [...prev.filter(e => e.field !== 'topic'), ...fieldErrors]);
                     }}
@@ -328,12 +335,12 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
             {/* STEP 2: REQUEST DETAILS */}
             {step === 2 && (
               <div className="space-y-5 animate-fadeIn">
-                <h3 className="font-sans font-bold text-lg text-[#191c1d] border-b border-gray-100 pb-3">Inquiry Details</h3>
+                <h3 className="font-sans font-bold text-lg text-[#191c1d] border-b border-gray-100 pb-3">Request Details</h3>
 
                 {/* Policy / Research question details */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Inquiry Scope & Key Research Questions</label>
+                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Request Scope & Key Research Questions</label>
                   </div>
 
                   <div className="space-y-1.5">
@@ -342,7 +349,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                       onChange={(e) => setDescription(e.target.value)}
                       onBlur={() => {
                         const fieldErrors = validateForm({
-                          description: { value: description, validators: [v => validateRequired(v, 'Inquiry scope'), v => validateMinLength(v, 10, 'Inquiry scope')] }
+                          description: { value: description, validators: [v => validateRequired(v, 'Request scope'), v => validateMinLength(v, 10, 'Request scope')] }
                         });
                         setErrors(prev => [...prev.filter(e => e.field !== 'description'), ...fieldErrors]);
                       }}
@@ -455,7 +462,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
 
                   {/* Priority Indicator */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Inquiry Priority Level</label>
+                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Request Priority Level</label>
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
@@ -566,7 +573,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                   onClick={handleSubmit}
                   className="px-6 py-2 bg-[#0037b0] hover:bg-[#1d4ed8] text-white font-semibold text-sm rounded-lg flex items-center gap-1.5 transition-all shadow-md disabled:opacity-50 ml-auto"
                 >
-                  <span>{submitting ? 'Submitting...' : 'Submit Inquiry'}</span>
+                  <span>{submitting ? 'Submitting...' : 'Submit Request'}</span>
                   <Check className="w-4 h-4" />
                 </button>
               )}
@@ -585,7 +592,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
             <ul className="space-y-3 text-xs text-[#434655] leading-relaxed">
               <li className="flex items-start gap-2">
                 <span className="font-bold text-[#0037b0]">1.</span>
-                <span>Frame inquiries strictly within committee legal jurisdiction. Broad or unfocused prompts will be returned for revision.</span>
+                <span>Frame requests strictly within committee legal jurisdiction. Broad or unfocused prompts will be returned for revision.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="font-bold text-[#0037b0]">2.</span>
@@ -593,7 +600,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
               </li>
               <li className="flex items-start gap-2">
                 <span className="font-bold text-[#0037b0]">3.</span>
-                <span>Standard priority requests take 5-7 business days. Urgent inquiries are flagged for immediate director desk assessment.</span>
+                <span>Standard priority requests take 5-7 business days. Urgent requests are flagged for immediate director desk assessment.</span>
               </li>
             </ul>
           </div>
@@ -604,7 +611,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
               <Lock className="w-4 h-4 text-emerald-800" /> Privilege & Privacy Notice
             </h4>
             <p className="text-xs text-[#434655] leading-relaxed">
-              All inquiries, statistical requests, and draft documentations are held under strict parliamentary privilege. Content is encrypted and accessible only to authorized staff.
+              All research requests, statistics, and draft documents are held under strict parliamentary privilege. Content is encrypted and accessible only to authorized staff.
             </p>
           </div>
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAnalytics } from '../lib/api';
+import { formatRequestStatus } from '../lib/status';
 import { ExportButton } from './ExportButton';
 import { BarChart3, TrendingUp, Users, FileText } from 'lucide-react';
 
@@ -31,7 +32,7 @@ export const StatisticsView: React.FC = () => {
           {analytics && (
             <ExportButton
               data={[
-                ...(analytics.requestsByStatus || []).map((s: any) => ({ type: 'Status', category: s.status.replace('_', ' '), count: s._count })),
+                ...(analytics.requestsByStatus || []).map((s: any) => ({ type: 'Status', category: formatRequestStatus(s.status), count: s._count })),
                 ...(analytics.officersWorkload || []).map((o: any) => ({ type: 'Officer', category: `${o.firstName} ${o.lastName}`, count: o._count.assignedRequests })),
               ]}
               columns={[
@@ -76,7 +77,7 @@ export const StatisticsView: React.FC = () => {
                 <div className="space-y-2">
                   {analytics.requestsByStatus.map((s: any) => (
                     <div key={s.status} className="flex items-center gap-3">
-                      <span className="text-xs font-semibold text-gray-700 w-40">{s.status.replace('_', ' ')}</span>
+                      <span className="text-xs font-semibold text-gray-700 w-40">{formatRequestStatus(s.status)}</span>
                       <div className="flex-1 bg-gray-100 h-4 rounded overflow-hidden">
                         <div
                           className="bg-[#0037b0] h-full"

@@ -240,6 +240,8 @@ router.get("/notification-prefs", authenticateToken, async (req, res) => {
     res.json(user?.notificationPrefs || {
       pushNotifications: true,
       emailSummaries: true,
+      emailNotifications: true,
+      whatsappNotifications: false,
       triggers: { newAssignments: true, statusChanges: true, draftMentions: true, deadlineReminders: true },
     });
   } catch (error) {
@@ -318,7 +320,11 @@ router.post("/logout", authenticateToken, async (req, res) => {
 router.put("/notification-prefs", authenticateToken, async (req, res) => {
   try {
     const prefs = req.body;
-    if (!prefs || typeof prefs !== "object" || typeof prefs.pushNotifications !== "boolean" || typeof prefs.emailSummaries !== "boolean") {
+    if (!prefs || typeof prefs !== "object" ||
+        typeof prefs.pushNotifications !== "boolean" ||
+        typeof prefs.emailSummaries !== "boolean" ||
+        (prefs.emailNotifications != null && typeof prefs.emailNotifications !== "boolean") ||
+        (prefs.whatsappNotifications != null && typeof prefs.whatsappNotifications !== "boolean")) {
       return res.status(400).json({ error: "Invalid notification preferences" });
     }
     // Limit payload size

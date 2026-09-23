@@ -44,6 +44,15 @@ const DEFAULT_SECTIONS: SectionDraft[] = [
 
 const OVERLAY_STYLE = { top: '-100px', bottom: '-100px', width: '200vw', left: '50%', transform: 'translateX(-50%)' };
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export const ResearchTemplatesView: React.FC = () => {
   const { templates, addTemplate, removeTemplate } = useApp();
   const { toast } = useToast();
@@ -102,19 +111,48 @@ export const ResearchTemplatesView: React.FC = () => {
 
   const selectedTemplate = templates.find((t) => t.id === selectedId) || null;
 
-  const generateMarkdown = (name: string, desc: string, sections: { heading: string; prompt: string }[]): string => {
-    let md = `# ${name}\n\n> ${desc}\n\n`;
-    sections.forEach((s, i) => { md += `## ${i + 1}. ${s.heading}\n\n_${s.prompt}_\n\n[Content goes here]\n\n`; });
-    return md;
+  const generateTemplateHTML = (name: string, desc: string, sections: { heading: string; prompt: string }[]): string => {
+    let html = `<h1>${escapeHtml(name)}</h1>`;
+    if (desc) html += `\n<p><em>${escapeHtml(desc)}</em></p>`;
+    html += `\n<hr>`;
+    sections.forEach((s) => {
+      html += `\n<h2>${escapeHtml(s.heading)}</h2>`;
+      if (s.prompt) html += `\n<p><em>Guidance: ${escapeHtml(s.prompt)}</em></p>`;
+      html += `\n<p><em>Start writing here...</em></p>`;
+    });
+    return html;
   };
 
-  const handleCopy = (t: typeof templates[0]) => {
-    const sections = t.sections as { heading: string; prompt: string }[];
-    navigator.clipboard.writeText(generateMarkdown(t.name, t.description || '', sections)).then(() => {
-      setCopiedId(t.id);
-      toast.success('Template copied. Paste into your report draft to use.');
-      setTimeout(() => setCopiedId(null), 2000);
+  const generateTemplateText = (name: string, desc: string, sections: { heading: string; prompt: string }[]): string => {
+    let text = `${name.toUpperCase()}\n${'='.repeat(name.length)}\n\n`;
+    if (desc) text += `${desc}\n\n`;
+    text += `${'─'.repeat(40)}\n\n`;
+    sections.forEach((s) => {
+      text += `${s.heading}\n`;
+      if (s.prompt) text += `   Guidance: ${s.prompt}\n`;
+      text += `   Start writing here...\n\n`;
     });
+    return text.trim();
+  };
+
+  const handleCopy = async (t: typeof templates[0]) => {
+    const sections = t.sections as { heading: string; prompt: string }[];
+    const html = generateTemplateHTML(t.name, t.description || '', sections);
+    const text = generateTemplateText(t.name, t.description || '', sections);
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        }),
+      ]);
+    } catch {
+      // Fallback for browsers without ClipboardItem or clipboard-write permission
+      await navigator.clipboard.writeText(text);
+    }
+    setCopiedId(t.id);
+    toast.success('Template copied. Paste it into your report draft.');
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const handleCreate = async () => {

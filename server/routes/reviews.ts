@@ -109,7 +109,7 @@ router.post("/", authenticateToken, async (req, res) => {
           title: "New Review Comment",
           message: `New comment on "${request.title}": ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`,
           requestId: request.id,
-        });
+        }, { dispatchEmail: false });
       }
 
       if (await shouldEmail(request.assignedOfficerId)) {
@@ -242,7 +242,7 @@ router.post("/request-revision", authenticateToken, async (req, res) => {
           title: "Revision Requested",
           message: `${isAdmin ? "An administrator" : "The requesting member"} requested a revision for: ${request!.title}`,
           requestId: request!.id,
-        });
+        }, { dispatchEmail: false });
       }
 
       if (await shouldEmail(recipientId)) {
@@ -265,7 +265,7 @@ router.post("/request-revision", authenticateToken, async (req, res) => {
             title: "Member Requested Revision",
             message: `The member requested a revision for: ${request!.title}`,
             requestId: request!.id,
-          });
+          }, { dispatchEmail: false });
         }
         if (await shouldEmail(admin.id)) {
           const email = revisionRequestedEmail(admin.firstName, request!.requestNumber, request!.title, emailText);
@@ -362,8 +362,8 @@ router.post("/approve", authenticateToken, async (req, res) => {
         await createNotification({
           recipientId: assigneeId,
           type: "REPORT_APPROVED",
-          title: "Report Accepted",
-          message: `Your research brief for "${request.title}" has been accepted`,
+          title: "Report Approved",
+          message: `Your research brief for "${request.title}" has been approved`,
           requestId: request.id,
         });
       }
