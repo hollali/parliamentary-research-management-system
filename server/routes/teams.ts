@@ -5,11 +5,12 @@ import { logger } from "../lib/logger.js";
 
 const router = Router();
 
-// List all active teams with members
-router.get("/", authenticateToken, async (_req, res) => {
+// List active teams with members (includeInactive=true returns deactivated teams too)
+router.get("/", authenticateToken, async (req, res) => {
   try {
+    const includeInactive = req.query.includeInactive === "true";
     const teams = await prisma.researchTeam.findMany({
-      where: { isActive: true },
+      where: includeInactive ? {} : { isActive: true },
       include: {
         lead: { select: { id: true, firstName: true, lastName: true, initials: true } },
         members: {
@@ -99,16 +100,17 @@ router.post("/", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   }
 });
 
-// Update team
+// Update team (rename, retitle, change lead, or reactivate)
 router.put("/:teamId", authenticateToken, requireRole("ADMIN"), async (req, res) => {
   try {
-    const { name, description, leadId } = req.body;
+    const { name, description, leadId, isActive } = req.body;
     const team = await prisma.researchTeam.update({
       where: { id: req.params.teamId },
       data: {
         ...(name && { name }),
         ...(description !== undefined && { description }),
         ...(leadId && { leadId }),
+        ...(typeof isActive === "boolean" && { isActive }),
       },
       include: {
         lead: { select: { id: true, firstName: true, lastName: true, initials: true } },

@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
 import {
   FileText,
   Copy,
+  CopyPlus,
   CheckCircle2,
   BookOpen,
   BarChart3,
@@ -16,6 +17,8 @@ import {
   ArrowDown,
   X,
   Eye,
+  Search,
+  Pencil,
 } from 'lucide-react';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -54,18 +57,21 @@ function escapeHtml(value: string): string {
 }
 
 export const ResearchTemplatesView: React.FC = () => {
-  const { templates, addTemplate, removeTemplate } = useApp();
+  const { templates, addTemplate, updateTemplate, removeTemplate } = useApp();
   const { toast } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [modalName, setModalName] = useState('');
   const [modalDescription, setModalDescription] = useState('');
   const [modalCategory, setModalCategory] = useState('Custom');
   const [modalSections, setModalSections] = useState<SectionDraft[]>(DEFAULT_SECTIONS.map((s) => ({ ...s })));
   const [modalErrors, setModalErrors] = useState<{ name?: string; sections?: string }>({});
   const [submitting, setSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
   const resetModal = useCallback(() => {
     setModalName('');
@@ -74,10 +80,31 @@ export const ResearchTemplatesView: React.FC = () => {
     setModalSections(DEFAULT_SECTIONS.map((s) => ({ ...s })));
     setModalErrors({});
     setSubmitting(false);
+    setEditingId(null);
   }, []);
 
-  const openModal = () => { resetModal(); setShowModal(true); };
+  const openCreate = () => { resetModal(); setShowModal(true); };
   const closeModal = () => { setShowModal(false); resetModal(); };
+
+  const openEdit = (t: any) => {
+    setEditingId(t.id);
+    setModalName(t.name);
+    setModalDescription(t.description || '');
+    setModalCategory(t.category || 'Custom');
+    setModalSections((t.sections as { heading: string; prompt: string }[]).map((s) => ({ ...s })));
+    setModalErrors({});
+    setSubmitting(false);
+    setShowModal(true);
+  };
+
+  const openDuplicate = (t: any) => {
+    resetModal();
+    setModalName(`${t.name} (Copy)`);
+    setModalDescription(t.description || '');
+    setModalCategory(t.category || 'Custom');
+    setModalSections((t.sections as { heading: string; prompt: string }[]).map((s) => ({ ...s })));
+    setShowModal(true);
+  };
 
   useEffect(() => {
     if (!showModal && !selectedId) return;
@@ -110,6 +137,21 @@ export const ResearchTemplatesView: React.FC = () => {
   };
 
   const selectedTemplate = templates.find((t) => t.id === selectedId) || null;
+
+  const filteredTemplates = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return templates.filter((t) => {
+      const matchesSearch =
+        !q ||
+        t.name.toLowerCase().includes(q) ||
+        (t.description || '').toLowerCase().includes(q) ||
+        ((t.sections as { heading: string; prompt: string }[]) || [])
+          .slice(0, 8)
+          .some((s) => s.heading.toLowerCase().includes(q));
+      const matchesCategory = !categoryFilter || t.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [templates, searchQuery, categoryFilter]);
 
   const generateTemplateHTML = (name: string, desc: string, sections: { heading: string; prompt: string }[]): string => {
     let html = `<h1>${escapeHtml(name)}</h1>`;
@@ -155,15 +197,21 @@ export const ResearchTemplatesView: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     if (!validateModal()) return;
     const cleaned = modalSections.filter((s) => s.heading.trim()).map((s) => ({ heading: s.heading.trim(), prompt: s.prompt.trim() }));
     try {
       setSubmitting(true);
-      const created = await addTemplate(modalName.trim(), modalDescription.trim() || undefined, modalCategory, cleaned);
-      setShowModal(false); resetModal(); setSelectedId(created.id);
-      toast.success('Template created');
-    } catch { toast.error('Failed to create template'); } finally { setSubmitting(false); }
+      if (editingId) {
+        await updateTemplate(editingId, modalName.trim(), modalDescription.trim() || undefined, modalCategory, cleaned);
+        setShowModal(false); resetModal();
+        toast.success('Template updated');
+      } else {
+        const created = await addTemplate(modalName.trim(), modalDescription.trim() || undefined, modalCategory, cleaned);
+        setShowModal(false); resetModal(); setSelectedId(created.id);
+        toast.success('Template created');
+      }
+    } catch { toast.error(editingId ? 'Failed to update template' : 'Failed to create template'); } finally { setSubmitting(false); }
   };
 
   const handleDelete = async (id: string) => {
@@ -194,14 +242,53 @@ export const ResearchTemplatesView: React.FC = () => {
             {templates.length > 0 && <span className="text-gray-400 ml-1.5">({templates.length} available)</span>}
           </p>
         </div>
-        <button onClick={openModal} className="bg-[#0037b0] text-white text-sm font-bold px-5 py-2.5 rounded-lg shadow hover:bg-[#1d4ed8] transition-all">
+        <button onClick={openCreate} className="bg-[#0037b0] text-white text-sm font-bold px-5 py-2.5 rounded-lg shadow hover:bg-[#1d4ed8] transition-all">
           + New Template
         </button>
       </div>
 
+      {/* ── Toolbar: search + category filter ── */}
+      <div className="bg-white border border-[#c4c5d7] rounded-xl px-4 py-3 shadow-sm flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search templates by name, description, or section…"
+            className="w-full pl-9 pr-8 py-2 bg-white border border-[#c4c5d7] rounded-lg text-sm outline-none focus:ring-1 focus:ring-[#0037b0]"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 cursor-pointer"
+              title="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setCategoryFilter(null)}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${!categoryFilter ? 'bg-[#0037b0] text-white border-[#0037b0]' : 'bg-white text-[#434655] border-[#c4c5d7] hover:border-[#0037b0]'}`}
+          >
+            All
+          </button>
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${categoryFilter === cat ? 'bg-[#0037b0] text-white border-[#0037b0]' : 'bg-white text-[#434655] border-[#c4c5d7] hover:border-[#0037b0]'}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* ── Template cards ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {templates.map((t) => {
+        {filteredTemplates.map((t) => {
           const sections = t.sections as { heading: string; prompt: string }[];
           const icon = CATEGORY_ICONS[t.category] || CATEGORY_ICONS.Custom;
           return (
@@ -241,6 +328,14 @@ export const ResearchTemplatesView: React.FC = () => {
                   <button onClick={(e) => { e.stopPropagation(); handleCopy(t); }} className="p-2.5 rounded-lg bg-blue-50 text-[#0037b0] hover:bg-blue-100 transition-colors" title="Copy template">
                     {copiedId === t.id ? <CheckCircle2 className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                   </button>
+                  <button onClick={(e) => { e.stopPropagation(); openDuplicate(t); }} className="p-2.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors" title="Duplicate as new template">
+                    <CopyPlus className="w-4 h-4" />
+                  </button>
+                  {!t.isBuiltIn && (
+                    <button onClick={(e) => { e.stopPropagation(); openEdit(t); }} className="p-2.5 rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors" title="Edit template">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
                   {!t.isBuiltIn && (
                     <button onClick={(e) => { e.stopPropagation(); requestDelete(t.id); }} className={`p-2.5 rounded-lg transition-colors ${confirmDeleteId === t.id ? 'bg-[#ba1a1a] text-white' : 'bg-red-50 text-[#ba1a1a] hover:bg-red-100'}`} title={confirmDeleteId === t.id ? 'Click again to confirm deletion' : 'Delete template'}>
                       {confirmDeleteId === t.id ? <span className="text-xs font-bold px-0.5">Confirm?</span> : <Trash2 className="w-5 h-5" />}
@@ -251,6 +346,20 @@ export const ResearchTemplatesView: React.FC = () => {
             </div>
           );
         })}
+
+        {filteredTemplates.length === 0 && templates.length > 0 && (
+          <div className="col-span-full text-center py-20 text-gray-400 border-2 border-dashed border-[#e0e1e6] rounded-xl">
+            <Search className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p className="text-lg font-semibold">No templates match your filters</p>
+            <p className="text-sm mt-1.5">Try a different keyword or clear the category filter.</p>
+            <button
+              onClick={() => { setSearchQuery(''); setCategoryFilter(null); }}
+              className="mt-4 text-sm font-bold text-[#0037b0] hover:underline"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
 
         {templates.length === 0 && (
           <div className="col-span-full text-center py-20 text-gray-400">
@@ -326,8 +435,8 @@ export const ResearchTemplatesView: React.FC = () => {
               {/* Header */}
               <div className="px-8 py-5 border-b border-gray-200 flex items-center justify-between shrink-0">
                 <div>
-                  <h2 className="font-sans font-bold text-xl text-[#191c1d]">Create Custom Template</h2>
-                  <p className="text-sm text-gray-400 mt-1">Define the structure and section prompts for your template.</p>
+                  <h2 className="font-sans font-bold text-xl text-[#191c1d]">{editingId ? 'Edit Custom Template' : 'Create Custom Template'}</h2>
+                  <p className="text-sm text-gray-400 mt-1">{editingId ? 'Update the structure and section prompts for your template.' : 'Define the structure and section prompts for your template.'}</p>
                 </div>
                 <button onClick={closeModal} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                   <X className="w-5 h-5" />
@@ -419,9 +528,9 @@ export const ResearchTemplatesView: React.FC = () => {
                 <span className="text-xs text-gray-400 font-semibold">{modalSections.length} section{modalSections.length !== 1 ? 's' : ''}</span>
                 <div className="flex items-center gap-4">
                   <button onClick={closeModal} className="px-5 py-2.5 text-sm font-bold text-[#434655] hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                  <button onClick={handleCreate} disabled={submitting}
-                    className="px-5 py-2.5 bg-[#0037b0] text-white text-sm font-bold rounded-lg shadow hover:bg-[#1d4ed8] disabled:opacity-50 transition-all">
-                    {submitting ? 'Creating...' : 'Create Template'}
+                  <button onClick={handleSave} disabled={submitting}
+                  className="px-5 py-2.5 bg-[#0037b0] text-white text-sm font-bold rounded-lg shadow hover:bg-[#1d4ed8] disabled:opacity-50 transition-all">
+                    {submitting ? (editingId ? 'Saving...' : 'Creating...') : (editingId ? 'Save Changes' : 'Create Template')}
                   </button>
                 </div>
               </div>

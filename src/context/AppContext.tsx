@@ -43,6 +43,7 @@ import {
   impersonateUser,
   getTemplates,
   createTemplate as apiCreateTemplate,
+  updateTemplate as apiUpdateTemplate,
   deleteTemplate as apiDeleteTemplate,
 } from "../lib/api";
 
@@ -100,6 +101,13 @@ interface AppContextType extends AppState {
     triggers: AppState["preferences"]["triggers"],
   ) => void;
   addTemplate: (
+    name: string,
+    description: string | undefined,
+    category: string,
+    sections: { heading: string; prompt: string }[],
+  ) => Promise<any>;
+  updateTemplate: (
+    id: string,
     name: string,
     description: string | undefined,
     category: string,
@@ -955,6 +963,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     return created;
   };
 
+  const updateTemplate = async (
+    id: string,
+    name: string,
+    description: string | undefined,
+    category: string,
+    sections: { heading: string; prompt: string }[],
+  ) => {
+    const updated = await apiUpdateTemplate(id, {
+      name,
+      description,
+      category,
+      sections,
+    });
+    setTemplates((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    return updated;
+  };
+
   const removeTemplate = async (id: string) => {
     await apiDeleteTemplate(id);
     setTemplates((prev) => prev.filter((t) => t.id !== id));
@@ -990,6 +1015,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         markNotificationRead,
         savePreferences,
         addTemplate,
+        updateTemplate,
         removeTemplate,
         updateProfile: async (updates) => {
           const data = await updateUserProfile(updates);

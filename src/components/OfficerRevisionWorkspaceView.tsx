@@ -4,6 +4,7 @@ import { useToast } from '../lib/toast';
 import { getRequest, getReviews, createReport, updateReport, getAttachments, uploadFile, downloadFile, deleteAttachment } from '../lib/api';
 import { highlightText } from '../lib/highlight';
 import { normalizeFetchedRequest } from '../lib/requestNormalize';
+import { honourable } from '../lib/format';
 import { ResearchRequest } from '../types';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -33,7 +34,8 @@ import {
   Heading2,
   Minus,
   Undo,
-  Redo
+  Redo,
+  ChevronDown
 } from 'lucide-react';
 
 interface OfficerRevisionWorkspaceViewProps {
@@ -262,6 +264,26 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   }, [requestId]);
 
   const unresolvedComments = reviewComments.filter(c => !c.resolved);
+  const resolvedCount = reviewComments.length - unresolvedComments.length;
+  const [showResolved, setShowResolved] = useState(false);
+
+  const shortId = (id: string) => (id.length > 8 ? `O#${id.slice(0, 8)}` : id);
+
+  const fileIconColor = (name: string) => {
+    const ext = name.split('.').pop()?.toLowerCase() || '';
+    if (ext === 'pdf') return 'text-red-500';
+    if (['docx', 'doc', 'rtf', 'odt', 'txt'].includes(ext)) return 'text-blue-500';
+    if (['xlsx', 'xls', 'csv'].includes(ext)) return 'text-emerald-600';
+    if (['pptx', 'ppt'].includes(ext)) return 'text-orange-500';
+    return 'text-indigo-500';
+  };
+
+  const formatSize = (bytes?: number) => {
+    if (!bytes) return '';
+    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${bytes} B`;
+  };
 
   // Rebuild highlights only when the set of annotated comments changes,
   // never while the officer is typing (avoids resetting the caret each keystroke).
@@ -499,9 +521,16 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
               <span className="bg-orange-100 text-orange-800 font-bold text-xs px-2.5 py-0.5 rounded uppercase tracking-wider">
                 Revision Workspace
               </span>
-              <span className="text-xs text-gray-500 font-semibold">{request.category}</span>
+              <span className="text-xs font-bold text-gray-400">{shortId(request.id)}</span>
+              <span className="text-xs text-gray-500 font-semibold capitalize">{request.category}</span>
             </div>
-            <h2 className="font-sans font-bold text-lg text-[#191c1d] mt-1">{request.title}</h2>
+            <h2 className="font-sans font-bold text-xl text-[#191c1d] mt-1.5 leading-snug">{request.title}</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Requested by{" "}
+              <span className="font-bold text-gray-700">{honourable(request.member)}</span>
+              {" · "}Due{" "}
+              <span className="font-bold text-gray-700">{request.deadline}</span>
+            </p>
           </div>
         </div>
         
@@ -646,6 +675,11 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
           <div>
             <h4 className="font-sans font-bold text-sm text-[#191c1d] uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-100 pb-3">
               <MessageSquare className="w-4 h-4 text-[#0037b0]" /> Active Annotations
+              {unresolvedComments.length > 0 && (
+                <span className="text-[9px] font-bold bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5">
+                  {unresolvedComments.length} open
+                </span>
+              )}
             </h4>
             <p className="text-[11px] text-gray-500 mt-1 leading-normal">
               Address and resolve the administrative feedback comments to complete the revision.
@@ -753,6 +787,41 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
               </div>
             )}
           </div>
+
+          {/* Resolved comments (collapsible, read-only) */}
+          {resolvedCount > 0 && (
+            <div className="border-t border-gray-100 pt-3">
+              <button
+                onClick={() => setShowResolved(!showResolved)}
+                className="w-full flex items-center justify-between text-xs font-bold text-[#434655] hover:text-[#191c1d] py-1 transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-[#006b2c]" />
+                  Resolved ({resolvedCount})
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showResolved ? 'rotate-180' : ''}`} />
+              </button>
+              {showResolved && (
+                <div className="space-y-2.5 mt-2">
+                  {reviewComments.filter((c) => c.resolved).map((comment) => (
+                    <div key={comment.id} className="p-3 bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg space-y-1.5 opacity-90">
+                      <div className="flex justify-between items-start">
+                        <p className="text-[11px] font-bold text-gray-700">{comment.userName}</p>
+                        <span className="text-[9px] text-gray-400 font-semibold">{comment.time}</span>
+                      </div>
+                      {comment.highlightedText && (
+                        <p className="text-[10px] text-gray-500 italic">"{comment.highlightedText}"</p>
+                      )}
+                      <p className="text-[10px] text-gray-500 leading-relaxed">{comment.text}</p>
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5">
+                        <Check className="w-2.5 h-2.5" /> Resolved
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
       </div>
@@ -789,11 +858,11 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             {attachments.map((att: any, idx: number) => (
               <div key={att.id || idx} className="bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg p-2.5 flex justify-between items-center text-xs shadow-sm">
                 <div className="flex items-center gap-2.5">
-                  <FileText className="w-4 h-4 text-red-500" />
+                  <FileText className={`w-4 h-4 ${fileIconColor(att.name)}`} />
                   <span className="font-semibold text-gray-900">{att.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-gray-500 font-bold">{att.fileSize ? `${(att.fileSize / 1024 / 1024).toFixed(1)} MB` : ''}</span>
+                  <span className="text-gray-500 font-bold">{formatSize(att.fileSize)}</span>
                   {att.id && (
                     <>
                       <button

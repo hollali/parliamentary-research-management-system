@@ -27,6 +27,8 @@ import {
   GitBranch,
   Calendar,
   CheckCircle2,
+  AlertTriangle,
+  Gauge,
 } from "lucide-react";
 
 interface DetailedRequest {
@@ -138,6 +140,19 @@ const PROGRESS_MAP: Record<string, number> = {
   OVERDUE: 40,
 };
 
+const STATUS_STYLES: Record<string, string> = {
+  SUBMITTED: "bg-gray-100 text-gray-600",
+  ASSIGNED: "bg-blue-100 text-blue-800",
+  IN_PROGRESS: "bg-[#dce1ff] text-[#0039b5]",
+  DRAFT_SUBMITTED: "bg-amber-100 text-amber-800",
+  REVISION_REQUESTED: "bg-orange-100 text-orange-800",
+  REVISED: "bg-orange-100 text-orange-800",
+  OVERDUE: "bg-[#ffdad6] text-[#93000a]",
+  APPROVED: "bg-emerald-100 text-emerald-800",
+  DELIVERED: "bg-emerald-100 text-emerald-800",
+  CLOSED: "bg-emerald-100 text-emerald-800",
+};
+
 const ACTION_LABELS: Record<string, string> = {
   CREATED: "Created",
   UPDATED: "Updated",
@@ -235,6 +250,21 @@ export const MemberDashboardView: React.FC = () => {
   const { requests, currentUser, addComment, updateRequestPriority, refreshRequests, extendRequestDeadline } = useApp();
   const { toast } = useToast();
   const memberRequests = filterRequestsForCurrentUser(requests, currentUser);
+
+  const shortId = (id: string) => (id.length > 8 ? `R#${id.slice(0, 8)}` : id);
+
+  const overdueCount = memberRequests.filter(
+    (r) =>
+      !isClosedStatus(r.status) &&
+      (r.status === "OVERDUE" ||
+        (r.deadline && new Date(r.deadline).getTime() < Date.now())),
+  ).length;
+
+  const urgentCount = memberRequests.filter(
+    (r) =>
+      !isClosedStatus(r.status) &&
+      r.priority === "URGENT",
+  ).length;
 
   const [selectedRequestId, setSelectedRequestId] = useState<string>(
     memberRequests[0]?.id || requests[0]?.id || "",
@@ -438,20 +468,20 @@ export const MemberDashboardView: React.FC = () => {
     <div className="space-y-8 animate-fadeIn">
       {/* Page Header */}
       <div>
-        <h2 className="font-sans font-bold text-2xl text-[#191c1d]">
+        <h2 className="font-sans font-bold text-3xl text-[#191c1d]">
           Welcome back,{" "}
           {currentUser.role === "MP"
             ? honourable(currentUser.name)
             : currentUser.name}
         </h2>
-        <p className="font-sans text-sm text-[#434655] mt-1">
+        <p className="font-sans text-sm text-[#434655] mt-1.5">
           Track legislative requests and access delivered research briefs.
         </p>
       </div>
 
       {/* Member Portal Metric Badges */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white border border-[#c4c5d7] rounded-lg p-5 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
               Active Requests
@@ -460,18 +490,52 @@ export const MemberDashboardView: React.FC = () => {
               {
                 memberRequests.filter(
                   (r) =>
-                    !["APPROVED", "DELIVERED", "CLOSED"].includes(r.status),
+                    !isClosedStatus(r.status),
                 ).length
               }
             </h3>
             <p className="text-[11px] text-[#434655] mt-1">In progress</p>
           </div>
           <div className="p-3 bg-blue-50 text-[#0037b0] rounded">
-            <Clock className="w-6 h-6" />
+            <Clock className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex items-center justify-between">
+        <div className="bg-white border border-[#c4c5d7] rounded-lg p-5 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
+              Overdue
+            </p>
+            <h3 className={`text-2xl font-bold mt-1 ${overdueCount > 0 ? "text-[#ba1a1a]" : "text-[#191c1d]"}`}>
+              {overdueCount}
+            </h3>
+            <p className={`text-[11px] font-semibold mt-1 ${overdueCount > 0 ? "text-[#93000a]" : "text-emerald-800"}`}>
+              {overdueCount > 0 ? "Needs attention" : "All on track"}
+            </p>
+          </div>
+          <div className="p-3 bg-red-50 text-[#ba1a1a] rounded">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white border border-[#c4c5d7] rounded-lg p-5 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
+              Urgent
+            </p>
+            <h3 className="text-2xl font-bold text-[#191c1d] mt-1">
+              {urgentCount}
+            </h3>
+            <p className="text-[11px] text-[#93000a] font-semibold mt-1">
+              High priority
+            </p>
+          </div>
+          <div className="p-3 bg-orange-50 text-orange-700 rounded">
+            <Gauge className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white border border-[#c4c5d7] rounded-lg p-5 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
               Completed
@@ -479,7 +543,7 @@ export const MemberDashboardView: React.FC = () => {
             <h3 className="text-2xl font-bold text-[#191c1d] mt-1">
               {
                 memberRequests.filter((r) =>
-                  ["APPROVED", "DELIVERED", "CLOSED"].includes(r.status),
+                  isClosedStatus(r.status),
                 ).length
               }
             </h3>
@@ -488,11 +552,11 @@ export const MemberDashboardView: React.FC = () => {
             </p>
           </div>
           <div className="p-3 bg-emerald-50 text-[#006b2c] rounded">
-            <Award className="w-6 h-6" />
+            <Award className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex items-center justify-between">
+        <div className="bg-white border border-[#c4c5d7] rounded-lg p-5 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
               Total Requests
@@ -503,7 +567,7 @@ export const MemberDashboardView: React.FC = () => {
             <p className="text-[11px] text-[#434655] mt-1">All time</p>
           </div>
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded">
-            <FileCheck className="w-6 h-6" />
+            <FileCheck className="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -515,7 +579,7 @@ export const MemberDashboardView: React.FC = () => {
           <div className="lg:col-span-2 p-8 border-r border-[#c4c5d7] space-y-6">
             <header className="border-b border-gray-100 pb-4">
               <span className="bg-[#dce1ff] text-[#001551] font-bold text-xs px-2.5 py-1 rounded-full uppercase tracking-wider">
-                Active Tracking: {activeRequest.id}
+                Active Tracking: {shortId(activeRequest.id)}
               </span>
               <h3 className="text-xl font-bold text-[#191c1d] mt-2 leading-snug">
                 {activeRequest.title}
@@ -733,6 +797,9 @@ export const MemberDashboardView: React.FC = () => {
                   Research Topic
                 </th>
                 <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
+                  Priority
+                </th>
+                <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
                   Status
                 </th>
                 <th className="px-6 py-3 text-xs font-bold text-[#747686] uppercase">
@@ -744,7 +811,9 @@ export const MemberDashboardView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {paginatedRequests.map((req) => (
+              {paginatedRequests.map((req) => {
+                const d = getDaysRemaining(req.deadline);
+                return (
                 <tr
                   key={req.id}
                   className={`cursor-pointer transition-colors hover:bg-[#f3f4f5]/30 ${
@@ -757,11 +826,13 @@ export const MemberDashboardView: React.FC = () => {
                     setTrackingModalRequest(req);
                   }}
                 >
-                  <td className="px-6 py-3.5 text-sm font-bold text-[#191c1d]">
-                    {req.id}
+                  <td className="px-6 py-3.5 text-xs font-bold text-[#0037b0] whitespace-nowrap">
+                    {shortId(req.id)}
                   </td>
-                  <td className="px-6 py-3.5 text-sm text-[#191c1d] font-semibold">
-                    {req.title}
+                  <td className="px-6 py-3.5 text-sm text-[#191c1d] font-semibold max-w-64">
+                    <span className="block truncate" title={req.title}>
+                      {req.title}
+                    </span>
                   </td>
                   <td className="px-6 py-3.5 text-xs text-gray-500">
                     {req.category}
@@ -769,16 +840,32 @@ export const MemberDashboardView: React.FC = () => {
                   <td className="px-6 py-3.5">
                     <span
                       className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
-                        ["APPROVED", "DELIVERED", "CLOSED"].includes(req.status)
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-blue-100 text-blue-800"
+                        req.priority === "URGENT"
+                          ? "bg-[#ffdad6] text-[#93000a]"
+                          : "bg-[#edeeef] text-gray-600"
+                      }`}
+                    >
+                      {req.priority}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3.5">
+                    <span
+                      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
+                        STATUS_STYLES[req.status] || "bg-gray-100 text-gray-600"
                       }`}
                     >
                       {getStatusLabel(req.status)}
                     </span>
                   </td>
-                  <td className="px-6 py-3.5 text-xs text-[#191c1d] font-semibold">
-                    {req.deadline}
+                  <td className="px-6 py-3.5 whitespace-nowrap">
+                    <div className="flex flex-col items-start gap-0.5">
+                      <span className={`text-xs font-semibold ${d.color.split(" ")[0]}`}>
+                        {req.deadline}
+                      </span>
+                      <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full capitalize ${d.color}`}>
+                        {d.label}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-6 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -835,7 +922,8 @@ export const MemberDashboardView: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -865,7 +953,7 @@ export const MemberDashboardView: React.FC = () => {
             <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex justify-between items-center shrink-0">
               <div className="flex items-center gap-3">
                 <span className="bg-[#dce1ff] text-[#001551] font-bold text-xs px-2.5 py-1 rounded-full uppercase tracking-wider">
-                  {trackingModalRequest.id}
+                  {shortId(trackingModalRequest.id)}
                 </span>
                 <div>
                   <h3 className="font-sans font-bold text-gray-900 text-sm">
@@ -938,31 +1026,19 @@ export const MemberDashboardView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* ── Assigned Officers ── */}
+                  {/* ── Assignment confirmation (team/officer identity withheld) ── */}
                   {(detail.officer || detail.assignments.length > 0) && (
-                    <div className="flex items-center gap-3 bg-gray-50 border border-[#c4c5d7] rounded-lg p-3">
-                      <div className="w-9 h-9 rounded-full bg-[#0037b0] text-white flex items-center justify-center text-xs font-bold shrink-0">
-                        {detail.officer?.initials || "GRP"}
+                    <div className="flex items-center gap-3 bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
+                      <div className="w-9 h-9 rounded-full bg-[#006b2c] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                        <CheckCircle2 className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">
-                          Research Team
+                          Research Team Assignment
                         </p>
-                        {detail.officer && (
-                          <p className="text-xs font-bold text-gray-900">
-                            {detail.officer.title ? `${detail.officer.title} ` : ""}
-                            {detail.officer.firstName} {detail.officer.lastName}
-                            <span className="text-[10px] font-semibold text-gray-400 ml-1.5">Lead Researcher</span>
-                          </p>
-                        )}
-                        {detail.assignments
-                          .filter((a) => a.assignedTo && !a.declinedAt && !a.supersededAt)
-                          .filter((a) => a.assignedTo?.id !== detail.officer?.id)
-                          .map((a) => (
-                            <p key={a.id} className="text-xs text-gray-700 mt-0.5">
-                              {a.assignedTo?.firstName} {a.assignedTo?.lastName}
-                            </p>
-                          ))}
+                        <p className="text-xs font-semibold text-[#00501f]">
+                          A research team has been appointed and is preparing your brief.
+                        </p>
                       </div>
                     </div>
                   )}

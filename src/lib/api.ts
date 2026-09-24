@@ -136,6 +136,7 @@ export interface GetRequestsParams {
   priority?: string;
   committeeId?: string;
   search?: string;
+  archived?: boolean;
   page?: number;
   limit?: number;
 }
@@ -211,8 +212,8 @@ export async function getOfficers() {
 
 // ─── Teams ──────────────────────────────────────────────
 
-export async function getTeams() {
-  return request('/teams/');
+export async function getTeams(params?: { includeInactive?: boolean }) {
+  return request(`/teams/${params?.includeInactive ? '?includeInactive=true' : ''}`);
 }
 
 export async function getTeam(teamId: string) {
@@ -223,7 +224,7 @@ export async function createTeam(data: { name: string; description?: string; lea
   return request('/teams/', { method: 'POST', body: data });
 }
 
-export async function updateTeam(teamId: string, data: { name?: string; description?: string; leadId?: string }) {
+export async function updateTeam(teamId: string, data: { name?: string; description?: string; leadId?: string; isActive?: boolean }) {
   return request(`/teams/${teamId}`, { method: 'PUT', body: data });
 }
 
@@ -444,6 +445,18 @@ export async function createTemplate(data: {
   sections: { heading: string; prompt: string }[];
 }) {
   return request('/templates/', { method: 'POST', body: data });
+}
+
+export async function updateTemplate(
+  id: string,
+  data: {
+    name: string;
+    description?: string;
+    category: string;
+    sections: { heading: string; prompt: string }[];
+  },
+) {
+  return request(`/templates/${id}`, { method: 'PUT', body: data });
 }
 
 export async function deleteTemplate(id: string) {

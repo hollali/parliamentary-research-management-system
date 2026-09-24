@@ -10,12 +10,13 @@ const router = Router();
 
 const VALID_STATUSES = ["SUBMITTED","ASSIGNED","IN_PROGRESS","DRAFT_SUBMITTED","REVISION_REQUESTED","REVISED","APPROVED","DELIVERED","CLOSED"];
 const VALID_PRIORITIES = ["STANDARD","URGENT"];
+const ARCHIVED_STATUSES = ["APPROVED", "DELIVERED", "CLOSED"];
 
 // List requests (filtered by role)
 router.get("/", authenticateToken, async (req, res) => {
   try {
     const { role, userId } = req.user!;
-    const { status, priority, committeeId, search, page: rawPage = "1", limit: rawLimit = "20" } = req.query;
+    const { status, priority, committeeId, search, archived, page: rawPage = "1", limit: rawLimit = "20" } = req.query;
     const { page, limit, skip } = clampPagination(rawPage as string, rawLimit as string);
 
     const where: any = {};
@@ -30,7 +31,13 @@ router.get("/", authenticateToken, async (req, res) => {
       ];
     }
 
-    if (status && VALID_STATUSES.includes(status as string)) where.status = status;
+    if (archived === "true" && !status) {
+      where.status = { in: ARCHIVED_STATUSES };
+    } else if (archived === "true") {
+      where.status = status;
+    } else if (status && VALID_STATUSES.includes(status as string)) {
+      where.status = status;
+    }
     if (priority && VALID_PRIORITIES.includes(priority as string)) where.priority = priority;
     if (committeeId) where.committeeId = committeeId;
     if (search) {

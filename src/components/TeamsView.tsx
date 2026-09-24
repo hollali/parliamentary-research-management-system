@@ -9,11 +9,13 @@ import {
   getUsers,
 } from "../lib/api";
 import { useToast } from "../lib/toast";
+import { useApp } from "../context/AppContext";
 import {
   Users,
   Plus,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   RefreshCw,
   X,
   Pencil,
@@ -22,7 +24,18 @@ import {
   UserMinus,
   Check,
   Search,
+  ChevronDown,
+  History,
 } from "lucide-react";
+
+const ACTIVE_STATUSES = [
+  "SUBMITTED",
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "DRAFT_SUBMITTED",
+  "REVISION_REQUESTED",
+  "REVISED",
+];
 
 interface TeamForm {
   id?: string;
@@ -51,12 +64,16 @@ export const TeamsView: React.FC = () => {
   const [deactivatingTeam, setDeactivatingTeam] = useState<any | null>(null);
   const [deactivating, setDeactivating] = useState(false);
   const { toast } = useToast();
+  const { requests } = useApp();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "members" | "load">("name");
+  const [showInactive, setShowInactive] = useState(false);
 
   const fetchTeams = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getTeams();
+      const data = await getTeams({ includeInactive: true });
       setTeams(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setTeams([]);
@@ -210,6 +227,55 @@ export const TeamsView: React.FC = () => {
     return `${o.firstName} ${o.lastName}`.toLowerCase().includes(q);
   });
 
+  const teamWorkload = (teamId: string) => {
+    const teamRequests = requests.filter((r: any) => r.teamId === teamId);
+    const active = teamRequests.filter((r: any) => ACTIVE_STATUSES.includes(r.status as string));
+    const now = new Date().getTime();
+    const overdue = active.filter((r: any) => new Date(r.deadline).getTime() < now);
+    return { total: teamRequests.length, active: active.length, overdue: overdue.length };
+  };
+
+  const visibleTeams = React.useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const filtered = teams.filter((t) => {
+      const haystack = [
+        t.name,
+        t.description || "",
+        t.lead ? `${t.lead.firstName} ${t.lead.lastName}` : "",
+        ...(t.members || []).map((m: any) => `${m.user?.firstName || ""} ${m.user?.lastName || ""}`),
+      ]
+        .join(" ")
+        .toLowerCase();
+      const matchesSearch = !q || haystack.includes(q);
+      const matchesStatus = showInactive || t.isActive !== false;
+      return matchesSearch && matchesStatus;
+    });
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      if (sortBy === "load") return teamWorkload(b.id).active - teamWorkload(a.id).active;
+      if (sortBy === "members") return (b.members?.length || 0) - (a.members?.length || 0);
+      return a.name.localeCompare(b.name);
+    });
+    return sorted;
+  }, [teams, searchQuery, sortBy, showInactive, requests]);
+
+  const activeTeamCount = teams.filter((t) => t.isActive !== false).length;
+  const inactiveTeamCount = teams.length - activeTeamCount;
+  const memberCount = teams.reduce((n: number, t: any) => n + (t.members?.length || 0), 0);
+
+  const handleRestore = async (team: any) => {
+    setBusy(true);
+    try {
+      await updateTeam(team.id, { isActive: true });
+      toast.success(`"${team.name}" reactivated`);
+      await fetchTeams();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to reactivate team");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
@@ -229,6 +295,57 @@ export const TeamsView: React.FC = () => {
           <Plus className="w-4 h-4" />
           Create Team
         </button>
+      </div>
+
+      {/* Toolbar */}
+      <div className="bg-white border border-[#c4c5d7] rounded-lg px-4 py-3 shadow-sm flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by team, lead, or member name…"
+            className="w-full pl-9 pr-8 py-2 bg-white border border-[#c4c5d7] rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#0037b0]"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 cursor-pointer"
+              title="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider shrink-0">
+            {activeTeamCount} active · {inactiveTeamCount} inactive · {memberCount} officers
+          </span>
+          <div className="relative">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="appearance-none bg-white border border-[#c4c5d7] rounded-lg pl-3 pr-8 py-2 text-xs font-semibold text-[#191c1d] outline-none focus:ring-1 focus:ring-[#0037b0] cursor-pointer"
+            >
+              <option value="name">Sort: Name</option>
+              <option value="members">Sort: Members</option>
+              <option value="load">Sort: Active Load</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+          <button
+            onClick={() => setShowInactive((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+              showInactive
+                ? "bg-[#dce1ff] text-[#0037b0] border-[#0037b0]/30"
+                : "bg-white text-gray-500 border-[#c4c5d7] hover:bg-gray-50"
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            Show inactive
+          </button>
+        </div>
       </div>
 
       {/* Team grid */}
@@ -263,18 +380,36 @@ export const TeamsView: React.FC = () => {
             Create Team
           </button>
         </div>
+      ) : visibleTeams.length === 0 ? (
+        <div className="bg-white border border-[#c4c5d7] rounded-lg p-16 text-center space-y-3">
+          <Search className="w-10 h-10 text-gray-300 mx-auto" />
+          <p className="text-sm font-bold text-gray-700">No teams match your search</p>
+          <p className="text-xs text-gray-500 max-w-sm mx-auto">
+            Try a different keyword{inactiveTeamCount > 0 && !showInactive ? ", or reveal deactivated teams." : "."}
+          </p>
+          <button
+            onClick={() => setSearchQuery("")}
+            className="mt-2 bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer"
+          >
+            Clear Search
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {teams.map((team) => {
+          {visibleTeams.map((team) => {
             const members = team.members || [];
+            const inactive = team.isActive === false;
+            const load = teamWorkload(team.id);
             return (
               <div
                 key={team.id}
-                className="bg-white border border-[#c4c5d7] rounded-lg p-5 shadow-sm flex flex-col hover:border-[#0037b0]/40 transition-all"
+                className={`bg-white border border-[#c4c5d7] rounded-lg p-5 shadow-sm flex flex-col transition-all hover:border-[#0037b0]/40 ${
+                  inactive ? "opacity-70 grayscale-[35%]" : ""
+                }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-[#dce1ff] flex items-center justify-center text-[11px] font-bold text-[#001551] shrink-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${inactive ? "bg-gray-200 text-gray-500" : "bg-[#dce1ff] text-[#001551]"}`}>
                       {team.name.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
@@ -284,35 +419,81 @@ export const TeamsView: React.FC = () => {
                       {team.lead && (
                         <p className="text-[11px] text-[#434655] truncate max-w-44">
                           Lead: {team.lead.firstName} {team.lead.lastName}
+                          <span className="ml-1.5 text-[8px] font-bold uppercase bg-[#dce1ff] text-[#0039b5] px-1 py-0.5 rounded">
+                            Lead
+                          </span>
                         </p>
                       )}
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <button
-                      onClick={() => openEdit(team)}
-                      className="p-1.5 text-[#0037b0] hover:bg-blue-50 rounded transition-all cursor-pointer"
-                      title="Edit Team"
-                      aria-label={`Edit ${team.name}`}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setDeactivatingTeam(team)}
-                      className="p-1.5 text-[#ba1a1a] hover:bg-red-50 rounded transition-all cursor-pointer"
-                      title="Deactivate Team"
-                      aria-label={`Deactivate ${team.name}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {inactive ? (
+                      <button
+                        onClick={() => handleRestore(team)}
+                        disabled={busy}
+                        className="p-1.5 text-[#006b2c] hover:bg-green-50 rounded transition-all cursor-pointer disabled:opacity-40"
+                        title="Reactivate Team"
+                        aria-label={`Reactivate ${team.name}`}
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => openEdit(team)}
+                          className="p-1.5 text-[#0037b0] hover:bg-blue-50 rounded transition-all cursor-pointer"
+                          title="Edit Team"
+                          aria-label={`Edit ${team.name}`}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setDeactivatingTeam(team)}
+                          className="p-1.5 text-[#ba1a1a] hover:bg-red-50 rounded transition-all cursor-pointer"
+                          title="Deactivate Team"
+                          aria-label={`Deactivate ${team.name}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
+
+                {inactive && (
+                  <span className="mt-2 self-start inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-gray-500 bg-gray-200 rounded-full px-2 py-0.5">
+                    <History className="w-3 h-3" />
+                    Deactivated
+                  </span>
+                )}
 
                 {team.description && (
                   <p className="mt-3 text-xs text-gray-500 line-clamp-2">
                     {team.description}
                   </p>
                 )}
+
+                {/* Workload telemetry */}
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`inline-flex items-center gap-1 text-[9px] font-bold rounded-full px-2 py-0.5 ${
+                      load.active > 0 ? "bg-blue-50 text-[#0037b0]" : "bg-gray-50 text-gray-400"
+                    }`}
+                    title="Requests currently in the pipeline"
+                  >
+                    <Users className="w-3 h-3" />
+                    {load.active} active
+                  </span>
+                  {load.overdue > 0 && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[9px] font-bold rounded-full px-2 py-0.5 bg-[#ffdad6] text-[#93000a]"
+                      title="Pipeline requests past their deadline"
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                      {load.overdue} overdue
+                    </span>
+                  )}
+                </div>
 
                 {/* Member avatar stack */}
                 <div className="mt-4 flex items-center justify-between">
@@ -327,10 +508,12 @@ export const TeamsView: React.FC = () => {
                     {members.slice(0, 4).map((m: any, i: number) => (
                       <div
                         key={m.userId}
-                        title={`${m.user?.firstName || ""} ${m.user?.lastName || ""}`}
-                        className={`w-7 h-7 rounded-full bg-[#dce1ff] border-2 border-white flex items-center justify-center text-[8px] font-bold text-[#001551] ${
-                          i > 0 ? "-ml-2" : ""
-                        }`}
+                        title={`${m.user?.firstName || ""} ${m.user?.lastName || ""}${team.leadId === m.userId ? " (Lead)" : ""}`}
+                        className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[8px] font-bold ${
+                          team.leadId === m.userId
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-[#dce1ff] text-[#001551]"
+                        } ${i > 0 ? "-ml-2" : ""}`}
                       >
                         {m.user?.initials ||
                           `${(m.user?.firstName || "")[0] || ""}${(m.user?.lastName || "")[0] || ""}`}
@@ -359,7 +542,8 @@ export const TeamsView: React.FC = () => {
                     <Users className="w-3.5 h-3.5" />
                     {members.length} {members.length === 1 ? "member" : "members"}
                   </span>
-                  <span>{team._count?.requests || 0} requests</span>
+                  <span title="Historical request count">{team._count?.requests || 0} requests</span>
+                  <span title="Assignments made to this team">{team._count?.assignments || 0} assignments</span>
                 </div>
               </div>
             );

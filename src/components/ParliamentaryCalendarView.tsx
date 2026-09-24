@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatRequestStatus } from '../lib/status';
+import { honourable } from '../lib/format';
 import { 
   Calendar, 
   ChevronLeft, 
@@ -8,7 +9,10 @@ import {
   Clock,
   AlertTriangle,
   FileText,
-  Target
+  Target,
+  X,
+  User,
+  CheckCircle2,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -18,7 +22,8 @@ const MONTH_NAMES = [
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 const PRIORITY_COLORS: Record<string, string> = {
-  URGENT: 'bg-red-500 text-white',
+  URGENT: 'bg-[#ba1a1a] text-white',
+  STANDARD: 'bg-[#0037b0] text-white',
   HIGH: 'bg-[#ba1a1a] text-white',
   MEDIUM: 'bg-amber-500 text-white',
   LOW: 'bg-green-500 text-white',
@@ -38,9 +43,10 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export const ParliamentaryCalendarView: React.FC = () => {
-  const { requests } = useApp();
+  const { requests, currentUser } = useApp();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -48,6 +54,22 @@ export const ParliamentaryCalendarView: React.FC = () => {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
+
+  const isCompleted = (status: string) => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(status);
+
+  // Deadlines within the displayed month (for the summary chip)
+  const monthDeadlines = useMemo(() => {
+    const inMonth = requests.filter((r) => {
+      if (!r.deadline) return false;
+      const d = new Date(r.deadline);
+      return d.getFullYear() === year && d.getMonth() === month;
+    });
+    return {
+      total: inMonth.length,
+      urgent: inMonth.filter((r) => r.priority === 'URGENT').length,
+      overdue: inMonth.filter((r) => new Date(r.deadline) < today && !isCompleted(r.status)).length,
+    };
+  }, [requests, year, month]);
 
   // Map deadlines to dates
   const deadlineMap = useMemo(() => {
@@ -96,23 +118,53 @@ export const ParliamentaryCalendarView: React.FC = () => {
     const key = `${year}-${month}-${day}`;
     const items = deadlineMap[key] || [];
     const selected = selectedDateKey === key;
+    const cellIsToday = isToday(day);
+    const dayDate = new Date(year, month, day);
+    const pastCell = dayDate.getTime() < today.getTime();
+    const hasOverdue = items.some((r) => !isCompleted(r.status) && (!r.deadline || new Date(r.deadline) < today));
+    const hasUrgent = items.some((r) => r.priority === 'URGENT' && !isCompleted(r.status));
     return (
       <div
         key={day}
         onClick={() => setSelectedDate(new Date(year, month, day))}
-        className={`min-h-[80px] border border-gray-100 p-1 cursor-pointer transition-colors hover:bg-gray-50 ${
-          selected ? 'bg-[#e5efff] ring-2 ring-[#0037b0] ring-inset' : ''
-        } ${isToday(day) ? 'bg-blue-50/50' : ''}`}
+        className={`min-h-[80px] border p-1 cursor-pointer transition-colors hover:bg-gray-50 ${
+          selected ? 'bg-[#e5efff] ring-2 ring-[#0037b0] ring-inset border-transparent' : 'border-gray-100'
+        } ${cellIsToday ? 'bg-blue-50/50' : ''} ${hasOverdue ? 'bg-[#fff5f4]' : ''}`}
       >
-        <div className={`text-[10px] font-bold mb-1 ${isToday(day) ? 'text-[#0037b0]' : 'text-gray-500'}`}>
-          {day}
+        <div
+          className={`flex items-center justify-between mb-1 ${
+            cellIsToday ? 'text-[#0037b0]' : pastCell ? 'text-gray-300' : 'text-gray-500'
+          }`}
+        >
+          <span className="text-[10px] font-bold">{day}</span>
+          {cellIsToday ? (
+            <span className="text-[7px] font-bold uppercase bg-[#0037b0] text-white rounded-full px-1.5 py-0.5" title="Today">
+              Today
+            </span>
+          ) : hasOverdue ? (
+            <span className="text-[7px] font-bold uppercase bg-[#ba1a1a] text-white rounded-full px-1.5 py-0.5" title={`${items.filter((r) => !isCompleted(r.status)).length} overdue`}>
+              O#{items.filter((r) => !isCompleted(r.status)).length}
+            </span>
+          ) : (
+            items.length > 0 && (
+              <span className="text-[8px] font-bold text-gray-400">{items.length}</span>
+            )
+          )}
         </div>
         {items.slice(0, 2).map((r) => (
           <div
             key={r.id}
-            className={`text-[9px] px-1 py-0.5 rounded mb-0.5 truncate font-semibold border ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}
+            className={`text-[9px] px-1 py-0.5 rounded mb-0.5 truncate font-semibold border flex items-center gap-1 ${
+              r.priority === 'URGENT' && !isCompleted(r.status)
+                ? 'border-[#ba1a1a]/40 bg-[#ffdad6] text-[#93000a]'
+                : STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600 border-gray-200'
+            }`}
+            title={`${r.title} — ${formatRequestStatus(r.status)}`}
           >
-            {r.title.slice(0, 15)}
+            {r.priority === 'URGENT' && !isCompleted(r.status) && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#ba1a1a] shrink-0" />
+            )}
+            <span className="truncate">{r.title.slice(0, 15)}</span>
           </div>
         ))}
         {items.length > 2 && (
@@ -141,13 +193,37 @@ export const ParliamentaryCalendarView: React.FC = () => {
         {/* Calendar grid */}
         <div className="flex-1">
           <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 gap-2">
               <button onClick={prevMonth} className="p-1.5 hover:bg-gray-100 rounded-full transition-colors">
                 <ChevronLeft className="w-4 h-4 text-gray-600" />
               </button>
-              <h3 className="font-sans font-bold text-base text-[#191c1d]">
-                {MONTH_NAMES[month]} {year}
-              </h3>
+              <div className="flex items-center gap-3">
+                <h3 className="font-sans font-bold text-base text-[#191c1d]">
+                  {MONTH_NAMES[month]} {year}
+                </h3>
+                <div className="hidden sm:flex items-center gap-1.5">
+                  <span className="text-[9px] font-bold text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5">
+                    {monthDeadlines.total} deadlines
+                  </span>
+                  {monthDeadlines.urgent > 0 && (
+                    <span className="text-[9px] font-bold text-[#93000a] bg-[#ffdad6] rounded-full px-2 py-0.5">
+                      {monthDeadlines.urgent} urgent
+                    </span>
+                  )}
+                  {monthDeadlines.overdue > 0 && (
+                    <span className="text-[9px] font-bold text-[#93000a] bg-[#ffdad6] rounded-full px-2 py-0.5">
+                      {monthDeadlines.overdue} overdue
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setCurrentDate(new Date())}
+                className="text-[11px] font-bold text-[#0037b0] hover:bg-blue-50 border border-[#c4c5d7] rounded-lg px-2.5 py-1 transition-colors cursor-pointer shrink-0"
+                title="Jump to current month"
+              >
+                Today
+              </button>
               <button onClick={nextMonth} className="p-1.5 hover:bg-gray-100 rounded-full transition-colors">
                 <ChevronRight className="w-4 h-4 text-gray-600" />
               </button>
@@ -167,26 +243,68 @@ export const ParliamentaryCalendarView: React.FC = () => {
           {/* Selected date details */}
           {selectedDate && (
             <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm mt-4">
-              <div className="px-6 py-3 border-b border-gray-100">
+              <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
                 <h4 className="font-sans font-bold text-sm text-[#191c1d]">
                   {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 </h4>
+                {selectedDateRequests.length > 0 ? (
+                  <span className="text-[10px] font-bold text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 shrink-0">
+                    {selectedDateRequests.length} deadline{selectedDateRequests.length === 1 ? '' : 's'}
+                  </span>
+                ) : null}
               </div>
               <div className="p-6">
+                {selectedDate.getTime() < today.getTime() &&
+                  selectedDateRequests.some((r) => !isCompleted(r.status)) && (
+                    <div className="mb-3 flex items-center gap-2 text-[11px] font-bold text-[#93000a] bg-[#ffdad6] border border-[#ba1a1a]/30 rounded-lg px-3 py-2">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      {selectedDateRequests.filter((r) => !isCompleted(r.status)).length} request
+                      {selectedDateRequests.filter((r) => !isCompleted(r.status)).length === 1 ? '' : 's'} on this date
+                      {isCompleted(selectedDateRequests[0]?.status) ? '' : ' are still open'}
+                    </div>
+                  )}
                 {selectedDateRequests.length > 0 ? (
                   <div className="space-y-2">
-                    {selectedDateRequests.map((r) => (
-                      <div key={r.id} className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                        <FileText className="w-4 h-4 text-gray-400 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-gray-900 truncate">{r.title}</p>
-                          <p className="text-[10px] text-gray-500">{r.id.slice(0, 8)}</p>
+                    {selectedDateRequests.map((r) => {
+                      const open = !isCompleted(r.status);
+                      const overdue = open && new Date(r.deadline) < today;
+                      return (
+                        <div
+                          key={r.id}
+                          onClick={() => setSelectedRequest(r)}
+                          className={`flex items-center gap-3 p-3 rounded-lg bg-gray-50 border cursor-pointer transition-all hover:shadow-sm ${
+                            overdue || (r.priority === 'URGENT' && open)
+                              ? 'border-[#ba1a1a]/30'
+                              : 'border-gray-100'
+                          }`}
+                        >
+                          <FileText className="w-4 h-4 text-gray-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-bold text-gray-900 truncate">{r.title}</p>
+                              {r.priority === 'URGENT' && open && (
+                                <span className="text-[8px] font-bold uppercase text-white bg-[#ba1a1a] rounded-full px-1.5 py-0.5 shrink-0">
+                                  Urgent
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-gray-500">
+                              <User className="w-3 h-3" />
+                              {honourable(r.member || '—')}
+                              <span className="text-gray-300">|</span>
+                              {r.id}
+                            </div>
+                          </div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                            overdue ? 'bg-red-100 text-red-700' :
+                            open ? STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600' :
+                            'bg-gray-100 text-gray-500'
+                          }`}>
+                            {formatRequestStatus(overdue ? 'OVERDUE' : r.status)}
+                          </span>
                         </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>
-                          {formatRequestStatus(r.status)}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-xs text-gray-400 text-center">No research deadlines on this date.</p>
@@ -284,6 +402,102 @@ export const ParliamentaryCalendarView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Request detail modal */}
+      {selectedRequest && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setSelectedRequest(null)}
+        >
+          <div
+            className="bg-white border border-[#c4c5d7] rounded-lg shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-scaleIn"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="bg-[#dce1ff] text-[#0039b5] text-xs font-bold px-2.5 py-1 rounded shrink-0">
+                  {selectedRequest.id}
+                </span>
+                <h3 className="font-sans font-bold text-gray-900 text-sm truncate">{selectedRequest.title}</h3>
+              </div>
+              <button
+                onClick={() => setSelectedRequest(null)}
+                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${STATUS_COLORS[selectedRequest.status] || 'bg-gray-100 text-gray-600'}`}>
+                  {formatRequestStatus(selectedRequest.status)}
+                </span>
+                {selectedRequest.priority === 'URGENT' && !isCompleted(selectedRequest.status) && (
+                  <span className="text-[10px] font-extrabold text-white bg-[#ba1a1a] px-2 py-0.5 rounded border border-[#ba1a1a] uppercase tracking-wider">
+                    Urgent Priority
+                  </span>
+                )}
+                {(() => {
+                  if (isCompleted(selectedRequest.status))
+                    return (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#006b2c] bg-green-50 rounded-full px-2 py-0.5">
+                        <CheckCircle2 className="w-3 h-3" /> Completed
+                      </span>
+                    );
+                  const overdue = new Date(selectedRequest.deadline) < today;
+                  if (overdue)
+                    return (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#93000a] bg-[#ffdad6] rounded-full px-2 py-0.5">
+                        <AlertTriangle className="w-3 h-3" /> Overdue
+                      </span>
+                    );
+                  return null;
+                })()}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Member (MP)</span>
+                  <p className="text-sm font-semibold text-[#191c1d] flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-gray-400" />
+                    {honourable(selectedRequest.member || '—')}
+                  </p>
+                </div>
+                {currentUser.role !== "MP" && (
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Assigned Team / Officer</span>
+                  <p className="text-sm font-semibold text-[#191c1d]">
+                    {selectedRequest.teamName || selectedRequest.assignedOfficerName || 'Unassigned'}
+                  </p>
+                </div>
+              )}
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Deadline</span>
+                  <p className="text-sm font-semibold text-[#191c1d] flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    {new Date(selectedRequest.deadline).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Category</span>
+                  <p className="text-sm font-semibold text-[#191c1d]">{selectedRequest.category || '—'}</p>
+                </div>
+              </div>
+
+              {selectedRequest.description && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Brief</span>
+                  <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded border border-gray-100 max-h-36 overflow-y-auto">
+                    {selectedRequest.description}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

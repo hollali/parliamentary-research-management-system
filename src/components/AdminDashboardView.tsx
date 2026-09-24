@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { getOfficers } from "../lib/api";
 import { honourable } from "../lib/format";
@@ -18,8 +18,6 @@ import {
   UserPlus,
   Eye,
   RefreshCw,
-  Pencil,
-  MoreVertical,
   Activity,
   CheckCircle,
   MoreHorizontal,
@@ -27,11 +25,45 @@ import {
   X,
   XCircle,
   History,
+  Search,
+  Undo2,
+  Send,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 
 interface AdminDashboardViewProps {
   onNavigate: (view: string, targetId?: string) => void;
 }
+
+interface StageMeta {
+  label: string;
+  color: string;
+  values: string[] | null;
+}
+
+const STAGE_META: Record<string, StageMeta> = {
+  pending: { label: 'Pending', color: 'bg-[#0037b0]', values: ['SUBMITTED', 'ASSIGNED'] },
+  assigned: { label: 'Assigned', color: 'bg-blue-600', values: null },
+  inProgress: { label: 'In Progress', color: 'bg-amber-500', values: ['IN_PROGRESS', 'REVISED'] },
+  awaitingReview: { label: 'Awaiting Review', color: 'bg-purple-500', values: ['DRAFT_SUBMITTED', 'REVISION_REQUESTED', 'REVISED'] },
+  approved: { label: 'Approved', color: 'bg-green-600', values: ['APPROVED'] },
+  delivered: { label: 'Delivered', color: 'bg-emerald-600', values: ['DELIVERED'] },
+  overdue: { label: 'Overdue', color: 'bg-[#ba1a1a]', values: ['OVERDUE'] },
+  closed: { label: 'Closed', color: 'bg-gray-400', values: ['CLOSED'] },
+};
+
+const PIPELINE_ORDER = ['pending', 'inProgress', 'awaitingReview', 'approved', 'delivered', 'overdue', 'closed'];
+
+const BAR_VALUES: Record<string, string[]> = {
+  pending: ['SUBMITTED', 'ASSIGNED'],
+  inProgress: ['IN_PROGRESS'],
+  awaitingReview: ['DRAFT_SUBMITTED', 'REVISION_REQUESTED', 'REVISED'],
+  approved: ['APPROVED'],
+  delivered: ['DELIVERED'],
+  overdue: ['OVERDUE'],
+  closed: ['CLOSED'],
+};
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onNavigate,
@@ -56,6 +88,29 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const activityPageSize = 5;
   const [officerPage, setOfficerPage] = useState(1);
   const officerPageSize = 5;
+  const [stageFilter, setStageFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [tableSearch, setTableSearch] = useState("");
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpenId(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpenId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpenId]);
 
   useEffect(() => {
     getOfficers()
@@ -67,7 +122,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterTab, showHighPriorityOnly]);
+  }, [filterTab, showHighPriorityOnly, stageFilter, categoryFilter, tableSearch]);
 
   useEffect(() => {
     setActivityPage(1);
@@ -103,12 +158,131 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   ).length;
   const overdueCount = requests.filter((r) => r.status === "OVERDUE").length;
 
+  // Pipeline stage counts (each status maps to exactly one stage)
+  const pipelineCounts: Record<string, number> = {};
+  PIPELINE_ORDER.forEach((k) => { pipelineCounts[k] = 0; });
+  requests.forEach((r) => {
+    for (const k of PIPELINE_ORDER) {
+      const vals = BAR_VALUES[k];
+      if (vals.includes(r.status)) {
+        pipelineCounts[k] = (pipelineCounts[k] || 0) + 1;
+        break;
+      }
+    }
+  });
+
+  // Category distribution
+  const categoryCounts: [string, number][] = (() => {
+    const map = new Map<string, number>();
+    requests.forEach((r) => {
+      const key = r.category?.trim() || "Uncategorised";
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  })();
+
+  const matchesStage = (req: ResearchRequest) => {
+    if (!stageFilter) return true;
+    if (stageFilter === "assigned") return req.assignedOfficerId !== null;
+    const meta = STAGE_META[stageFilter];
+    if (!meta?.values) return true;
+    return meta.values.includes(req.status);
+  };
+
+  const toggleStage = (key: string) => {
+    setStageFilter((prev) => (prev === key ? null : key));
+    setCurrentPage(1);
+  };
+
+  const toggleCategory = (cat: string) => {
+    setCategoryFilter((prev) => (prev === cat ? null : cat));
+    setCurrentPage(1);
+  };
+
+  const requestDeadlineInfo = (req: ResearchRequest) => {
+    const t = req.deadline ? new Date(req.deadline).getTime() : NaN;
+    if (Number.isNaN(t)) {
+      return { kind: "none" as const };
+    }
+    const diffDays = Math.ceil((t - Date.now()) / 86400000);
+    if (req.status === "OVERDUE" || diffDays < 0) {
+      return { kind: "overdue" as const, days: Math.abs(diffDays) };
+    }
+    if (diffDays === 0) return { kind: "today" as const };
+    if (diffDays <= 3) return { kind: "soon" as const, days: diffDays };
+    return { kind: "ok" as const };
+  };
+
+  const nextActionHint = (status: ResearchRequest["status"]): string => {
+    const map: Record<string, string> = {
+      SUBMITTED: "Assign",
+      ASSIGNED: "Track",
+      IN_PROGRESS: "Track",
+      DRAFT_SUBMITTED: "Review",
+      REVISION_REQUESTED: "Review",
+      REVISED: "Review",
+      APPROVED: "Deliver",
+      DELIVERED: "Close",
+      OVERDUE: "Act now",
+      CLOSED: "",
+      REPEAT_REQUESTED: "",
+    };
+    return map[status] || "";
+  };
+
+  const primaryAction = (req: ResearchRequest): { label: string; tone: string } | null => {
+    if (req.status === "SUBMITTED" && !req.assignedOfficerId && !req.teamId) {
+      return { label: "Assign", tone: "bg-[#0037b0] hover:bg-[#1d4ed8]" };
+    }
+    const map: Record<string, { label: string; tone: string }> = {
+      DRAFT_SUBMITTED: { label: "Approve", tone: "bg-[#006b2c] hover:bg-[#00501f]" },
+      REVISION_REQUESTED: { label: "Approve", tone: "bg-[#006b2c] hover:bg-[#00501f]" },
+      REVISED: { label: "Approve", tone: "bg-[#006b2c] hover:bg-[#00501f]" },
+      APPROVED: { label: "Deliver", tone: "bg-[#0037b0] hover:bg-[#1d4ed8]" },
+      DELIVERED: { label: "Close", tone: "bg-gray-700 hover:bg-gray-800" },
+      OVERDUE: { label: "Review", tone: "bg-[#ba1a1a] hover:bg-[#93000a]" },
+    };
+    return map[req.status] || null;
+  };
+
+  const runPrimaryAction = (req: ResearchRequest) => {
+    if (req.status === "SUBMITTED" && !req.assignedOfficerId && !req.teamId) {
+      setAssignModalRequestId(req.id);
+      setAssignModalRequestTitle(req.title);
+      return;
+    }
+    if (["DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"].includes(req.status)) {
+      updateRequestStatus(req.id, "APPROVED");
+    } else if (req.status === "APPROVED") {
+      updateRequestStatus(req.id, "DELIVERED");
+    } else if (req.status === "DELIVERED") {
+      updateRequestStatus(req.id, "CLOSED");
+    } else if (req.status === "OVERDUE") {
+      onNavigate("briefs", req.id);
+    }
+  };
+
   // Filter requests for display
   const filteredRequests = requests.filter((req) => {
     if (showHighPriorityOnly && req.priority !== "URGENT") return false;
     if (
       filterTab === "PENDING" &&
       !["SUBMITTED", "ASSIGNED"].includes(req.status)
+    )
+      return false;
+    if (!matchesStage(req)) return false;
+    if (categoryFilter && req.category !== categoryFilter) return false;
+    const q = tableSearch.trim().toLowerCase();
+    if (
+      q &&
+      !(
+        req.id.toLowerCase().includes(q) ||
+        req.title.toLowerCase().includes(q) ||
+        req.member.toLowerCase().includes(q) ||
+        (req.assignedOfficerName || "").toLowerCase().includes(q) ||
+        (req.teamName || "").toLowerCase().includes(q) ||
+        (req.category || "").toLowerCase().includes(q)
+      )
     )
       return false;
     return true;
@@ -217,10 +391,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       {/* Page Header */}
       <div className="flex justify-between items-end">
         <div>
-          <h2 className="font-sans font-bold text-2xl text-[#191c1d]">
+          <h2 className="font-sans font-bold text-3xl text-[#191c1d]">
             Administrative Overview
           </h2>
-          <p className="font-sans text-sm text-[#434655] mt-1">
+          <p className="font-sans text-sm text-[#434655] mt-1.5">
             Real-time monitoring of legislative research workflow.
           </p>
         </div>
@@ -258,11 +432,20 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       {/* Metrics Bento Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Pending */}
-        <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 hover:border-blue-500/40 transition-all shadow-sm">
+        <button
+          onClick={() => toggleStage("pending")}
+          className={`text-left bg-white border rounded-lg p-6 transition-all hover:border-blue-500/40 shadow-sm cursor-pointer ${
+            stageFilter === "pending" ? "border-[#0037b0] ring-2 ring-blue-100" : stageFilter ? "border-[#c4c5d7] opacity-60" : "border-[#c4c5d7]"
+          }`}
+          title="Click to view pending requests"
+        >
           <div className="flex justify-between items-start mb-4">
             <div className="p-2 bg-[#d5e3fd] rounded text-[#001551]">
               <FileText className="w-5 h-5" />
             </div>
+            {stageFilter === "pending" && (
+              <span className="text-[9px] font-bold text-[#0037b0] bg-[#dce1ff] px-2 py-0.5 rounded-full uppercase">Viewing</span>
+            )}
           </div>
           <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
             Total Pending
@@ -273,14 +456,23 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <p className="text-xs text-gray-500 mt-2 italic">
             Awaiting review or assignment
           </p>
-        </div>
+        </button>
 
         {/* Assigned */}
-        <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 hover:border-blue-500/40 transition-all shadow-sm">
+        <button
+          onClick={() => toggleStage("assigned")}
+          className={`text-left bg-white border rounded-lg p-6 transition-all hover:border-blue-500/40 shadow-sm cursor-pointer ${
+            stageFilter === "assigned" ? "border-[#0037b0] ring-2 ring-blue-100" : stageFilter ? "border-[#c4c5d7] opacity-60" : "border-[#c4c5d7]"
+          }`}
+          title="Click to view assigned requests"
+        >
           <div className="flex justify-between items-start mb-4">
             <div className="p-2 bg-[#dce1ff] rounded text-[#0039b5]">
               <UserPlus className="w-5 h-5" />
             </div>
+            {stageFilter === "assigned" && (
+              <span className="text-[9px] font-bold text-[#0037b0] bg-[#dce1ff] px-2 py-0.5 rounded-full uppercase">Viewing</span>
+            )}
           </div>
           <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
             Assigned
@@ -291,14 +483,23 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <p className="text-xs text-gray-500 mt-2 italic">
             Active research requests
           </p>
-        </div>
+        </button>
 
         {/* In Progress */}
-        <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 hover:border-blue-500/40 transition-all shadow-sm relative overflow-hidden">
+        <button
+          onClick={() => toggleStage("inProgress")}
+          className={`text-left bg-white border rounded-lg p-6 transition-all hover:border-blue-500/40 shadow-sm relative overflow-hidden cursor-pointer ${
+            stageFilter === "inProgress" ? "border-[#0037b0] ring-2 ring-blue-100" : stageFilter ? "border-[#c4c5d7] opacity-60" : "border-[#c4c5d7]"
+          }`}
+          title="Click to view in-progress requests"
+        >
           <div className="flex justify-between items-start mb-4">
             <div className="p-2 bg-[#7ffc97]/20 rounded text-[#00501f]">
               <RefreshCw className="w-5 h-5" />
             </div>
+            {stageFilter === "inProgress" && (
+              <span className="text-[9px] font-bold text-[#0037b0] bg-[#dce1ff] px-2 py-0.5 rounded-full uppercase">Viewing</span>
+            )}
           </div>
           <p className="text-xs font-bold text-[#434655] uppercase tracking-wider">
             In Progress
@@ -314,10 +515,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               }}
             ></div>
           </div>
-        </div>
+        </button>
 
         {/* Overdue */}
-        <div className="bg-white border border-[#ba1a1a]/30 rounded-lg p-6 hover:border-[#ba1a1a]/50 transition-all shadow-sm">
+        <button
+          onClick={() => toggleStage("overdue")}
+          className={`text-left bg-white border rounded-lg p-6 transition-all hover:border-blue-500/40 shadow-sm cursor-pointer ${
+            stageFilter === "overdue" ? "border-[#ba1a1a] ring-2 ring-red-100" : stageFilter ? "border-[#ba1a1a]/30 opacity-60" : "border-[#ba1a1a]/30"
+          }`}
+          title="Click to view overdue requests"
+        >
           <div className="flex justify-between items-start mb-4">
             <div className="p-2 bg-[#ffdad6] rounded text-[#93000a]">
               <AlertTriangle className="w-5 h-5" />
@@ -335,6 +542,113 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <p className="text-xs text-[#ba1a1a] mt-2 font-medium">
             Requires immediate action
           </p>
+        </button>
+      </div>
+
+      {/* Pipeline Health & Category Strip */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Pipeline Health */}
+        <div className="lg:col-span-2 bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm">
+          <div className="flex justify-between items-center mb-4">
+            <h4 className="font-sans font-bold text-[#191c1d] flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-[#0037b0]" />
+              Pipeline Health
+            </h4>
+            <span className="text-xs font-bold text-gray-400 uppercase">
+              {requests.length} request{requests.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          {requests.length > 0 ? (
+            <>
+              <div className="flex h-3 w-full rounded-full overflow-hidden bg-[#edeeef]">
+                {PIPELINE_ORDER.map((key) => {
+                  const count = pipelineCounts[key] || 0;
+                  if (count === 0) return null;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => toggleStage(key)}
+                      className={`${STAGE_META[key].color} h-full transition-all hover:brightness-110`}
+                      style={{ width: `${(count / requests.length) * 100}%` }}
+                      title={`${STAGE_META[key].label}: ${count}`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {PIPELINE_ORDER.map((key) => {
+                  const meta = STAGE_META[key];
+                  const count = pipelineCounts[key] || 0;
+                  const active = stageFilter === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => toggleStage(key)}
+                      disabled={count === 0}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ${
+                        active
+                          ? "border-[#0037b0] bg-blue-50 text-[#0037b0]"
+                          : count === 0
+                            ? "border-[#e0e1e6] text-gray-300 cursor-default"
+                            : "border-[#e0e1e6] text-[#434655] hover:border-[#0037b0]/40 hover:bg-gray-50"
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${meta.color} ${count === 0 ? "opacity-30" : ""}`} />
+                      <span className="truncate">{meta.label}</span>
+                      <span className={`ml-auto font-bold ${active ? "text-[#0037b0]" : "text-gray-400"}`}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 italic">No requests yet.</p>
+          )}
+        </div>
+
+        {/* Research Categories */}
+        <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm">
+          <h4 className="font-sans font-bold text-[#191c1d] flex items-center gap-2 mb-4">
+            <FileText className="w-5 h-5 text-[#0037b0]" />
+            Research Categories
+          </h4>
+          <div className="space-y-3">
+            {categoryCounts.slice(0, 6).map(([cat, count]) => {
+              const max = categoryCounts[0]?.[1] || 1;
+              const pct = Math.round((count / max) * 100);
+              const active = categoryFilter === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => toggleCategory(cat)}
+                  className={`block w-full text-left group ${active ? "" : "cursor-pointer"}`}
+                >
+                  <div className="flex justify-between items-center text-xs mb-1 gap-2">
+                    <span className={`font-semibold truncate ${active ? "text-[#0037b0]" : "text-[#434655] group-hover:text-[#0037b0]"}`}>
+                      {cat}
+                    </span>
+                    <span className={`font-bold shrink-0 ${active ? "text-[#0037b0]" : "text-gray-400"}`}>{count}</span>
+                  </div>
+                  <div className="h-1.5 bg-[#edeeef] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${active ? "bg-[#0037b0]" : "bg-blue-300 group-hover:bg-[#0037b0]"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+            {categoryCounts.length > 6 && (
+              <p className="text-xs text-gray-400 italic">…and {categoryCounts.length - 6} more.</p>
+            )}
+            {categoryCounts.length === 0 && (
+              <p className="text-xs text-gray-400 italic">No requests yet.</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -345,6 +659,27 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             Recent Research Requests
           </h4>
           <div className="flex items-center gap-4 flex-wrap w-full md:w-auto md:justify-end">
+            {/* Local Search */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={tableSearch}
+                onChange={(e) => setTableSearch(e.target.value)}
+                placeholder="Search requests..."
+                className="w-56 bg-white border border-[#c4c5d7] rounded pl-8 pr-3 py-1.5 text-xs outline-none focus:border-[#0037b0] transition-colors shadow-sm"
+              />
+              {tableSearch && (
+                <button
+                  type="button"
+                  onClick={() => setTableSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
             {/* Elegant Priority Filter Toggle */}
             <div className="flex items-center gap-2 bg-white border border-[#c4c5d7] rounded px-3 py-1.5 shadow-sm">
               <span className="text-xs font-bold text-[#434655] flex items-center gap-1 select-none">
@@ -392,6 +727,65 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </div>
           </div>
         </div>
+
+        {(stageFilter || categoryFilter || tableSearch) && (
+          <div className="px-6 pt-3 flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+              Viewing:
+            </span>
+            {tableSearch && (
+              <button
+                onClick={() => setTableSearch("")}
+                className="inline-flex items-center gap-1.5 bg-gray-100 text-[#434655] text-xs font-bold px-2.5 py-1 rounded-full hover:bg-gray-200 transition-colors cursor-pointer"
+                title="Clear search"
+              >
+                <Search className="w-3 h-3" />
+                "{tableSearch}"
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {stageFilter && STAGE_META[stageFilter] && (
+              <button
+                onClick={() => toggleStage(stageFilter)}
+                className="inline-flex items-center gap-1.5 bg-[#dce1ff] text-[#0037b0] text-xs font-bold px-2.5 py-1 rounded-full hover:bg-[#cedaff] transition-colors cursor-pointer"
+                title="Clear filter"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${STAGE_META[stageFilter].color}`} />
+                {STAGE_META[stageFilter].label}
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {categoryFilter && (
+              <button
+                onClick={() => toggleCategory(categoryFilter)}
+                className="inline-flex items-center gap-1.5 bg-[#dce1ff] text-[#0037b0] text-xs font-bold px-2.5 py-1 rounded-full hover:bg-[#cedaff] transition-colors cursor-pointer"
+                title="Clear filter"
+              >
+                {categoryFilter}
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {(showHighPriorityOnly || filterTab === "PENDING") && (
+              <span className="inline-flex items-center gap-1.5 bg-gray-100 text-[#434655] text-xs font-bold px-2.5 py-1 rounded-full">
+                {showHighPriorityOnly && <span className="flex items-center gap-1"><Flag className="w-3 h-3 text-red-600 fill-red-600" /> High priority</span>}
+                {showHighPriorityOnly && filterTab === "PENDING" && <span className="text-gray-300">•</span>}
+                {filterTab === "PENDING" && <span>Pending</span>}
+              </span>
+            )}
+            <button
+              onClick={() => {
+                setStageFilter(null);
+                setCategoryFilter(null);
+                setTableSearch("");
+                setShowHighPriorityOnly(false);
+                setFilterTab("ALL");
+              }}
+              className="text-xs font-semibold text-[#0037b0] hover:underline ml-1"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -579,13 +973,58 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </td>
 
                   {/* Status */}
-                  <td className="px-6 py-4">{getStatusBadge(req.status)}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col items-start gap-0.5">
+                      {getStatusBadge(req.status)}
+                      {nextActionHint(req.status) && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                          Next: {nextActionHint(req.status)}
+                        </span>
+                      )}
+                    </div>
+                  </td>
 
                   {/* Deadline */}
-                  <td
-                    className={`px-6 py-4 text-sm font-semibold whitespace-nowrap ${req.status === "OVERDUE" ? "text-[#ba1a1a]" : "text-[#191c1d]"}`}
-                  >
-                    {req.deadline}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex flex-col items-start gap-0.5">
+                      <span
+                        className={`text-sm font-semibold ${
+                          req.status === "OVERDUE"
+                            ? "text-[#ba1a1a]"
+                            : requestDeadlineInfo(req).kind === "soon" || requestDeadlineInfo(req).kind === "today"
+                              ? "text-amber-700"
+                              : "text-[#191c1d]"
+                        }`}
+                      >
+                        {req.deadline}
+                      </span>
+                      {(() => {
+                        const d = requestDeadlineInfo(req);
+                        if (d.kind === "overdue")
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-white bg-[#ba1a1a] rounded-full px-1.5 py-0.5">
+                              <AlertTriangle className="w-2.5 h-2.5" /> Overdue {d.days}d
+                            </span>
+                          );
+                        if (d.kind === "today")
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-0.5">
+                              <AlertTriangle className="w-2.5 h-2.5" /> Due today
+                            </span>
+                          );
+                        if (d.kind === "soon")
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-0.5">
+                              <Clock className="w-2.5 h-2.5" /> {d.days}d left
+                            </span>
+                          );
+                        if (d.kind === "none")
+                          return (
+                            <span className="text-[9px] font-semibold text-gray-400 italic">No date set</span>
+                          );
+                        return null;
+                      })()}
+                    </div>
                   </td>
 
                   {/* Actions */}
@@ -593,7 +1032,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     className="px-6 py-4 text-right"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <div className="flex justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {primaryAction(req) && (
+                        <button
+                          onClick={() => runPrimaryAction(req)}
+                          className={`px-2.5 py-1 text-white font-bold text-[11px] rounded transition-all shadow-sm ${primaryAction(req)!.tone}`}
+                        >
+                          {primaryAction(req)!.label}
+                        </button>
+                      )}
                       <button
                         onClick={() => setActiveRequest(req)}
                         className="p-1.5 text-[#0037b0] hover:bg-blue-50 rounded transition-all"
@@ -602,17 +1049,91 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => {
-                          setAssignModalRequestId(req.id);
-                          setAssignModalRequestTitle(req.title);
-                        }}
-                        className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-all"
-                        title="Reassign Staff"
-                        aria-label="Reassign Staff"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
+                      <div className="relative" ref={menuOpenId === req.id ? menuRef : undefined}>
+                        <button
+                          onClick={() => setMenuOpenId((prev) => (prev === req.id ? null : req.id))}
+                          className={`p-1.5 rounded transition-all ${
+                            menuOpenId === req.id
+                              ? "bg-[#dce1ff] text-[#0037b0]"
+                              : "text-gray-500 hover:bg-gray-100"
+                          }`}
+                          title="Quick actions"
+                          aria-label="Quick actions"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+
+                        {menuOpenId === req.id && (
+                          <div className="absolute right-0 top-full mt-1 z-30 w-56 bg-white border border-[#c4c5d7] rounded-lg shadow-xl py-1 text-left">
+                            <button
+                              onClick={() => { setMenuOpenId(null); onNavigate("briefs", req.id); }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                            >
+                              <Eye className="w-4 h-4 text-[#0037b0]" /> Review Brief
+                            </button>
+                            <button
+                              onClick={() => { setMenuOpenId(null); setActiveRequest(req); }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                            >
+                              <FileText className="w-4 h-4 text-gray-500" /> View Details
+                            </button>
+                            <button
+                              onClick={() => {
+                                setMenuOpenId(null);
+                                setAssignModalRequestId(req.id);
+                                setAssignModalRequestTitle(req.title);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                            >
+                              <UserPlus className="w-4 h-4 text-gray-500" /> Assign / Reassign Staff
+                            </button>
+                            <div className="my-1 h-px bg-[#f0f0f2]" />
+                            {["DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED", "APPROVED"].includes(req.status) && req.reportId && (
+                              <button
+                                onClick={() => { setMenuOpenId(null); updateRequestStatus(req.id, "REVISION_REQUESTED"); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#ba1a1a] hover:bg-red-50 transition-colors cursor-pointer"
+                              >
+                                <Undo2 className="w-4 h-4" /> Request Revision
+                              </button>
+                            )}
+                            {["DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"].includes(req.status) && (
+                              <button
+                                onClick={() => { setMenuOpenId(null); updateRequestStatus(req.id, "APPROVED"); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#006b2c] hover:bg-green-50 transition-colors cursor-pointer"
+                              >
+                                <CheckCircle2 className="w-4 h-4" /> Approve Brief
+                              </button>
+                            )}
+                            {req.status === "APPROVED" && (
+                              <button
+                                onClick={() => { setMenuOpenId(null); updateRequestStatus(req.id, "DELIVERED"); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#0037b0] hover:bg-blue-50 transition-colors cursor-pointer"
+                              >
+                                <Send className="w-4 h-4" /> Mark as Delivered
+                              </button>
+                            )}
+                            {req.status === "DELIVERED" && (
+                              <button
+                                onClick={() => { setMenuOpenId(null); updateRequestStatus(req.id, "CLOSED"); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                              >
+                                <XCircle className="w-4 h-4" /> Close Request
+                              </button>
+                            )}
+                            <div className="my-1 h-px bg-[#f0f0f2]" />
+                            <button
+                              onClick={() => {
+                                setMenuOpenId(null);
+                                updateRequestPriority(req.id, req.priority === "URGENT" ? "STANDARD" : "URGENT");
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                            >
+                              <Flag className={`w-4 h-4 ${req.priority === "URGENT" ? "text-red-600 fill-red-600" : "text-gray-500"}`} />
+                              {req.priority === "URGENT" ? "Set Standard Priority" : "Mark as Urgent"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -620,6 +1141,32 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </tbody>
           </table>
         </div>
+
+        {paginatedRequests.length === 0 && (
+          <div className="px-6 py-14 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+              <FileText className="w-6 h-6 text-gray-300" />
+            </div>
+            <p className="text-sm font-semibold text-[#191c1d]">No requests match your view</p>
+            <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+              Try a different search term, or clear the active filters below to see all requests.
+            </p>
+            {(stageFilter || categoryFilter || tableSearch || showHighPriorityOnly || filterTab === "PENDING") && (
+              <button
+                onClick={() => {
+                  setStageFilter(null);
+                  setCategoryFilter(null);
+                  setTableSearch("");
+                  setShowHighPriorityOnly(false);
+                  setFilterTab("ALL");
+                }}
+                className="mt-4 px-4 py-2 rounded bg-[#0037b0] hover:bg-[#1d4ed8] text-white text-xs font-semibold transition-all cursor-pointer"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
+        )}
 
         <Pagination
           currentPage={currentPageClamped}
@@ -888,28 +1435,36 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         {/* Assigned Staff Capacity directories */}
         <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm flex flex-col justify-between">
           <div>
-            <h4 className="font-sans font-bold text-[#191c1d] mb-6">
+            <h4 className="font-sans font-bold text-[#191c1d] flex items-center gap-2 mb-4">
+              <UserPlus className="w-4 h-4 text-[#0037b0]" />
               Officer Capacity
             </h4>
+            {officers.filter((o: any) => (o._count?.assignedRequests || 0) / 10 > 0.7).length > 0 && (
+              <p className="text-[11px] font-semibold text-[#ba1a1a] bg-[#fff5f4] border border-[#ba1a1a]/20 rounded-lg px-2.5 py-1.5 mb-4 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                {officers.filter((o: any) => (o._count?.assignedRequests || 0) / 10 > 0.7).length} officer
+                {officers.filter((o: any) => (o._count?.assignedRequests || 0) / 10 > 0.7).length > 1 ? "s" : ""} at or near capacity
+              </p>
+            )}
             <div className="space-y-5">
               {paginatedOfficers.length > 0 ? (
                 paginatedOfficers.map((officer: any) => {
                   const activeCount = officer._count?.assignedRequests || 0;
                   const maxCapacity = 10;
                   const pct = Math.min((activeCount / maxCapacity) * 100, 100);
-                  const barColor =
-                    pct > 70
-                      ? "bg-[#ba1a1a]"
-                      : pct > 40
-                        ? "bg-[#0037b0]"
-                        : "bg-[#006b2c]";
+                  const atCapacity = pct > 70;
+                  const barColor = atCapacity
+                    ? "bg-[#ba1a1a]"
+                    : pct > 40
+                      ? "bg-[#0037b0]"
+                      : "bg-[#006b2c]";
                   return (
                     <div
                       key={officer.id}
                       className="flex items-center justify-between"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center font-bold text-[#0037b0] text-xs">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs ${atCapacity ? "bg-[#ffdad6] text-[#93000a] border border-[#ba1a1a]/30" : "bg-blue-50 border border-blue-100 text-[#0037b0]"}`}>
                           {officer.initials}
                         </div>
                         <div>
@@ -922,8 +1477,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs font-bold text-gray-900">
+                        <p className={`text-xs font-bold flex items-center gap-1 justify-end ${atCapacity ? "text-[#ba1a1a]" : "text-gray-900"}`}>
+                          {atCapacity && <AlertTriangle className="w-3 h-3" />}
                           {activeCount}/{maxCapacity}
+                          {atCapacity && (
+                            <span className="text-[8px] font-bold uppercase bg-[#ffdad6] text-[#93000a] px-1 py-0.5 rounded">
+                              Full
+                            </span>
+                          )}
                         </p>
                         <div className="w-20 bg-gray-100 h-1.5 rounded-full mt-1.5 overflow-hidden">
                           <div

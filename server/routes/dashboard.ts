@@ -2,8 +2,15 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
+import type { RequestStatus } from "../../src/generated/prisma/enums.js";
 
 const router = Router();
+
+const startOfTodayUtc = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
 
 router.get("/", authenticateToken, async (req, res) => {
   try {
@@ -86,18 +93,41 @@ router.get("/analytics", authenticateToken, async (req, res) => {
 
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const ACTIVE_STATUSES: RequestStatus[] = ["SUBMITTED", "ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"];
+    const COMPLETED_STATUSES: RequestStatus[] = ["APPROVED", "DELIVERED", "CLOSED"];
 
     const [
       requestsByStatus,
-      requestsByCategory,
       requestsByPriority,
+      committees,
+      newRequestsLast7Days,
       newRequestsLast30Days,
+      totalRequests,
+      completedRequests,
+      activeRequests,
+      overdueRequests,
       officersWorkload,
+      avgCompletionDays,
     ] = await Promise.all([
       prisma.researchRequest.groupBy({ by: ["status"], _count: true }),
-      prisma.researchRequest.groupBy({ by: ["committeeId"], _count: true, where: { committeeId: { not: null } } }),
       prisma.researchRequest.groupBy({ by: ["priority"], _count: true }),
+      prisma.committee.findMany({
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          _count: { select: { requests: true } },
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.researchRequest.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
       prisma.researchRequest.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      prisma.researchRequest.count(),
+      prisma.researchRequest.count({ where: { status: { in: COMPLETED_STATUSES } } }),
+      prisma.researchRequest.count({ where: { status: { in: ACTIVE_STATUSES } } }),
+      prisma.researchRequest.count({ where: { deadline: { lt: now }, status: { in: ACTIVE_STATUSES } } }),
       prisma.user.findMany({
         where: { role: "RESEARCH_OFFICER", isActive: true },
         select: {
@@ -108,20 +138,43 @@ router.get("/analytics", authenticateToken, async (req, res) => {
           _count: {
             select: {
               assignedRequests: {
-                where: { status: { in: ["ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED"] } },
+                where: { status: { in: ACTIVE_STATUSES } },
               },
               authoredReports: true,
             },
           },
         },
+        orderBy: [{ initials: "asc" }],
       }),
+      prisma.$queryRaw<Array<{ avgDays: number | null }>>`
+        SELECT AVG(EXTRACT(EPOCH FROM (COALESCE("dateCompleted", "createdAt") - COALESCE("dateSubmitted", "createdAt"))) / 86400.0) AS "avgDays"
+        FROM "research_requests"
+        WHERE "status" IN ('APPROVED','DELIVERED','CLOSED') AND "dateCompleted" IS NOT NULL
+      `,
     ]);
+
+    // Category breakdown by committee (with an "Uncategorized" bucket for unassigned requests)
+    const withCommittee = await prisma.researchRequest.count({ where: { committeeId: { not: null } } });
+    const requestsByCategory = committees
+      .filter((c) => c._count.requests > 0)
+      .map((c) => ({ id: c.id, name: c.shortName || c.name, count: c._count.requests }))
+      .sort((a, b) => b.count - a.count);
+    if (totalRequests - withCommittee > 0) {
+      requestsByCategory.push({ id: "uncategorized", name: "Uncategorized", count: totalRequests - withCommittee });
+    }
 
     res.json({
       requestsByStatus,
       requestsByCategory,
       requestsByPriority,
+      newRequestsLast7Days,
       newRequestsLast30Days,
+      totalRequests,
+      completedRequests,
+      activeRequests,
+      overdueRequests,
+      completionRate: totalRequests > 0 ? Math.round((completedRequests / totalRequests) * 100) : 0,
+      avgCompletionDays: Math.round((avgCompletionDays[0]?.avgDays || 0) * 10) / 10,
       officersWorkload,
     });
   } catch (error) {
@@ -144,7 +197,7 @@ router.get("/activity", authenticateToken, async (req, res) => {
     if (action) where.action = action;
     if (entityType) where.entityType = entityType;
 
-    const [logs, total] = await Promise.all([
+    const [logs, total, today, actorGroups, actionGroups] = await Promise.all([
       prisma.activityLog.findMany({
         where,
         include: {
@@ -155,9 +208,24 @@ router.get("/activity", authenticateToken, async (req, res) => {
         take: l,
       }),
       prisma.activityLog.count({ where }),
+      prisma.activityLog.count({
+        where: { ...where, createdAt: { gte: startOfTodayUtc() } },
+      }),
+      prisma.activityLog.groupBy({ by: ["authorId"], where }),
+      prisma.activityLog.groupBy({ by: ["action"], where, _count: { _all: true } }),
     ]);
 
-    res.json({ logs, total, page: p, totalPages: Math.ceil(total / l) });
+    res.json({
+      logs,
+      total,
+      page: p,
+      totalPages: Math.ceil(total / l),
+      summary: {
+        today,
+        uniqueActors: actorGroups.filter((a) => a.authorId).length,
+        actions: actionGroups.map((g) => ({ action: g.action, count: g._count._all })).sort((a, b) => b.count - a.count),
+      },
+    });
   } catch (error) {
     logger.requestError("GET", "/activity", error);
     res.status(500).json({ error: "Internal server error" });

@@ -11,7 +11,9 @@ import {
   Eye,
   ShieldCheck,
   FileText,
-  Paperclip
+  Paperclip,
+  Archive,
+  UserCheck
 } from 'lucide-react';
 import { getRequests, downloadFile } from '../lib/api';
 import { honourable } from '../lib/format';
@@ -30,7 +32,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [sortField, setSortField] = useState<string>('dateSubmitted');
+  const [sortField, setSortField] = useState<string>('completed');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
@@ -38,7 +40,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
   const { toast } = useToast();
 
   useEffect(() => {
-    getRequests({ limit: 200 })
+    getRequests({ limit: 500, archived: true })
       .then((data) => {
         const requests = Array.isArray(data) ? data : (data?.requests || []);
         setArchived(requests.filter((r: any) => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)));
@@ -78,10 +80,14 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
   const filtered = React.useMemo(() => {
     return archived.filter((r: any) => {
       const q = searchQuery.toLowerCase().trim();
+      const memberName = r.submitter ? `${r.submitter.firstName} ${r.submitter.lastName}` : '';
+      const officerName = r.officer ? `${r.officer.firstName} ${r.officer.lastName}` : '';
       const matchesSearch = !q || 
         (r.requestNumber || r.id || '').toLowerCase().includes(q) ||
         (r.title || '').toLowerCase().includes(q) ||
-        (r.submitter ? `${r.submitter.firstName} ${r.submitter.lastName}` : '').toLowerCase().includes(q);
+        memberName.toLowerCase().includes(q) ||
+        officerName.toLowerCase().includes(q) ||
+        (r.team?.name || '').toLowerCase().includes(q);
 
       const catName = r.category?.name || r.category || '';
       const matchesCategory = !selectedCategory || catName === selectedCategory;
@@ -101,8 +107,9 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
         case 'id': aVal = a.requestNumber || a.id || ''; bVal = b.requestNumber || b.id || ''; break;
         case 'title': aVal = a.title || ''; bVal = b.title || ''; break;
         case 'member': aVal = a.submitter ? `${a.submitter.firstName} ${a.submitter.lastName}` : ''; bVal = b.submitter ? `${b.submitter.firstName} ${b.submitter.lastName}` : ''; break;
+        case 'officer': aVal = a.officer ? `${a.officer.firstName} ${a.officer.lastName}` : a.team?.name || ''; bVal = b.officer ? `${b.officer.firstName} ${b.officer.lastName}` : b.team?.name || ''; break;
         case 'status': aVal = a.status || ''; bVal = b.status || ''; break;
-        case 'dateSubmitted': aVal = a.dateSubmitted || ''; bVal = b.dateSubmitted || ''; break;
+        case 'completed': aVal = a.dateClosed || a.dateDelivered || a.dateCompleted || a.dateSubmitted || ''; bVal = b.dateClosed || b.dateDelivered || b.dateCompleted || b.dateSubmitted || ''; break;
         default: aVal = a.dateSubmitted || ''; bVal = b.dateSubmitted || '';
       }
       const cmp = aVal.localeCompare(bVal);
@@ -143,6 +150,16 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
     }
   };
 
+  const completionDate = (r: any) => r.dateClosed || r.dateDelivered || r.dateCompleted || r.dateSubmitted || null;
+
+  const countByStatus = (status: string) => archived.filter((r: any) => r.status === status).length;
+
+  const statChips = [
+    { label: 'Approved', count: countByStatus('APPROVED'), cls: 'bg-emerald-100 text-emerald-800', icon: ShieldCheck },
+    { label: 'Delivered', count: countByStatus('DELIVERED'), cls: 'bg-blue-100 text-blue-800', icon: Eye },
+    { label: 'Closed', count: countByStatus('CLOSED'), cls: 'bg-gray-100 text-gray-600', icon: Archive },
+  ];
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm">
@@ -157,6 +174,23 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
               ? `${filtered.length} of ${archived.length} entries` 
               : `${archived.length} total entries`}
           </span>
+        </div>
+
+        {/* Summary chips */}
+        <div className="px-6 py-3 border-b border-gray-100 bg-white flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5 mr-1">
+            <Database className="w-3.5 h-3.5 text-[#0037b0]" />
+            A corpus
+          </span>
+          {statChips.map((chip) => (
+            <span
+              key={chip.label}
+              className={`inline-flex items-center gap-1.5 text-[10px] font-bold rounded-full px-2.5 py-1 ${chip.cls}`}
+            >
+              <chip.icon className="w-3 h-3" />
+              {chip.count} {chip.label}
+            </span>
+          ))}
         </div>
 
         {/* Filter Controls */}
@@ -252,6 +286,14 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                 >
                   <span className="flex items-center gap-1">Member {getSortIcon('member')}</span>
                 </th>
+                {currentUser.role !== "MP" && (
+                <th 
+                  className="hidden lg:table-cell px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
+                  onClick={() => handleSort('officer')}
+                >
+                  <span className="flex items-center gap-1">Officer {getSortIcon('officer')}</span>
+                </th>
+              )}
                 <th 
                   className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
                   onClick={() => handleSort('status')}
@@ -260,9 +302,9 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                 </th>
                 <th 
                   className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
-                  onClick={() => handleSort('dateSubmitted')}
+                  onClick={() => handleSort('completed')}
                 >
-                  <span className="flex items-center gap-1">Date {getSortIcon('dateSubmitted')}</span>
+                  <span className="flex items-center gap-1">Completed {getSortIcon('completed')}</span>
                 </th>
                 <th className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider text-right">Action</th>
               </tr>
@@ -270,14 +312,14 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-16 text-center">
+                  <td colSpan={currentUser.role !== "MP" ? 7 : 6} className="px-6 py-16 text-center">
                     <Database className="w-8 h-8 text-gray-300 mx-auto mb-2 animate-pulse" />
                     <p className="text-xs text-gray-400 italic">Loading archive...</p>
                   </td>
                 </tr>
               ) : sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-16">
+                  <td colSpan={currentUser.role !== "MP" ? 7 : 6} className="px-6 py-16">
                     <div className="flex flex-col items-center justify-center text-center space-y-3">
                       <Filter className="w-8 h-8 text-gray-400 animate-pulse" />
                       <div className="space-y-1">
@@ -319,9 +361,30 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                     <td className="hidden md:table-cell px-4 lg:px-6 py-4 text-sm text-[#191c1d]">
                       {memberName ? honourable(memberName) : '—'}
                     </td>
+                    {currentUser.role !== "MP" && (
+                    <td className="hidden lg:table-cell px-4 lg:px-6 py-4">
+                      {r.officer ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-[#dce1ff] flex items-center justify-center text-[9px] font-bold text-[#001551] shrink-0">
+                            {r.officer.firstName?.[0]}{r.officer.lastName?.[0]}
+                          </div>
+                          <span className="text-sm text-[#434655] truncate max-w-[140px]">
+                            {r.officer.firstName} {r.officer.lastName}
+                          </span>
+                        </div>
+                      ) : r.team?.name ? (
+                        <span className="text-sm text-[#434655] truncate max-w-[140px] flex items-center gap-1.5">
+                          <UserCheck className="w-3.5 h-3.5 text-[#0037b0]" />
+                          {r.team.name}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-300">—</span>
+                      )}
+                    </td>
+                  )}
                     <td className="px-4 lg:px-6 py-4">{getStatusBadge(r.status)}</td>
                     <td className="px-4 lg:px-6 py-4 text-sm text-[#191c1d] font-semibold">
-                      {formatDate(r.dateSubmitted)}
+                      {formatDate(completionDate(r))}
                     </td>
                     <td className="px-4 lg:px-6 py-4 text-right">
                       <button 
@@ -416,6 +479,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                     {viewRequest.submitter ? honourable(`${viewRequest.submitter.firstName} ${viewRequest.submitter.lastName}`) : '—'}
                   </p>
                 </div>
+                {currentUser.role !== "MP" && (
                 <div className="space-y-1">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Assigned Officer</span>
                   {viewRequest.officer ? (
@@ -436,6 +500,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                     <p className="text-sm text-gray-400 italic">Unassigned</p>
                   )}
                 </div>
+              )}
                 <div className="space-y-1">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date Submitted</span>
                   <p className="text-sm font-semibold text-[#191c1d]">
@@ -446,6 +511,12 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Deadline</span>
                   <p className="text-sm font-semibold text-[#191c1d]">
                     {viewRequest.deadline ? formatDate(viewRequest.deadline) : '—'}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date Completed</span>
+                  <p className="text-sm font-semibold text-[#006b2c]">
+                    {formatDate(completionDate(viewRequest))}
                   </p>
                 </div>
               </div>

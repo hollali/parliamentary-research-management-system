@@ -19,12 +19,13 @@ import {
   Download,
   ShieldCheck,
   Flag,
-  Pencil,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
   Paperclip,
   AlertTriangle,
+  Users,
+  MoreHorizontal,
 } from "lucide-react";
 import { ExportButton } from "./ExportButton";
 import { Pagination } from "./Pagination";
@@ -69,19 +70,31 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
     string | null
   >(null);
   const [activePreviewTab, setActivePreviewTab] = useState<number>(0);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!menuOpenId) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpenId(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpenId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpenId]);
 
   // Reset active tab whenever preview selection changes
   React.useEffect(() => {
     setActivePreviewTab(0);
   }, [previewRequest, previewType, previewAttachmentName]);
-
-  // Fetch workload stats
-  const [workload, setWorkload] = useState<any>(null);
-  React.useEffect(() => {
-    getWorkloadStats()
-      .then((data) => setWorkload(data))
-      .catch(() => console.warn("Failed to load workload stats"));
-  }, []);
 
   const parsedSections = React.useMemo(() => {
     if (!previewRequest) return [];
@@ -232,6 +245,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
         !searchLower ||
         req.id.toLowerCase().includes(searchLower) ||
         req.title.toLowerCase().includes(searchLower) ||
+        (req.member || "").toLowerCase().includes(searchLower) ||
         (req.assignedOfficerName &&
           req.assignedOfficerName.toLowerCase().includes(searchLower));
 
@@ -358,6 +372,36 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
           </span>
         );
     }
+  };
+
+  const requestDeadlineInfo = (req: any) => {
+    const t = req.deadline ? new Date(req.deadline).getTime() : NaN;
+    if (Number.isNaN(t)) {
+      return { kind: "none" as const };
+    }
+    const diffDays = Math.ceil((t - Date.now()) / 86400000);
+    if (req.status === "OVERDUE" || diffDays < 0) {
+      return { kind: "overdue" as const, days: Math.abs(diffDays) };
+    }
+    if (diffDays === 0) return { kind: "today" as const };
+    if (diffDays <= 3) return { kind: "soon" as const, days: diffDays };
+    return { kind: "ok" as const };
+  };
+
+  const nextActionHint = (status: string): string => {
+    const map: Record<string, string> = {
+      SUBMITTED: "Assign",
+      ASSIGNED: "Track",
+      IN_PROGRESS: "Track",
+      DRAFT_SUBMITTED: "Review",
+      REVISION_REQUESTED: "Review",
+      REVISED: "Review",
+      APPROVED: "Deliver",
+      DELIVERED: "Close",
+      OVERDUE: "Act now",
+      CLOSED: "",
+    };
+    return map[status] || "";
   };
 
   const handleSort = (field: string) => {
@@ -490,52 +534,6 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
           </span>
         </div>
 
-        {/* Workload Summary — hidden from MPs */}
-        {workload?.officers?.length > 0 && currentUser.role !== "MP" && (
-          <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/30">
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                Officer Workload
-              </span>
-              <span className="text-[10px] text-gray-400">
-                {workload.summary.totalActive} active /{" "}
-                {workload.summary.totalOfficers} officers
-                {workload.summary.atCapacity > 0 && (
-                  <span className="text-amber-600 ml-2">
-                    • {workload.summary.atCapacity} at capacity
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="flex gap-1.5 flex-wrap">
-              {workload.officers.map((o: any) => (
-                <div
-                  key={o.id}
-                  className="flex items-center gap-1.5 bg-white border border-gray-200 rounded px-2 py-1"
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full ${
-                      o.status === "at_capacity"
-                        ? "bg-red-500"
-                        : o.status === "high"
-                          ? "bg-amber-500"
-                          : o.status === "moderate"
-                            ? "bg-blue-500"
-                            : "bg-green-500"
-                    }`}
-                  />
-                  <span className="text-[10px] font-semibold text-gray-700">
-                    {o.firstName} {o.lastName}
-                  </span>
-                  <span className="text-[9px] text-gray-400">
-                    {o.activeCount}/{o.capacity}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Filter Controls Bar */}
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
           {/* Left Search input */}
@@ -637,6 +635,24 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                 </th>
                 <th
                   className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
+                  onClick={() => handleSort("member")}
+                >
+                  <span className="flex items-center gap-1">
+                    Member {getSortIcon("member")}
+                  </span>
+                </th>
+                {currentUser.role !== "MP" && (
+                  <th
+                    className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
+                    onClick={() => handleSort("assignedOfficerName")}
+                  >
+                    <span className="flex items-center gap-1">
+                      Assigned Officer {getSortIcon("assignedOfficerName")}
+                    </span>
+                  </th>
+                )}
+                <th
+                  className="px-4 lg:px-6 py-3.5 text-xs font-bold text-[#747686] uppercase tracking-wider cursor-pointer hover:text-[#0037b0] transition-colors select-none"
                   onClick={() => handleSort("status")}
                 >
                   <span className="flex items-center gap-1">
@@ -659,7 +675,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
             <tbody className="divide-y divide-gray-100">
               {sortedRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-16">
+                  <td colSpan={currentUser.role !== "MP" ? 7 : 6} className="px-6 py-16">
                     <div className="flex flex-col items-center justify-center text-center space-y-3">
                       <Filter className="w-8 h-8 text-gray-400 animate-pulse" />
                       <div className="space-y-1">
@@ -742,16 +758,108 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                         </div>
                       </td>
 
+                      {/* Member */}
+                      <td className="px-4 lg:px-6 py-4">
+                        <div className="flex items-center gap-2 min-w-0 max-w-[180px]">
+                          <Users className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                          <span className="text-sm text-[#434655] truncate" title={req.member}>
+                            {honourable(req.member)}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Assigned Officer */}
+                      {currentUser.role !== "MP" && (
+                        <td className="px-4 lg:px-6 py-4">
+                          <div className="min-w-0 max-w-[160px]">
+                            {req.teamName ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-[#dce1ff] flex items-center justify-center text-[9px] font-bold text-[#001551] shrink-0">
+                                  {req.teamName.slice(0, 2).toUpperCase()}
+                                </div>
+                                <span className="text-sm text-[#434655] truncate" title={req.teamName}>
+                                  {req.teamName}
+                                </span>
+                              </div>
+                            ) : req.assignedOfficerName ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-[#dce1ff] flex items-center justify-center text-[9px] font-bold text-[#001551] shrink-0">
+                                  {req.assignedOfficerName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() || "RO"}
+                                </div>
+                                <span className="text-sm text-[#434655] truncate" title={req.assignedOfficerName}>
+                                  {req.assignedOfficerName}
+                                </span>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAssignModalRequestId(req.id);
+                                  setAssignModalRequestTitle(req.title);
+                                }}
+                                className="text-[#ba1a1a] hover:text-[#ba1a1a]/80 font-bold text-xs flex items-center gap-1 hover:underline cursor-pointer"
+                              >
+                                <UserPlus className="w-3.5 h-3.5" />
+                                Unassigned
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+
                       {/* Status */}
                       <td className="px-4 lg:px-6 py-4">
-                        {getStatusBadge(req.status)}
+                        <div className="flex flex-col items-start gap-0.5">
+                          {getStatusBadge(req.status)}
+                          {nextActionHint(req.status) && (
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                              Next: {nextActionHint(req.status)}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Deadline */}
-                      <td
-                        className={`px-4 lg:px-6 py-4 text-sm font-semibold ${req.status === "OVERDUE" ? "text-[#ba1a1a]" : "text-[#191c1d]"}`}
-                      >
-                        {req.deadline}
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span
+                            className={`text-sm font-semibold ${
+                              req.status === "OVERDUE"
+                                ? "text-[#ba1a1a]"
+                                : requestDeadlineInfo(req).kind === "soon" || requestDeadlineInfo(req).kind === "today"
+                                  ? "text-amber-700"
+                                  : "text-[#191c1d]"
+                            }`}
+                          >
+                            {req.deadline}
+                          </span>
+                          {(() => {
+                            const d = requestDeadlineInfo(req);
+                            if (d.kind === "overdue")
+                              return (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-white bg-[#ba1a1a] rounded-full px-1.5 py-0.5">
+                                  <AlertTriangle className="w-2.5 h-2.5" /> Overdue {d.days}d
+                                </span>
+                              );
+                            if (d.kind === "today")
+                              return (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-0.5">
+                                  <AlertTriangle className="w-2.5 h-2.5" /> Due today
+                                </span>
+                              );
+                            if (d.kind === "soon")
+                              return (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-0.5">
+                                  <Clock className="w-2.5 h-2.5" /> {d.days}d left
+                                </span>
+                              );
+                            if (d.kind === "none")
+                              return (
+                                <span className="text-[9px] font-semibold text-gray-400 italic">No date set</span>
+                              );
+                            return null;
+                          })()}
+                        </div>
                       </td>
 
                       {/* Actions */}
@@ -759,7 +867,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                         className="px-4 lg:px-6 py-4 text-right min-w-30"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end items-center gap-2">
                           <button
                             onClick={() => setViewRequest(req)}
                             className="p-2.5 text-[#0037b0] hover:bg-blue-50 rounded-lg transition-all cursor-pointer ring-1 ring-blue-100 shadow-sm"
@@ -768,107 +876,101 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                           >
                             <Eye className="w-5 h-5" />
                           </button>
-                          <div className="relative group/action">
+                          <div className="relative" ref={menuOpenId === req.id ? menuRef : undefined}>
                             <button
-                              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-all cursor-pointer"
-                              title="Extend Deadline"
-                              aria-label="Extend Deadline"
+                              onClick={() => setMenuOpenId((prev) => (prev === req.id ? null : req.id))}
+                              className={`p-1.5 rounded transition-all cursor-pointer ${
+                                menuOpenId === req.id
+                                  ? "bg-[#dce1ff] text-[#0037b0]"
+                                  : "text-gray-500 hover:bg-gray-100"
+                              }`}
+                              title="Quick actions"
+                              aria-label="Quick actions"
                             >
-                              <Clock className="w-4 h-4" />
+                              <MoreHorizontal className="w-4 h-4" />
                             </button>
-                            <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1 hidden group-hover/action:block">
-                              <div className="px-2.5 py-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
-                                Extend Due Date
+
+                            {menuOpenId === req.id && (
+                              <div className="absolute right-0 top-full mt-1 z-30 w-60 bg-white border border-[#c4c5d7] rounded-lg shadow-xl py-1 text-left">
+                                <button
+                                  onClick={() => { setMenuOpenId(null); setViewRequest(req); }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                                >
+                                  <Eye className="w-4 h-4 text-gray-500" /> View Details
+                                </button>
+                                {(currentUser.role === "ADMIN" || currentUser.role === "MP") && (
+                                  <button
+                                    onClick={() => { setMenuOpenId(null); onNavigate("briefs", req.id); }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                                  >
+                                    <FileText className="w-4 h-4 text-[#0037b0]" /> Open Full Brief
+                                  </button>
+                                )}
+                                {currentUser.role !== "MP" && (
+                                  <button
+                                    onClick={() => {
+                                      setMenuOpenId(null);
+                                      setAssignModalRequestId(req.id);
+                                      setAssignModalRequestTitle(req.title);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                                  >
+                                    <UserPlus className="w-4 h-4 text-gray-500" /> Assign / Reassign Staff
+                                  </button>
+                                )}
+                                <div className="my-1 h-px bg-[#f0f0f2]" />
+                                <div className="px-3 py-1.5 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                                  Extend Due Date
+                                </div>
+                                {[7, 14].map((days) => (
+                                  <button
+                                    key={days}
+                                    onClick={async () => {
+                                      setMenuOpenId(null);
+                                      const newDate = extendDeadlineStr(req.deadline, days);
+                                      const ok = await extendRequestDeadline(req.id, newDate);
+                                      if (ok) {
+                                        toast.success(`Deadline extended to ${newDate}.`);
+                                      } else {
+                                        toast.error("Failed to extend the deadline.");
+                                      }
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                                  >
+                                    <Clock className="w-4 h-4 text-gray-500" /> +{days} Days
+                                  </button>
+                                ))}
+                                <div className="my-1 h-px bg-[#f0f0f2]" />
+                                {(() => {
+                                  const hasDownloadable =
+                                    (req.attachments && req.attachments.length > 0) ||
+                                    !!req.content;
+                                  return (
+                                    <button
+                                      onClick={(e) => { setMenuOpenId(null); handleDownload(e, req); }}
+                                      disabled={downloadingId !== null || !hasDownloadable}
+                                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer ${
+                                        !hasDownloadable ? "opacity-40 cursor-not-allowed" : ""
+                                      }`}
+                                    >
+                                      <Download className={`w-4 h-4 ${downloadingId === req.id ? "text-amber-600 animate-pulse" : "text-gray-500"}`} />
+                                      {downloadingId === req.id ? "Downloading..." : "Download Brief"}
+                                    </button>
+                                  );
+                                })()}
+                                <button
+                                  onClick={() => {
+                                    setMenuOpenId(null);
+                                    updateRequestPriority(req.id, req.priority === "URGENT" ? "STANDARD" : "URGENT");
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#191c1d] hover:bg-blue-50 transition-colors cursor-pointer"
+                                >
+                                  <Flag className={`w-4 h-4 ${req.priority === "URGENT" ? "text-red-600 fill-red-600" : "text-gray-500"}`} />
+                                  {req.priority === "URGENT" ? "Set Standard Priority" : "Mark as Urgent"}
+                                </button>
                               </div>
-                              <button
-                                onClick={async () => {
-                                  const newDate = extendDeadlineStr(
-                                    req.deadline,
-                                    7,
-                                  );
-                                  const ok = await extendRequestDeadline(
-                                    req.id,
-                                    newDate,
-                                  );
-                                  if (ok) {
-                                    toast.success(
-                                      `Deadline extended to ${newDate}.`,
-                                    );
-                                  } else {
-                                    toast.error(
-                                      "Failed to extend the deadline.",
-                                    );
-                                  }
-                                }}
-                                className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
-                              >
-                                +7 Days
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  const newDate = extendDeadlineStr(
-                                    req.deadline,
-                                    14,
-                                  );
-                                  const ok = await extendRequestDeadline(
-                                    req.id,
-                                    newDate,
-                                  );
-                                  if (ok) {
-                                    toast.success(
-                                      `Deadline extended to ${newDate}.`,
-                                    );
-                                  } else {
-                                    toast.error(
-                                      "Failed to extend the deadline.",
-                                    );
-                                  }
-                                }}
-                                className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
-                              >
-                                +14 Days
-                              </button>
-                            </div>
+                            )}
                           </div>
-                          {currentUser.role !== "MP" && (
-                            <button
-                              onClick={() => {
-                                setAssignModalRequestId(req.id);
-                                setAssignModalRequestTitle(req.title);
-                              }}
-                              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-all cursor-pointer"
-                              title="Reassign Staff"
-                              aria-label="Reassign Staff"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                          )}
-                          {(() => {
-                            const hasDownloadable =
-                              (req.attachments && req.attachments.length > 0) ||
-                              !!req.content;
-                            return (
-                              <button
-                                onClick={(e) => handleDownload(e, req)}
-                                disabled={downloadingId !== null || !hasDownloadable}
-                                className={`p-1.5 rounded transition-all cursor-pointer ${
-                                  downloadingId === req.id
-                                    ? "text-amber-600 animate-pulse bg-amber-50"
-                                    : hasDownloadable
-                                      ? "text-gray-500 hover:bg-gray-100"
-                                      : "text-gray-300 cursor-not-allowed"
-                                }`}
-                                title={
-                                  hasDownloadable
-                                    ? "Download Brief"
-                                    : "No brief available yet"
-                                }
-                                aria-label="Download Brief"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                            );
-                          })()}
                         </div>
                       </td>
                     </tr>
@@ -900,7 +1002,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                 id: req.id,
                 title: req.title,
                 member: honourable(req.member),
-                officer: req.assignedOfficerName || "Unassigned",
+                ...(currentUser.role !== "MP" && {
+                  officer: req.assignedOfficerName || "Unassigned",
+                }),
                 status: formatRequestStatus(req.status),
                 deadline: req.deadline,
                 category: req.category,
@@ -910,7 +1014,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                 { key: "id", label: "Request ID" },
                 { key: "title", label: "Title" },
                 { key: "member", label: "Member" },
-                { key: "officer", label: "Assigned Officer" },
+                ...(currentUser.role !== "MP"
+                  ? [{ key: "officer", label: "Assigned Officer" }]
+                  : []),
                 { key: "status", label: "Status" },
                 { key: "deadline", label: "Deadline" },
                 { key: "category", label: "Research Topic" },

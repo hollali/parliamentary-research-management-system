@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../lib/toast";
 import { formatRequestStatus } from "../lib/status";
@@ -14,6 +14,7 @@ import { ResearchRequest } from "../types";
 import {
   Inbox,
   Clock,
+  AlertTriangle,
   User,
   Paperclip,
   ArrowRight,
@@ -49,6 +50,64 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
     (r) => !["APPROVED", "DELIVERED", "CLOSED"].includes(r.status),
   );
 
+  const shortId = (id: string) => (id.length > 8 ? `O#${id.slice(0, 8)}` : id);
+
+  const requestDeadlineInfo = (req: ResearchRequest) => {
+    const t = req.deadline ? new Date(req.deadline).getTime() : NaN;
+    if (Number.isNaN(t)) {
+      return { kind: "none" as const };
+    }
+    const diffDays = Math.ceil((t - Date.now()) / 86400000);
+    if (req.status === "OVERDUE" || diffDays < 0) {
+      return { kind: "overdue" as const, days: Math.abs(diffDays) };
+    }
+    if (diffDays === 0) return { kind: "today" as const };
+    return { kind: "ok" as const, days: diffDays };
+  };
+
+  const dueTodayCount = useMemo(
+    () =>
+      officerRequests.filter((r) => requestDeadlineInfo(r).kind === "today")
+        .length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [officerRequests],
+  );
+  const overdueCount = useMemo(
+    () =>
+      officerRequests.filter((r) => requestDeadlineInfo(r).kind === "overdue")
+        .length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [officerRequests],
+  );
+  const urgentCount = useMemo(
+    () => officerRequests.filter((r) => r.priority === "URGENT").length,
+    [officerRequests],
+  );
+
+  const sortedRequests = useMemo(
+    () =>
+      [...officerRequests].sort((a, b) => {
+        const apr = requestDeadlineInfo(a).kind === "overdue" ? 0 : 1;
+        const bpr = requestDeadlineInfo(b).kind === "overdue" ? 0 : 1;
+        if (apr !== bpr) return apr - bpr;
+        const at = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+        const bt = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+        return at - bt;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [officerRequests],
+  );
+
+  const fileIconColor = (name: string) => {
+    const ext = name.split(".").pop()?.toLowerCase() || "";
+    if (ext === "pdf") return "text-red-500";
+    if (["docx", "doc", "rtf", "odt", "txt"].includes(ext))
+      return "text-blue-500";
+    if (["xlsx", "xls", "csv"].includes(ext)) return "text-emerald-600";
+    if (["pptx", "ppt"].includes(ext)) return "text-orange-500";
+    return "text-indigo-500";
+  };
+
   const [selectedId, setSelectedId] = useState<string>(
     initialRequestId || officerRequests[0]?.id || requests[0]?.id || "",
   );
@@ -70,7 +129,11 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
   const [declining, setDeclining] = useState(false);
 
   const activeRequest =
-    requests.find((r) => r.id === selectedId) || requests[0];
+    officerRequests.find((r) => r.id === selectedId) ||
+    officerRequests[0] ||
+    requests.find((r) => r.id === selectedId) ||
+    requests[0] ||
+    null;
 
   const handleStatusChange = (status: ResearchRequest["status"]) => {
     updateRequestStatus(activeRequest.id, status);
@@ -188,14 +251,39 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* View Header */}
-      <div>
-        <h2 className="font-sans font-bold text-2xl text-[#191c1d]">
-          Officer Workflow
-        </h2>
-        <p className="font-sans text-sm text-[#434655] mt-1">
-          Manage assigned requests, review feedback, and upload final
-          briefings.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-sans font-bold text-3xl text-[#191c1d]">
+            Officer Workflow
+          </h2>
+          <p className="font-sans text-sm text-[#434655] mt-1.5">
+            Manage assigned requests, review feedback, and upload final
+            briefings.
+          </p>
+        </div>
+        <button
+          onClick={() => onNavigate("briefs")}
+          className="hidden md:flex items-center gap-2 text-[#0037b0] text-sm font-bold hover:underline"
+        >
+          View briefs
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Summary chips */}
+      <div className="flex flex-wrap gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-[#dce1ff] text-[#0039b5] px-3 py-1.5 rounded-full">
+          <Inbox className="w-3.5 h-3.5" /> {officerRequests.length} Active
+        </span>
+        <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full ${overdueCount > 0 ? "bg-[#ffdad6] text-[#93000a]" : "bg-[#edeeef] text-gray-500"}`}>
+          <AlertTriangle className="w-3.5 h-3.5" /> {overdueCount} Overdue
+        </span>
+        <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full ${dueTodayCount > 0 ? "bg-amber-100 text-amber-800" : "bg-[#edeeef] text-gray-500"}`}>
+          <Clock className="w-3.5 h-3.5" /> {dueTodayCount} Due today
+        </span>
+        <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full ${urgentCount > 0 ? "bg-[#ffdad6] text-[#93000a]" : "bg-[#edeeef] text-gray-500"}`}>
+          <Sparkles className="w-3.5 h-3.5" /> {urgentCount} Urgent
+        </span>
       </div>
 
       {/* Main split dashboard panel */}
@@ -223,8 +311,10 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto max-h-125 p-2.5 space-y-2">
-              {officerRequests.map((req) => {
+              {sortedRequests.map((req) => {
                 const isSelected = req.id === selectedId;
+                const d = requestDeadlineInfo(req);
+                const isOverdue = d.kind === "overdue";
                 return (
                   <button
                     key={req.id}
@@ -232,22 +322,31 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
                     className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer ${
                       isSelected
                         ? "border-[#0037b0] bg-[#eef3ff] shadow-sm ring-1 ring-[#0037b0]/15"
-                        : "border-[#c4c5d7] bg-white hover:border-[#0037b0]/40 hover:shadow-sm"
+                        : isOverdue
+                          ? "border-[#ffb4ab] bg-[#fff8f7] hover:border-[#ba1a1a]/50 hover:shadow-sm"
+                          : "border-[#c4c5d7] bg-white hover:border-[#0037b0]/40 hover:shadow-sm"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-[10px] font-bold text-gray-400">
-                        {req.id}
+                        {shortId(req.id)}
                       </span>
-                      <span
-                        className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                          req.priority === "URGENT"
-                            ? "bg-[#ffdad6] text-[#93000a]"
-                            : "bg-[#edeeef] text-gray-600"
-                        }`}
-                      >
-                        {req.priority}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {isOverdue && (
+                          <span className="text-[9px] font-bold text-white bg-[#ba1a1a] rounded-full px-1.5 py-0.5 inline-flex items-center gap-1">
+                            <AlertTriangle className="w-2.5 h-2.5" /> Overdue {d.days}d
+                          </span>
+                        )}
+                        <span
+                          className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                            req.priority === "URGENT"
+                              ? "bg-[#ffdad6] text-[#93000a]"
+                              : "bg-[#edeeef] text-gray-600"
+                          }`}
+                        >
+                          {req.priority}
+                        </span>
+                      </div>
                     </div>
                     <h5 className="font-semibold text-xs text-gray-900 leading-snug">
                       {req.title}
@@ -258,10 +357,17 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
                       </p>
                     )}
                     <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
-                      <span className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
+                      <span className={`flex items-center gap-1 text-[10px] font-semibold ${isOverdue ? "text-[#ba1a1a]" : "text-gray-400"}`}>
                         <Clock className="w-3 h-3" /> {req.deadline}
+                        {d.kind === "today" && (
+                          <span className="text-[9px] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-0.5">Due today</span>
+                        )}
                       </span>
-                      <span className="uppercase text-[10px] text-[#0037b0] font-bold">
+                      <span
+                        className={`uppercase text-[10px] font-bold ${
+                          req.status === "OVERDUE" ? "text-[#ba1a1a]" : "text-[#0037b0]"
+                        }`}
+                      >
                         {formatRequestStatus(req.status)}
                       </span>
                     </div>
@@ -272,6 +378,19 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
           )}
         </div>
 
+        {!activeRequest && (
+          <div className="lg:col-span-2 bg-white border border-[#c4c5d7] rounded-lg shadow-sm p-14 flex flex-col items-center justify-center text-center gap-2">
+            <Sparkles className="w-10 h-10 text-gray-300" />
+            <p className="text-sm font-bold text-gray-600">
+              No assignment selected
+            </p>
+            <p className="text-xs text-gray-400 max-w-sm">
+              Select an active assignment from the list to see details, upload
+              briefings, and manage its progress.
+            </p>
+          </div>
+        )}
+
         {/* Right Columns: Active Assignment details & draft zone */}
         {activeRequest && (
           <div className="lg:col-span-2 space-y-6">
@@ -279,16 +398,36 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
             <div className="bg-white border border-[#c4c5d7] rounded-lg p-6 shadow-sm space-y-6">
               <header className="border-b border-gray-100 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                  <span className="bg-[#dce1ff] text-[#0039b5] font-bold text-[10px] px-2 py-0.5 rounded uppercase tracking-wider">
-                    {activeRequest.id}
-                  </span>
-                  <h3 className="text-lg font-bold text-gray-900 mt-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="bg-[#dce1ff] text-[#0039b5] font-bold text-[10px] px-2 py-0.5 rounded uppercase tracking-wider">
+                      {shortId(activeRequest.id)}
+                    </span>
+                    <span
+                      className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        activeRequest.priority === "URGENT"
+                          ? "bg-[#ffdad6] text-[#93000a]"
+                          : "bg-[#edeeef] text-gray-600"
+                      }`}
+                    >
+                      {activeRequest.priority}
+                    </span>
+                    {requestDeadlineInfo(activeRequest).kind === "overdue" && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-white bg-[#ba1a1a] rounded-full px-1.5 py-0.5">
+                        <AlertTriangle className="w-2.5 h-2.5" /> Overdue {requestDeadlineInfo(activeRequest).days}d
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 mt-1.5">
                     {activeRequest.title}
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
                     Requested by:{" "}
                     <span className="font-bold text-gray-700">
                       {honourable(activeRequest.member)}
+                    </span>
+                    {" · "}Due{" "}
+                    <span className="font-bold text-gray-700">
+                      {activeRequest.deadline}
                     </span>
                   </p>
                 </div>
@@ -335,8 +474,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
               {/* Request Description */}
               <div className="space-y-1.5">
                 <h5 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-<BookOpen className="w-4 h-4 text-gray-400" /> Request Scope
-              Description
+                  <BookOpen className="w-4 h-4 text-gray-400" /> Request Scope Description
                 </h5>
                 <p className="text-xs text-gray-700 leading-relaxed bg-[#f3f4f5]/50 p-4 rounded-lg">
                   {activeRequest.description}
@@ -431,7 +569,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
                         className="bg-white border border-[#c4c5d7] rounded-lg p-2.5 flex justify-between items-center text-xs shadow-sm"
                       >
                         <div className="flex items-center gap-2.5">
-                          <FileText className="w-4.5 h-4.5 text-red-500" />
+                          <FileText className={`w-4.5 h-4.5 ${fileIconColor(file.name)}`} />
                           <span className="font-semibold text-gray-900">
                             {file.name}
                           </span>
@@ -464,11 +602,16 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
                     {activeRequest.comments.map((c) => (
                       <div
                         key={c.id}
-                        className="p-3 bg-amber-50/40 rounded border border-amber-200 text-xs"
+                        className={`p-3 rounded border text-xs ${c.resolved ? "bg-emerald-50/40 border-emerald-200" : "bg-amber-50/40 border-amber-200"}`}
                       >
                         <div className="flex justify-between font-bold text-gray-900 mb-1">
-                          <span>
+                          <span className="flex items-center gap-1.5">
                             {c.userName} ({c.role})
+                            {c.resolved && (
+                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 rounded-full px-1.5 py-0.5 uppercase tracking-wider">
+                                Resolved
+                              </span>
+                            )}
                           </span>
                           <span className="text-[10px] text-gray-400">
                             {c.time}
