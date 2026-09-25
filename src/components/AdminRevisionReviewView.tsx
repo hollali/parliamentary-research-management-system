@@ -14,6 +14,8 @@ import {
   Highlighter,
   X
 } from 'lucide-react';
+import { InlineError } from './InlineError';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface AdminRevisionReviewViewProps {
   requestId: string;
@@ -54,6 +56,9 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
   const [showAnnotationPopover, setShowAnnotationPopover] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState({ x: 0, y: 0 });
   const documentRef = useRef<HTMLDivElement>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [confirmAction, setConfirmAction] = useState<"REVISION_REQUESTED" | "APPROVED" | "DELIVERED" | "CLOSED" | null>(null);
 
   const request = requests.find(r => r.id === requestId) || requests[0] || null;
   const [fetchedRequest, setFetchedRequest] = useState<ResearchRequest | null>(null);
@@ -65,6 +70,7 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
       return;
     }
     setLoading(true);
+    setLoadError(false);
 
     getRequest(requestId)
       .then((data: any) => {
@@ -93,6 +99,7 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
           });
         }
         setLoading(false);
+        setLoadError(true);
       });
 
     getReviews(requestId)
@@ -131,8 +138,9 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
             resolved: c.resolved ?? false,
           })));
         }
+        setLoadError(true);
       });
-  }, [requestId]);
+  }, [requestId, reloadKey]);
 
   const allComments = reviewComments.length > 0 ? reviewComments : (displayRequest?.comments || []);
 
@@ -177,26 +185,6 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
     setHighlightedText('');
     setShowAnnotationPopover(false);
     window.getSelection()?.removeAllRanges();
-  };
-
-  const handleApprove = () => {
-    updateRequestStatus(requestId, 'APPROVED');
-    onBack();
-  };
-
-  const handleDeliver = () => {
-    updateRequestStatus(requestId, 'DELIVERED');
-    onBack();
-  };
-
-  const handleClose = () => {
-    updateRequestStatus(requestId, 'CLOSED');
-    onBack();
-  };
-
-  const handleRequestRevision = () => {
-    updateRequestStatus(requestId, 'REVISION_REQUESTED');
-    onBack();
   };
 
   const renderDocumentContent = () => {
@@ -260,8 +248,9 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 text-[#0037b0] animate-spin" />
+        <p className="text-xs font-semibold text-[#747686] mt-3">Loading brief review...</p>
       </div>
     );
   }
@@ -287,6 +276,14 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
 
   return (
     <div className="space-y-6 animate-fadeIn">
+      {loadError && (
+        <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm">
+          <InlineError
+            message="Some data could not be refreshed. Showing cached information."
+            onRetry={() => setReloadKey((k) => k + 1)}
+          />
+        </div>
+      )}
       <div className="flex justify-between items-center pb-4 border-b border-[#c4c5d7]">
         <div className="flex items-center gap-3">
           <button 
@@ -314,14 +311,14 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
         <div className="flex gap-2">
           {displayRequest.status === "DELIVERED" ? (
             <button
-              onClick={handleClose}
+              onClick={() => setConfirmAction("CLOSED")}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white font-semibold text-xs rounded transition-all"
             >
               Close Request
             </button>
           ) : displayRequest.status === "APPROVED" ? (
             <button
-              onClick={handleDeliver}
+              onClick={() => setConfirmAction("DELIVERED")}
               className="px-4 py-2 bg-[#0037b0] hover:bg-[#1d4ed8] text-white font-semibold text-xs rounded transition-all shadow-sm"
             >
               Mark as Delivered
@@ -329,13 +326,13 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
           ) : (
             <>
               <button
-                onClick={handleRequestRevision}
+                onClick={() => setConfirmAction("REVISION_REQUESTED")}
                 className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-semibold text-xs rounded transition-all"
               >
                 Request Revision
               </button>
               <button
-                onClick={handleApprove}
+                onClick={() => setConfirmAction("APPROVED")}
                 className="px-4 py-2 bg-[#006b2c] hover:bg-[#00501f] text-white font-semibold text-xs rounded transition-all shadow-sm"
               >
                 Approve Brief
@@ -510,6 +507,45 @@ export const AdminRevisionReviewView: React.FC<AdminRevisionReviewViewProps> = (
         </div>
 
       </div>
+
+      {confirmAction && (
+        <ConfirmDialog
+          title={
+            confirmAction === "CLOSED"
+              ? "Close Request"
+              : confirmAction === "DELIVERED"
+                ? "Mark as Delivered"
+                : confirmAction === "APPROVED"
+                  ? "Approve Brief"
+                  : "Request Revision"
+          }
+          confirmLabel={
+            confirmAction === "CLOSED"
+              ? "Close Request"
+              : confirmAction === "DELIVERED"
+                ? "Mark Delivered"
+                : confirmAction === "APPROVED"
+                  ? "Approve"
+                  : "Request Revision"
+          }
+          tone={confirmAction === "APPROVED" || confirmAction === "DELIVERED" ? "neutral" : "danger"}
+          message={
+            confirmAction === "CLOSED"
+              ? `Close "${displayRequest.title}" for good? It will move to the archive.`
+              : confirmAction === "DELIVERED"
+                ? `Mark "${displayRequest.title}" as delivered to the member?`
+                : confirmAction === "APPROVED"
+                  ? `Approve "${displayRequest.title}"? The brief will become final and read-only.`
+                  : `Send "${displayRequest.title}" back to the research officer for changes?`
+          }
+          onConfirm={() => {
+            updateRequestStatus(requestId, confirmAction);
+            setConfirmAction(null);
+            onBack();
+          }}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
     </div>
   );
 };

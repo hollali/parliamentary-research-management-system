@@ -11,6 +11,8 @@ import {
 } from "../lib/api";
 import { honourable } from "../lib/format";
 import { ResearchRequest } from "../types";
+import { useDialogA11y } from "../lib/useDialogA11y";
+import { ConfirmDialog } from "./ConfirmDialog";
 import {
   Inbox,
   Clock,
@@ -127,6 +129,13 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
   );
   const [declineReason, setDeclineReason] = useState("");
   const [declining, setDeclining] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<any>(null);
+  const declineDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => {
+      if (!declining) setDecliningFor(null);
+    },
+    enabled: !!decliningFor,
+  });
 
   const activeRequest =
     officerRequests.find((r) => r.id === selectedId) ||
@@ -239,12 +248,18 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
       toast.error("This file cannot be removed yet.");
       return;
     }
+    setConfirmRemove(attachment);
+  };
+
+  const confirmRemoveAttachment = async () => {
+    if (!confirmRemove?.id) return;
     try {
-      await deleteAttachment(attachment.id);
-      toast.success(`"${attachment.name}" removed.`);
+      await deleteAttachment(confirmRemove.id);
+      toast.success(`"${confirmRemove.name}" removed.`);
+      setConfirmRemove(null);
       refreshRequests();
     } catch (err: any) {
-      toast.error(err?.message || `Failed to remove "${attachment.name}"`);
+      toast.error(err?.message || `Failed to remove "${confirmRemove.name}"`);
     }
   };
 
@@ -632,6 +647,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
 
       {decliningFor && (
         <div
+          ref={declineDialogRef}
           className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[10vh] px-4 overflow-y-auto"
           onClick={() => {
             if (!declining) setDecliningFor(null);
@@ -702,6 +718,20 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {confirmRemove && (
+        <ConfirmDialog
+          title="Remove Attachment"
+          confirmLabel="Remove"
+          message={
+            <>
+              Remove <strong>{confirmRemove.name}</strong>? This action cannot be undone.
+            </>
+          }
+          onConfirm={confirmRemoveAttachment}
+          onCancel={() => setConfirmRemove(null)}
+        />
       )}
     </div>
   );

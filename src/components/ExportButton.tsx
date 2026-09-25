@@ -161,6 +161,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     <div className="relative inline-block">
       <button
         onClick={() => setOpen(!open)}
+        aria-haspopup="menu"
+        aria-expanded={open}
         className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-[#0037b0] border border-[#c4c5d7] rounded-lg hover:bg-[#dce1ff]/20 hover:border-[#0037b0] transition-colors"
       >
         <Download className="w-3 h-3" /> Export{" "}
@@ -169,15 +171,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 bg-white border border-[#c4c5d7] rounded-lg shadow-lg z-50 py-1 min-w-35">
+          <div role="menu" className="absolute right-0 mt-1 bg-white border border-[#c4c5d7] rounded-lg shadow-lg z-50 py-1 min-w-35" onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}>
             <button
               onClick={generateDocx}
+              role="menuitem"
               className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             >
               <FileText className="w-3.5 h-3.5 text-blue-600" /> Word Document
             </button>
             <button
               onClick={printPDF}
+              role="menuitem"
               className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             >
               <Printer className="w-3.5 h-3.5 text-red-600" /> PDF

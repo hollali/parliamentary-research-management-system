@@ -5,6 +5,7 @@ import { honourable } from "../lib/format";
 import { formatRequestStatus } from "../lib/status";
 import { toPlainText } from "../lib/content";
 import { useToast } from "../lib/toast";
+import { useDialogA11y } from "../lib/useDialogA11y";
 import { AssignModal } from "./AssignModal";
 import {
   Search,
@@ -59,10 +60,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   const [viewRequest, setViewRequest] = useState<any | null>(null);
+  const viewDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setViewRequest(null),
+    enabled: !!viewRequest,
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
   const [previewRequest, setPreviewRequest] = useState<any | null>(null);
+  const previewDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setPreviewRequest(null),
+    enabled: !!previewRequest,
+  });
   const [previewType, setPreviewType] = useState<"draft" | "attachment">(
     "draft",
   );
@@ -1032,6 +1041,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
       {/* View Detail Modal */}
       {viewRequest && (
         <div
+          ref={viewDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="projects-view-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setViewRequest(null)}
         >
@@ -1046,7 +1059,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                   {viewRequest.id}
                 </span>
                 <div>
-                  <h3 className="font-sans font-bold text-gray-900 text-sm">
+                  <h3 id="projects-view-title" className="font-sans font-bold text-gray-900 text-sm">
                     {viewRequest.title}
                   </h3>
                   <p className="text-[10px] text-gray-500 font-medium mt-0.5">
@@ -1058,6 +1071,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                 onClick={() => setViewRequest(null)}
                 className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
                 title="Close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1284,6 +1298,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
       {/* Quick Preview Modal */}
       {previewRequest && (
         <div
+          ref={previewDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="projects-preview-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setPreviewRequest(null)}
         >
@@ -1298,7 +1316,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                   {previewRequest.id}
                 </div>
                 <div>
-                  <h3 className="font-sans font-bold text-gray-900 text-sm flex items-center gap-2">
+                  <h3 id="projects-preview-title" className="font-sans font-bold text-gray-900 text-sm flex items-center gap-2">
                     <span>Quick Preview:</span>
                     <span className="text-gray-600 font-medium">
                       {previewType === "draft"
@@ -1315,6 +1333,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
                 onClick={() => setPreviewRequest(null)}
                 className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
                 title="Close Preview"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>

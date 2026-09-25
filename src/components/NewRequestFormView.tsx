@@ -19,7 +19,8 @@ import {
 
   Upload,
   Sparkles,
-  LayoutTemplate
+  LayoutTemplate,
+  Loader2
 } from 'lucide-react';
 
 interface NewRequestFormViewProps {
@@ -33,16 +34,27 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
 
   // Members list (admin only)
   const [members, setMembers] = useState<Array<{ id: string; firstName: string; lastName: string }>>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
 
+  const loadMembers = () => {
+    if (currentUser.role !== 'ADMIN') return;
+    setMembersLoading(true);
+    setMembersError(false);
+    getUsers({ role: 'MP' }).then((data) => {
+      const list = Array.isArray(data) ? data : (data?.users || []);
+      setMembers(list.filter((u: any) => u.isActive !== false));
+      setMembersLoading(false);
+    }).catch(() => {
+      setMembersLoading(false);
+      setMembersError(true);
+    });
+  };
+
   useEffect(() => {
-    if (currentUser.role === 'ADMIN') {
-      getUsers({ role: 'MP' }).then((data) => {
-        const list = Array.isArray(data) ? data : (data?.users || []);
-        setMembers(list.filter((u: any) => u.isActive !== false));
-      }).catch(() => console.warn('Failed to load members'));
-    }
+    loadMembers();
   }, [currentUser.role]);
   
   const getDefaultDeadline = () => {
@@ -289,6 +301,7 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                         className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 appearance-none text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
                       >
                         <option value="">Select an MP...</option>
+                        {membersLoading && <option value="">Loading members...</option>}
                         {members.map((m) => (
                           <option key={m.id} value={m.id}>
                             Hon. {m.firstName} {m.lastName}
@@ -300,6 +313,18 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                     {getFieldError('selectedMemberId') && (
                       <div aria-live="polite">
                         <p className="text-[10px] text-red-600">{getFieldError('selectedMemberId')}</p>
+                      </div>
+                    )}
+                    {membersError && (
+                      <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                        <p className="text-[10px] font-semibold text-[#ba1a1a]">Could not load the member list.</p>
+                        <button
+                          type="button"
+                          onClick={loadMembers}
+                          className="text-[10px] font-bold text-[#ba1a1a] hover:underline"
+                        >
+                          Retry
+                        </button>
                       </div>
                     )}
                     <p className="text-[10px] text-gray-500">Choose the member this research is being requested for.</p>

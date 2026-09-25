@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Search, 
   Database, 
@@ -16,10 +16,12 @@ import {
   UserCheck
 } from 'lucide-react';
 import { getRequests, downloadFile } from '../lib/api';
+import { useDialogA11y } from '../lib/useDialogA11y';
 import { honourable } from '../lib/format';
 import { useToast } from '../lib/toast';
 import { useApp } from '../context/AppContext';
 import { Pagination } from './Pagination';
+import { InlineError } from './InlineError';
 
 interface ArchiveViewProps {
   onNavigate: (view: string, id: string) => void;
@@ -29,6 +31,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
   const { currentUser } = useApp();
   const [archived, setArchived] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -37,17 +40,30 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
   const [viewRequest, setViewRequest] = useState<any | null>(null);
+  const viewDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setViewRequest(null),
+    enabled: !!viewRequest,
+  });
   const { toast } = useToast();
 
-  useEffect(() => {
+  const loadArchived = useCallback(() => {
+    setLoading(true);
+    setError(null);
     getRequests({ limit: 500, archived: true })
       .then((data) => {
         const requests = Array.isArray(data) ? data : (data?.requests || []);
         setArchived(requests.filter((r: any) => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)));
         setLoading(false);
       })
-      .catch(() => { setLoading(false); console.warn('Failed to load archived requests'); });
+      .catch(() => {
+        setLoading(false);
+        setError('Unable to load archived requests. Please check your connection.');
+      });
   }, []);
+
+  useEffect(() => {
+    loadArchived();
+  }, [loadArchived]);
 
   const categories = React.useMemo(() => {
     const cats = new Set<string>();
@@ -317,6 +333,12 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                     <p className="text-xs text-gray-400 italic">Loading archive...</p>
                   </td>
                 </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={currentUser.role !== "MP" ? 7 : 6} className="px-6 py-8">
+                    <InlineError message={error} onRetry={loadArchived} />
+                  </td>
+                </tr>
               ) : sorted.length === 0 ? (
                 <tr>
                   <td colSpan={currentUser.role !== "MP" ? 7 : 6} className="px-6 py-16">
@@ -424,6 +446,10 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
       {/* View Detail Modal */}
       {viewRequest && (
         <div 
+          ref={viewDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="archive-view-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setViewRequest(null)}
         >
@@ -438,14 +464,14 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                   {viewRequest.requestNumber || viewRequest.id}
                 </span>
                 <div>
-                  <h3 className="font-sans font-bold text-gray-900 text-sm">{viewRequest.title}</h3>
+                  <h3 id="archive-view-title" className="font-sans font-bold text-gray-900 text-sm">{viewRequest.title}</h3>
                   <p className="text-[10px] text-gray-500 font-medium mt-0.5">{viewRequest.category?.name || viewRequest.category || ''}</p>
                 </div>
               </div>
               <button 
                 onClick={() => setViewRequest(null)}
                 className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
-                title="Close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>

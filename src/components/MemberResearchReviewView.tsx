@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../lib/toast";
+import { useDialogA11y } from "../lib/useDialogA11y";
 import { formatRequestStatus } from "../lib/status";
 import {
   getRequest,
@@ -14,6 +15,7 @@ import { honourable } from "../lib/format";
 import { toPlainText } from "../lib/content";
 import { ResearchRequest } from "../types";
 import { filterRequestsForCurrentUser } from "../lib/requestAccess";
+import { ConfirmDialog } from "./ConfirmDialog";
 import {
   FileText,
   Download,
@@ -127,8 +129,20 @@ export const MemberResearchReviewView: React.FC = () => {
   const [revisionText, setRevisionText] = useState("");
   const [confirmAcceptId, setConfirmAcceptId] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [removingFile, setRemovingFile] = useState<any>(null);
   const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
+
+  const revisionTextRef = useRef<HTMLTextAreaElement>(null);
+  const revisionDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setRevisionOpen(false),
+    enabled: revisionOpen,
+    initialFocusRef: revisionTextRef,
+  });
+  const acceptDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setConfirmAcceptId(null),
+    enabled: confirmAcceptId !== null,
+  });
 
   const selectedRequest = reviewRequests.find((r) => r.id === selectedId) || reviewRequests[0];
 
@@ -181,6 +195,7 @@ export const MemberResearchReviewView: React.FC = () => {
     try {
       await deleteAttachment(file.id);
       toast.success(`"${file.name}" removed.`);
+      setRemovingFile(null);
       loadDetail(selectedRequest.id);
     } catch (err: any) {
       toast.error(err?.message || `Failed to remove "${file.name}"`);
@@ -320,8 +335,9 @@ export const MemberResearchReviewView: React.FC = () => {
 
                 <div className="p-6 space-y-6">
                   {loading ? (
-                    <div className="flex items-center justify-center py-20">
+                    <div className="flex flex-col items-center justify-center py-20">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0037b0]" />
+                      <p className="text-xs font-semibold text-[#747686] mt-3">Loading review details...</p>
                     </div>
                   ) : detail ? (
                     <>
@@ -423,7 +439,7 @@ export const MemberResearchReviewView: React.FC = () => {
                               <div className="flex items-center gap-1">
                                 {(currentUser.role === "ADMIN" || file.uploader?.id === currentUser.id) && (
                                   <button
-                                    onClick={() => handleRemoveAttachment(file)}
+                                    onClick={() => setRemovingFile(file)}
                                     className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
                                     title="Remove file"
                                   >
@@ -552,14 +568,19 @@ export const MemberResearchReviewView: React.FC = () => {
 
       {/* Request Revision Modal */}
       {revisionOpen && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setRevisionOpen(false)}>
+        <div
+          ref={revisionDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="request-revision-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setRevisionOpen(false)}>
           <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-2xl w-full max-w-lg overflow-hidden animate-fadeIn" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 bg-[#f3f4f5] border-b border-[#c4c5d7] flex justify-between items-center">
               <div>
-                <h3 className="font-sans font-bold text-gray-900 text-sm">Request Revision</h3>
+                <h3 id="request-revision-title" className="font-sans font-bold text-gray-900 text-sm">Request Revision</h3>
                 <p className="text-[10px] text-gray-500 mt-0.5">{selectedRequest.id} — {selectedRequest.title}</p>
               </div>
-              <button onClick={() => setRevisionOpen(false)} className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer" title="Close">
+              <button onClick={() => setRevisionOpen(false)} className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer" aria-label="Close">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -568,10 +589,10 @@ export const MemberResearchReviewView: React.FC = () => {
                 Describe the changes you need. The research team and administrators will be notified, and the brief will be returned for revision.
               </p>
               <textarea
+                ref={revisionTextRef}
                 value={revisionText}
                 onChange={(e) => setRevisionText(e.target.value)}
                 rows={5}
-                autoFocus
                 placeholder="e.g., Please expand the fiscal impact section and include more recent data..."
                 className="w-full border border-[#c4c5d7] rounded p-3 text-xs outline-none focus:ring-1 focus:ring-[#0037b0]"
               />
@@ -595,12 +616,17 @@ export const MemberResearchReviewView: React.FC = () => {
 
       {/* Accept Confirmation Modal */}
       {confirmAcceptId && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setConfirmAcceptId(null)}>
+        <div
+          ref={acceptDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="accept-brief-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setConfirmAcceptId(null)}>
           <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 bg-emerald-50 border-b border-emerald-100 flex items-center gap-3">
               <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
               <div>
-                <h3 className="font-sans font-bold text-gray-900 text-sm">Accept Research Brief</h3>
+                <h3 id="accept-brief-title" className="font-sans font-bold text-gray-900 text-sm">Accept Research Brief</h3>
                 <p className="text-[10px] text-gray-500 mt-0.5">{selectedRequest.title}</p>
               </div>
             </div>
@@ -623,6 +649,20 @@ export const MemberResearchReviewView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {removingFile && (
+        <ConfirmDialog
+          title="Remove Attachment"
+          confirmLabel="Remove"
+          message={
+            <>
+              Remove <strong>{removingFile.name}</strong>? This action cannot be undone.
+            </>
+          }
+          onConfirm={() => handleRemoveAttachment(removingFile)}
+          onCancel={() => setRemovingFile(null)}
+        />
       )}
     </div>
   );

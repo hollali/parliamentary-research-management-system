@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useApp } from "../context/AppContext";
 import { getOfficers } from "../lib/api";
 import { honourable } from "../lib/format";
 import { formatRequestStatus } from "../lib/status";
 import { ResearchRequest } from "../types";
 import { AssignModal } from "./AssignModal";
+import { useDialogA11y } from "../lib/useDialogA11y";
 import { ExportButton } from "./ExportButton";
 import { Pagination } from "./Pagination";
+import { ConfirmDialog } from "./ConfirmDialog";
 import {
   FileText,
   TrendingUp,
@@ -65,6 +67,40 @@ const BAR_VALUES: Record<string, string[]> = {
   closed: ['CLOSED'],
 };
 
+const CONFIRM_META: Record<
+  'REVISION_REQUESTED' | 'APPROVED' | 'DELIVERED' | 'CLOSED',
+  { title: string; label: string; tone: 'danger' | 'neutral'; message: string }
+> = {
+  REVISION_REQUESTED: {
+    title: 'Request Revision',
+    label: 'Request Revision',
+    tone: 'danger',
+    message:
+      'Send this brief back to the research officer for changes? It will be reopened for editing.',
+  },
+  APPROVED: {
+    title: 'Approve Brief',
+    label: 'Approve',
+    tone: 'neutral',
+    message:
+      'Approve this brief? It will become final and move to the delivered stage.',
+  },
+  DELIVERED: {
+    title: 'Mark as Delivered',
+    label: 'Mark Delivered',
+    tone: 'neutral',
+    message:
+      'Mark this brief as delivered to the member?',
+  },
+  CLOSED: {
+    title: 'Close Request',
+    label: 'Close Request',
+    tone: 'danger',
+    message:
+      'Close this request for good? It will be moved to the archive.',
+  },
+};
+
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onNavigate,
 }) => {
@@ -82,6 +118,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     null,
   );
   const [officers, setOfficers] = useState<any[]>([]);
+  const [officersError, setOfficersError] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
   const [activityPage, setActivityPage] = useState(1);
@@ -93,6 +130,19 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [tableSearch, setTableSearch] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    req: ResearchRequest;
+    action: "REVISION_REQUESTED" | "APPROVED" | "DELIVERED" | "CLOSED";
+  } | null>(null);
+
+  const loadOfficers = useCallback(() => {
+    setOfficersError(false);
+    getOfficers()
+      .then((data) => {
+        if (Array.isArray(data)) setOfficers(data);
+      })
+      .catch(() => setOfficersError(true));
+  }, []);
 
   useEffect(() => {
     if (!menuOpenId) return;
@@ -113,12 +163,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   }, [menuOpenId]);
 
   useEffect(() => {
-    getOfficers()
-      .then((data) => {
-        if (Array.isArray(data)) setOfficers(data);
-      })
-      .catch(() => console.warn("Failed to load officers"));
-  }, []);
+    loadOfficers();
+  }, [loadOfficers]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -132,19 +178,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setOfficerPage(1);
   }, [officers.length]);
 
-  useEffect(() => {
-    if (!activeRequest) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setActiveRequest(null);
-    };
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [activeRequest]);
+  const activeRequestDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setActiveRequest(null),
+    enabled: !!activeRequest,
+  });
 
   // Derive counts from requests state
   const totalPending = requests.filter(
@@ -252,11 +289,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       return;
     }
     if (["DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"].includes(req.status)) {
-      updateRequestStatus(req.id, "APPROVED");
+      setConfirmAction({ req, action: "APPROVED" });
     } else if (req.status === "APPROVED") {
-      updateRequestStatus(req.id, "DELIVERED");
+      setConfirmAction({ req, action: "DELIVERED" });
     } else if (req.status === "DELIVERED") {
-      updateRequestStatus(req.id, "CLOSED");
+      setConfirmAction({ req, action: "CLOSED" });
     } else if (req.status === "OVERDUE") {
       onNavigate("briefs", req.id);
     }
@@ -577,6 +614,19 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   );
                 })}
               </div>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+                {PIPELINE_ORDER.map((key) => {
+                  const meta = STAGE_META[key];
+                  const count = pipelineCounts[key] || 0;
+                  return (
+                    <div key={key} className="flex items-center gap-1.5 text-[10px] font-semibold text-[#747686]">
+                      <span className={`w-2 h-2 rounded-full ${meta.color} ${count === 0 ? "opacity-30" : ""}`} />
+                      {meta.label}
+                      <span className="text-[10px] font-bold text-gray-400">{count}</span>
+                    </div>
+                  );
+                })}
+              </div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {PIPELINE_ORDER.map((key) => {
                   const meta = STAGE_META[key];
@@ -605,7 +655,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </div>
             </>
           ) : (
-            <p className="text-sm text-gray-400 italic">No requests yet.</p>
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <TrendingUp className="w-7 h-7 text-gray-300 mb-2" />
+              <p className="text-sm font-semibold text-gray-500">No requests yet</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                New requests will appear here once filed by members.
+              </p>
+            </div>
           )}
         </div>
 
@@ -646,7 +702,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               <p className="text-xs text-gray-400 italic">…and {categoryCounts.length - 6} more.</p>
             )}
             {categoryCounts.length === 0 && (
-              <p className="text-xs text-gray-400 italic">No requests yet.</p>
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <FileText className="w-7 h-7 text-gray-300 mb-2" />
+                <p className="text-sm font-semibold text-gray-500">No categories yet</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Categories will populate from approved research requests.
+                </p>
+              </div>
             )}
           </div>
         </div>
@@ -1090,7 +1152,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                             <div className="my-1 h-px bg-[#f0f0f2]" />
                             {["DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED", "APPROVED"].includes(req.status) && req.reportId && (
                               <button
-                                onClick={() => { setMenuOpenId(null); updateRequestStatus(req.id, "REVISION_REQUESTED"); }}
+                                onClick={() => { setMenuOpenId(null); setConfirmAction({ req, action: "REVISION_REQUESTED" }); }}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#ba1a1a] hover:bg-red-50 transition-colors cursor-pointer"
                               >
                                 <Undo2 className="w-4 h-4" /> Request Revision
@@ -1098,7 +1160,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                             )}
                             {["DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"].includes(req.status) && (
                               <button
-                                onClick={() => { setMenuOpenId(null); updateRequestStatus(req.id, "APPROVED"); }}
+                                onClick={() => { setMenuOpenId(null); setConfirmAction({ req, action: "APPROVED" }); }}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#006b2c] hover:bg-green-50 transition-colors cursor-pointer"
                               >
                                 <CheckCircle2 className="w-4 h-4" /> Approve Brief
@@ -1106,7 +1168,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                             )}
                             {req.status === "APPROVED" && (
                               <button
-                                onClick={() => { setMenuOpenId(null); updateRequestStatus(req.id, "DELIVERED"); }}
+                                onClick={() => { setMenuOpenId(null); setConfirmAction({ req, action: "DELIVERED" }); }}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#0037b0] hover:bg-blue-50 transition-colors cursor-pointer"
                               >
                                 <Send className="w-4 h-4" /> Mark as Delivered
@@ -1114,7 +1176,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                             )}
                             {req.status === "DELIVERED" && (
                               <button
-                                onClick={() => { setMenuOpenId(null); updateRequestStatus(req.id, "CLOSED"); }}
+                                onClick={() => { setMenuOpenId(null); setConfirmAction({ req, action: "CLOSED" }); }}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
                               >
                                 <XCircle className="w-4 h-4" /> Close Request
@@ -1185,6 +1247,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
       {activeRequest && (
         <div
+          ref={activeRequestDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-request-detail-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4 lg:p-6"
           onClick={() => setActiveRequest(null)}
         >
@@ -1205,7 +1271,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     </span>
                   )}
                 </div>
-                <h3 className="text-lg font-bold text-[#191c1d]">
+                <h3 className="text-lg font-bold text-[#191c1d]" id="admin-request-detail-title">
                   {activeRequest.title}
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
@@ -1447,7 +1513,22 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </p>
             )}
             <div className="space-y-5">
-              {paginatedOfficers.length > 0 ? (
+              {officersError ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center justify-between px-3 py-2.5">
+                    <p className="text-[11px] font-semibold text-[#ba1a1a] flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Could not load officer capacity.
+                    </p>
+                    <button
+                      onClick={loadOfficers}
+                      className="text-[10px] font-bold text-[#ba1a1a] hover:underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              ) : paginatedOfficers.length > 0 ? (
                 paginatedOfficers.map((officer: any) => {
                   const activeCount = officer._count?.assignedRequests || 0;
                   const maxCapacity = 10;
@@ -1523,6 +1604,22 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </button>
         </div>
       </div>
+      {/* Status transition confirm modal */}
+      {confirmAction && (
+        <ConfirmDialog
+          title={CONFIRM_META[confirmAction.action].title}
+          confirmLabel={CONFIRM_META[confirmAction.action].label}
+          tone={CONFIRM_META[confirmAction.action].tone}
+          message={CONFIRM_META[confirmAction.action].message}
+          onConfirm={() => {
+            const { req, action } = confirmAction;
+            updateRequestStatus(req.id, action);
+            setConfirmAction(null);
+          }}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
       {/* Assign Modal */}
       {assignModalRequestId && (
         <AssignModal

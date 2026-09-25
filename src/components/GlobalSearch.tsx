@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { globalSearch } from '../lib/api';
+import { useDialogA11y } from '../lib/useDialogA11y';
 import { formatRequestStatus } from '../lib/status';
 import { 
   Search, 
@@ -24,6 +25,8 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchDialogRef = useDialogA11y<HTMLDivElement>({ onClose, enabled: isOpen });
 
   useEffect(() => {
     if (isOpen) {
@@ -99,7 +102,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" onClick={onClose}>
+    <div ref={searchDialogRef} className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" onClick={onClose}>
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
       <div
         role="dialog"
@@ -107,7 +110,6 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
         aria-label="Global search"
         className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       >
         {/* Search input */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
@@ -118,19 +120,28 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); handleSearch(e.target.value); }}
             onKeyDown={handleKeyDown}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={allResults.length > 0}
+            aria-controls="global-search-results"
+            aria-activedescendant={
+              allResults[selectedIndex]
+                ? `global-search-option-${selectedIndex}`
+                : undefined
+            }
             placeholder="Search requests, reports, people..."
             className="flex-1 text-sm text-gray-900 placeholder-gray-400 outline-none"
           />
           <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
             ESC
           </kbd>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full" aria-label="Close">
             <X className="w-4 h-4 text-gray-400" />
           </button>
         </div>
 
         {/* Results */}
-        <div className="max-h-[50vh] overflow-y-auto">
+        <div id="global-search-results" role="listbox" aria-label="Search results" className="max-h-[50vh] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <div className="w-5 h-5 border-2 border-[#0037b0] border-t-transparent rounded-full animate-spin" />
@@ -144,10 +155,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
                   {results.requests.map((r: any, i: number) => {
                     const idx = i;
                     return (
-                      <button
+                      <div
                         key={r.id}
+                        id={`global-search-option-${idx}`}
+                        role="option"
+                        aria-selected={selectedIndex === idx}
                         onClick={() => handleSelect({ type: 'request', data: r })}
-                        className={`w-full text-left px-5 py-2.5 flex items-center gap-3 transition-colors ${
+                        className={`w-full text-left px-5 py-2.5 flex items-center gap-3 transition-colors cursor-pointer ${
                           selectedIndex === idx ? 'bg-blue-50' : 'hover:bg-gray-50'
                         }`}
                       >
@@ -157,7 +171,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
                           <p className="text-[10px] text-gray-500">{r.requestNumber} • {formatRequestStatus(r.status)}</p>
                         </div>
                         <ArrowRight className="w-3 h-3 text-gray-300 shrink-0" />
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -170,10 +184,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
                   {results.users.map((u: any, i: number) => {
                     const idx = results.requests.length + i;
                     return (
-                      <button
+                      <div
                         key={u.id}
+                        id={`global-search-option-${idx}`}
+                        role="option"
+                        aria-selected={selectedIndex === idx}
                         onClick={() => handleSelect({ type: 'user', data: u })}
-                        className={`w-full text-left px-5 py-2.5 flex items-center gap-3 transition-colors ${
+                        className={`w-full text-left px-5 py-2.5 flex items-center gap-3 transition-colors cursor-pointer ${
                           selectedIndex === idx ? 'bg-blue-50' : 'hover:bg-gray-50'
                         }`}
                       >
@@ -185,7 +202,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
                           <p className="text-[10px] text-gray-500">{u.role.replace(/_/g, ' ')}</p>
                         </div>
                         <ArrowRight className="w-3 h-3 text-gray-300 shrink-0" />
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -198,10 +215,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
                   {results.reports.map((r: any, i: number) => {
                     const idx = results.requests.length + results.users.length + i;
                     return (
-                      <button
+                      <div
                         key={r.id}
+                        id={`global-search-option-${idx}`}
+                        role="option"
+                        aria-selected={selectedIndex === idx}
                         onClick={() => handleSelect({ type: 'report', data: r })}
-                        className={`w-full text-left px-5 py-2.5 flex items-center gap-3 transition-colors ${
+                        className={`w-full text-left px-5 py-2.5 flex items-center gap-3 transition-colors cursor-pointer ${
                           selectedIndex === idx ? 'bg-blue-50' : 'hover:bg-gray-50'
                         }`}
                       >
@@ -211,7 +231,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
                           <p className="text-[10px] text-gray-500">v{r.version} • {r.request?.requestNumber}</p>
                         </div>
                         <ArrowRight className="w-3 h-3 text-gray-300 shrink-0" />
-                      </button>
+                      </div>
                     );
                   })}
                 </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getActivityLog } from '../lib/api';
+import { InlineError } from './InlineError';
 import { 
   History, 
   Filter, 
@@ -18,6 +19,7 @@ import {
   Users,
   ShieldAlert,
   TrendingUp,
+  Loader2,
 } from 'lucide-react';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -117,9 +119,11 @@ export const ActivityLogView: React.FC = () => {
   const [actionFilter, setActionFilter] = useState('');
   const [entityFilter, setEntityFilter] = useState('');
   const [summary, setSummary] = useState<{ today: number; uniqueActors: number; actions: { action: string; count: number }[] }>({ today: 0, uniqueActors: 0, actions: [] });
+  const [error, setError] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await getActivityLog({
         action: actionFilter || undefined,
@@ -133,7 +137,7 @@ export const ActivityLogView: React.FC = () => {
         if (data.summary) setSummary(data.summary);
       }
     } catch {
-      // ignore
+      setError('Unable to load activity log entries. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -262,7 +266,14 @@ export const ActivityLogView: React.FC = () => {
       {/* Log entries */}
       <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm">
         {loading ? (
-          <p className="text-xs text-gray-400 italic p-6 text-center">Loading activity log...</p>
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <Loader2 className="w-6 h-6 text-[#0037b0] animate-spin" />
+            <p className="text-xs text-gray-400 font-semibold mt-2.5">Loading activity log...</p>
+          </div>
+        ) : error ? (
+          <div className="p-4">
+            <InlineError message={error} onRetry={fetchLogs} />
+          </div>
         ) : logs.length > 0 ? (
           <div className="divide-y divide-gray-100">
             {logs.map((log) => (

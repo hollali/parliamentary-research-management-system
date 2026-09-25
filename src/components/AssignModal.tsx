@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../lib/toast";
+import { useDialogA11y } from "../lib/useDialogA11y";
 import { getOfficers, getTeams, getRequest } from "../lib/api";
 import {
   X,
@@ -47,8 +48,6 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   });
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     getOfficers()
@@ -90,39 +89,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       });
   }, [requestId]);
 
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeButtonRef.current?.focus();
-    return () => {
-      document.body.style.overflow = prev ?? "";
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab" || !overlayRef.current) return;
-      const focusable = overlayRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  const overlayRef = useDialogA11y<HTMLDivElement>({ onClose });
 
   const toggleOfficer = (id: string) => {
     if (actionMode === "reassign") {
@@ -227,7 +194,6 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             </p>
           </div>
           <button
-            ref={closeButtonRef}
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer"
             aria-label="Close"
@@ -249,6 +215,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     setActionMode("assign");
                     setSelectedOfficerIds([]);
                   }}
+                  aria-pressed={actionMode === "assign"}
                   className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer border ${
                     actionMode === "assign"
                       ? "bg-[#0037b0] text-white border-[#0037b0]"
@@ -267,6 +234,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       setActionMode("reassign");
                       setSelectedOfficerIds([]);
                     }}
+                    aria-pressed={actionMode === "reassign"}
                     className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer border ${
                       actionMode === "reassign"
                         ? "bg-[#0037b0] text-white border-[#0037b0]"
@@ -283,6 +251,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       setAssignMode("officer");
                       setSelectedOfficerIds([]);
                     }}
+                    aria-pressed={actionMode === "add"}
                     className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer border ${
                       actionMode === "add"
                         ? "bg-[#0037b0] text-white border-[#0037b0]"
@@ -320,6 +289,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={() => setAssignMode("officer")}
+                aria-pressed={assignMode === "officer"}
                 className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer border ${
                   assignMode === "officer"
                     ? "bg-[#0037b0] text-white border-[#0037b0]"
@@ -333,6 +303,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
               </button>
               <button
                 onClick={() => setAssignMode("team")}
+                aria-pressed={assignMode === "team"}
                 className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer border ${
                   assignMode === "team"
                     ? "bg-[#0037b0] text-white border-[#0037b0]"
@@ -374,6 +345,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                         key={off.id}
                         onClick={() => !isCurrent && toggleOfficer(off.id)}
                         disabled={isCurrent}
+                        aria-pressed={isSelected}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
                           isCurrent
                             ? "bg-gray-50 opacity-50 cursor-not-allowed"
@@ -465,6 +437,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     <button
                       key={team.id}
                       onClick={() => setSelectedTeamId(team.id)}
+                      aria-pressed={selectedTeamId === team.id}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors cursor-pointer ${
                         selectedTeamId === team.id
                           ? "bg-[#dce1ff]"

@@ -10,6 +10,8 @@ import {
 } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { useApp } from "../context/AppContext";
+import { useDialogA11y } from "../lib/useDialogA11y";
+import { ConfirmDialog } from "./ConfirmDialog";
 import {
   Users,
   Plus,
@@ -63,8 +65,26 @@ export const TeamsView: React.FC = () => {
   const [addCandidates, setAddCandidates] = useState<any[]>([]);
   const [deactivatingTeam, setDeactivatingTeam] = useState<any | null>(null);
   const [deactivating, setDeactivating] = useState(false);
+  const [confirmMember, setConfirmMember] = useState<any | null>(null);
   const { toast } = useToast();
   const { requests } = useApp();
+
+  const formDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => {
+      if (!busy) setFormOpen(false);
+    },
+    enabled: formOpen,
+  });
+  const manageDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setManagingTeam(null),
+    enabled: !!managingTeam,
+  });
+  const deactivateDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => {
+      if (!deactivating) setDeactivatingTeam(null);
+    },
+    enabled: !!deactivatingTeam,
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "members" | "load">("name");
   const [showInactive, setShowInactive] = useState(false);
@@ -182,23 +202,29 @@ export const TeamsView: React.FC = () => {
 
   const handleRemoveMember = async (member: any) => {
     if (!managingTeam) return;
+    setConfirmMember(member);
+  };
+
+  const confirmRemoveMember = async () => {
+    if (!confirmMember || !managingTeam) return;
     setBusy(true);
     try {
-      await removeTeamMember(managingTeam.id, member.userId);
+      await removeTeamMember(managingTeam.id, confirmMember.userId);
       toast.success("Member removed");
       setManagingTeam((prev: any) =>
         prev
           ? {
               ...prev,
               members: prev.members.filter(
-                (m: any) => m.userId !== member.userId,
+                (m: any) => m.userId !== confirmMember.userId,
               ),
             }
           : null,
       );
-      const removed = officers.find((o) => o.id === member.userId);
+      const removed = officers.find((o) => o.id === confirmMember.userId);
       if (removed) setAddCandidates((prev) => [...prev, removed]);
       await fetchTeams();
+      setConfirmMember(null);
     } catch (err: any) {
       toast.error(err?.message || "Failed to remove member");
     } finally {
@@ -554,6 +580,7 @@ export const TeamsView: React.FC = () => {
       {/* Create / Edit Modal */}
       {formOpen && (
         <div
+          ref={formDialogRef}
           className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[8vh] px-4 overflow-y-auto"
           onClick={() => {
             if (!busy) setFormOpen(false);
@@ -708,6 +735,7 @@ export const TeamsView: React.FC = () => {
       {/* Manage Members Modal */}
       {managingTeam && (
         <div
+          ref={manageDialogRef}
           className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[8vh] px-4 overflow-y-auto"
           onClick={() => setManagingTeam(null)}
           role="dialog"
@@ -833,6 +861,7 @@ export const TeamsView: React.FC = () => {
       {/* Deactivate confirm modal */}
       {deactivatingTeam && (
         <div
+          ref={deactivateDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
           onClick={() => {
             if (!deactivating) setDeactivatingTeam(null);
@@ -875,6 +904,27 @@ export const TeamsView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmMember && (
+        <ConfirmDialog
+          title="Remove Member"
+          confirmLabel="Remove"
+          message={
+            <>
+              Remove{" "}
+              <strong>
+                {confirmMember.user?.firstName} {confirmMember.user?.lastName}
+              </strong>{" "}
+              from {managingTeam?.name}? They will no longer receive
+              assignments for this team.
+            </>
+          }
+          busy={busy}
+          busyLabel="Removing…"
+          onConfirm={confirmRemoveMember}
+          onCancel={() => setConfirmMember(null)}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../lib/toast";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import { honourable } from "../lib/format";
 import { ResearchRequest } from "../types";
+import { useDialogA11y } from "../lib/useDialogA11y";
 import { filterRequestsForCurrentUser } from "../lib/requestAccess";
 import { Pagination } from "./Pagination";
 import {
@@ -274,6 +275,34 @@ export const MemberDashboardView: React.FC = () => {
   const [isExpedited, setIsExpedited] = useState(false);
   const [trackingModalRequest, setTrackingModalRequest] =
     useState<ResearchRequest | null>(null);
+  const trackingDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setTrackingModalRequest(null),
+    enabled: !!trackingModalRequest,
+  });
+
+  const [extendMenuOpenId, setExtendMenuOpenId] = useState<string | null>(null);
+  const extendMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!extendMenuOpenId) return;
+    const onDown = (e: MouseEvent) => {
+      if (
+        extendMenuRef.current &&
+        !extendMenuRef.current.contains(e.target as Node)
+      ) {
+        setExtendMenuOpenId(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExtendMenuOpenId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [extendMenuOpenId]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
@@ -870,9 +899,19 @@ export const MemberDashboardView: React.FC = () => {
                   <td className="px-6 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {!isClosedStatus(req.status) && (
-                        <div className="relative group/extend">
+                        <div
+                          className="relative"
+                          ref={extendMenuOpenId === req.id ? extendMenuRef : undefined}
+                        >
                           <button
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExtendMenuOpenId((prev) =>
+                                prev === req.id ? null : req.id,
+                              );
+                            }}
+                            aria-expanded={extendMenuOpenId === req.id}
+                            aria-haspopup="menu"
                             className={`p-1.5 rounded transition-all cursor-pointer ${
                               req.status === "OVERDUE"
                                 ? "text-[#ba1a1a] hover:bg-red-50"
@@ -883,15 +922,22 @@ export const MemberDashboardView: React.FC = () => {
                           >
                             <Clock className="w-4 h-4" />
                           </button>
-                          <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1 hidden group-hover/extend:block">
+                          <div
+                            className={`absolute right-0 top-full mt-1 w-36 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1 ${
+                              extendMenuOpenId === req.id ? "block" : "hidden"
+                            }`}
+                            role="menu"
+                          >
                             <div className="px-2.5 py-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
                               Extend Due Date
                             </div>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setExtendMenuOpenId(null);
                                 handleExtendDeadline(req.id, req.deadline, 7);
                               }}
+                              role="menuitem"
                               className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
                             >
                               +7 Days
@@ -899,8 +945,10 @@ export const MemberDashboardView: React.FC = () => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setExtendMenuOpenId(null);
                                 handleExtendDeadline(req.id, req.deadline, 14);
                               }}
+                              role="menuitem"
                               className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
                             >
                               +14 Days
@@ -942,6 +990,10 @@ export const MemberDashboardView: React.FC = () => {
           ═══════════════════════════════════════════════════════ */}
       {trackingModalRequest && (
         <div
+          ref={trackingDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="member-tracking-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setTrackingModalRequest(null)}
         >
@@ -956,7 +1008,7 @@ export const MemberDashboardView: React.FC = () => {
                   {shortId(trackingModalRequest.id)}
                 </span>
                 <div>
-                  <h3 className="font-sans font-bold text-gray-900 text-sm">
+                  <h3 id="member-tracking-title" className="font-sans font-bold text-gray-900 text-sm">
                     {trackingModalRequest.title}
                   </h3>
                   <p className="text-[10px] text-gray-500 font-medium mt-0.5">
@@ -968,6 +1020,7 @@ export const MemberDashboardView: React.FC = () => {
                 onClick={() => setTrackingModalRequest(null)}
                 className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
                 title="Close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1330,8 +1383,19 @@ export const MemberDashboardView: React.FC = () => {
             {/* ── Modal Footer ── */}
             <div className="px-6 py-4 bg-[#f3f4f5] border-t border-[#c4c5d7] flex justify-end items-center gap-2 shrink-0">
               {detail && !isClosedStatus(detail.status) && (
-                <div className="relative group/extend-modal">
+                <div
+                  className="relative"
+                  ref={extendMenuOpenId === detail.id ? extendMenuRef : undefined}
+                >
                   <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExtendMenuOpenId((prev) =>
+                        prev === detail.id ? null : detail.id,
+                      );
+                    }}
+                    aria-expanded={extendMenuOpenId === detail.id}
+                    aria-haspopup="menu"
                     className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded border transition-colors cursor-pointer ${
                       detail.status === "OVERDUE"
                         ? "border-[#ba1a1a] text-[#ba1a1a] hover:bg-red-50"
@@ -1341,22 +1405,31 @@ export const MemberDashboardView: React.FC = () => {
                     <Clock className="w-3.5 h-3.5" />
                     Extend Deadline
                   </button>
-                  <div className="absolute right-0 bottom-full mb-1 w-36 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1 hidden group-hover/extend-modal:block">
+                  <div
+                    className={`absolute right-0 bottom-full mb-1 w-36 bg-white border border-[#c4c5d7] rounded-md shadow-lg z-50 py-1 ${
+                      extendMenuOpenId === detail.id ? "block" : "hidden"
+                    }`}
+                    role="menu"
+                  >
                     <div className="px-2.5 py-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
                       Extend Due Date
                     </div>
                     <button
-                      onClick={() =>
-                        handleExtendDeadline(detail.id, detail.deadline, 7)
-                      }
+                      onClick={() => {
+                        setExtendMenuOpenId(null);
+                        handleExtendDeadline(detail.id, detail.deadline, 7);
+                      }}
+                      role="menuitem"
                       className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
                     >
                       +7 Days
                     </button>
                     <button
-                      onClick={() =>
-                        handleExtendDeadline(detail.id, detail.deadline, 14)
-                      }
+                      onClick={() => {
+                        setExtendMenuOpenId(null);
+                        handleExtendDeadline(detail.id, detail.deadline, 14);
+                      }}
+                      role="menuitem"
                       className="w-full text-left px-3 py-1.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
                     >
                       +14 Days

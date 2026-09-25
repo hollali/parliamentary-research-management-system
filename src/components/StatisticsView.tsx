@@ -283,7 +283,11 @@ export const StatisticsView: React.FC = () => {
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-gray-400 italic">No requests on record.</p>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <BarChart3 className="w-7 h-7 text-gray-300 mb-2" />
+                  <p className="text-sm font-semibold text-gray-500">No requests on record</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Requests will appear once members file them.</p>
+                </div>
               )}
             </div>
 
@@ -390,7 +394,11 @@ export const StatisticsView: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-gray-400 italic">No categories recorded.</p>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <Flag className="w-7 h-7 text-gray-300 mb-2" />
+                  <p className="text-sm font-semibold text-gray-500">No categories recorded</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Categories will populate from filed requests.</p>
+                </div>
               )}
             </div>
 
@@ -463,7 +471,11 @@ export const StatisticsView: React.FC = () => {
                   })}
                 </div>
               ) : (
-                <p className="text-xs text-gray-400 italic">No active research officers.</p>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <UserCheck className="w-7 h-7 text-gray-300 mb-2" />
+                  <p className="text-sm font-semibold text-gray-500">No active research officers</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Officer workload will appear once research staff is added.</p>
+                </div>
               )}
             </div>
           </div>

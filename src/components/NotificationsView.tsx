@@ -394,8 +394,12 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
                   <p className="text-xs text-gray-500 mt-0.5">Show notifications in the browser</p>
                 </div>
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={pushNotifs}
+                  aria-label="Push Notifications"
                   onClick={() => setPushNotifs(!pushNotifs)}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                  className={`relative w-11 h-6 rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0037b0] focus-visible:ring-offset-2 cursor-pointer ${
                     pushNotifs ? 'bg-[#0037b0]' : 'bg-gray-200'
                   }`}
                 >
@@ -415,8 +419,12 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
                   </p>
                 </div>
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={emailDigest}
+                  aria-label="Email Summaries"
                   onClick={() => setEmailDigest(!emailDigest)}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                  className={`relative w-11 h-6 rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0037b0] focus-visible:ring-offset-2 cursor-pointer ${
                     emailDigest ? 'bg-[#0037b0]' : 'bg-gray-200'
                   }`}
                 >
@@ -436,8 +444,12 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
                   </p>
                 </div>
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={emailNotifs}
+                  aria-label="Email Notifications"
                   onClick={() => setEmailNotifs(!emailNotifs)}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                  className={`relative w-11 h-6 rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0037b0] focus-visible:ring-offset-2 cursor-pointer ${
                     emailNotifs ? 'bg-[#0037b0]' : 'bg-gray-200'
                   }`}
                 >
@@ -457,8 +469,12 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
                   </p>
                 </div>
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={whatsappNotifs}
+                  aria-label="WhatsApp Notifications"
                   onClick={() => setWhatsappNotifs(!whatsappNotifs)}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                  className={`relative w-11 h-6 rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0037b0] focus-visible:ring-offset-2 cursor-pointer ${
                     whatsappNotifs ? 'bg-[#25d366]' : 'bg-gray-200'
                   }`}
                 >
@@ -485,22 +501,28 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
               ]).map(({ key, label, desc }) => (
                 <label
                   key={key}
-                  className="flex items-start gap-3 py-3 border-b border-gray-50 cursor-pointer select-none"
+                  className="flex items-start gap-3 py-3 border-b border-gray-50 cursor-pointer select-none rounded transition-shadow focus-within:ring-2 focus-within:ring-[#0037b0] focus-within:ring-offset-2"
                 >
-                  <div
+                  <input
+                    type="checkbox"
+                    checked={triggers[key]}
+                    onChange={() => handleToggleTrigger(key)}
+                    className="sr-only"
+                  />
+                  <span
+                    aria-hidden="true"
                     className={`mt-0.5 shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                       triggers[key]
                         ? 'bg-[#0037b0] border-[#0037b0]'
                         : 'border-gray-300 bg-white'
                     }`}
-                    onClick={() => handleToggleTrigger(key)}
                   >
                     {triggers[key] && <CheckCircle2 className="w-3 h-3 text-white" />}
-                  </div>
-                  <div onClick={() => handleToggleTrigger(key)}>
+                  </span>
+                  <span>
                     <p className="text-sm font-semibold text-gray-800">{label}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
-                  </div>
+                  </span>
                 </label>
               ))}
             </div>

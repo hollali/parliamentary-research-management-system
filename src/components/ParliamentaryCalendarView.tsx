@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { useDialogA11y } from '../lib/useDialogA11y';
 import { formatRequestStatus } from '../lib/status';
 import { honourable } from '../lib/format';
 import { 
@@ -13,6 +14,7 @@ import {
   X,
   User,
   CheckCircle2,
+  CalendarX2,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -47,6 +49,10 @@ export const ParliamentaryCalendarView: React.FC = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
+  const detailDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setSelectedRequest(null),
+    enabled: !!selectedRequest,
+  });
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -307,7 +313,10 @@ export const ParliamentaryCalendarView: React.FC = () => {
                     })}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-400 text-center">No research deadlines on this date.</p>
+                  <div className="flex flex-col items-center justify-center text-center py-8">
+                    <CalendarX2 className="w-6 h-6 text-gray-300 mb-1.5" />
+                    <p className="text-xs font-semibold text-gray-500">No research deadlines on this date</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -383,7 +392,10 @@ export const ParliamentaryCalendarView: React.FC = () => {
                 })}
               </div>
             ) : (
-              <p className="text-[11px] text-gray-400 italic text-center py-6">No upcoming deadlines.</p>
+              <div className="flex flex-col items-center justify-center text-center py-6">
+                <CalendarX2 className="w-6 h-6 text-gray-300 mb-1.5" />
+                <p className="text-[11px] font-semibold text-gray-500">No upcoming deadlines</p>
+              </div>
             )}
           </div>
 
@@ -406,6 +418,10 @@ export const ParliamentaryCalendarView: React.FC = () => {
       {/* Request detail modal */}
       {selectedRequest && (
         <div
+          ref={detailDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="calendar-request-detail-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setSelectedRequest(null)}
         >
@@ -418,7 +434,7 @@ export const ParliamentaryCalendarView: React.FC = () => {
                 <span className="bg-[#dce1ff] text-[#0039b5] text-xs font-bold px-2.5 py-1 rounded shrink-0">
                   {selectedRequest.id}
                 </span>
-                <h3 className="font-sans font-bold text-gray-900 text-sm truncate">{selectedRequest.title}</h3>
+                <h3 id="calendar-request-detail-title" className="font-sans font-bold text-gray-900 text-sm truncate">{selectedRequest.title}</h3>
               </div>
               <button
                 onClick={() => setSelectedRequest(null)}

@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
+import { useDialogA11y } from '../lib/useDialogA11y';
 import {
   FileText,
   Copy,
@@ -106,18 +107,6 @@ export const ResearchTemplatesView: React.FC = () => {
     setShowModal(true);
   };
 
-  useEffect(() => {
-    if (!showModal && !selectedId) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setShowModal(false);
-        setSelectedId(null);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showModal, selectedId]);
-
   const addSection = () => setModalSections((p) => [...p, { heading: '', prompt: '' }]);
   const removeSection = (i: number) => { if (modalSections.length > 1) setModalSections((p) => p.filter((_, j) => j !== i)); };
   const updateSection = (i: number, field: 'heading' | 'prompt', v: string) =>
@@ -137,6 +126,15 @@ export const ResearchTemplatesView: React.FC = () => {
   };
 
   const selectedTemplate = templates.find((t) => t.id === selectedId) || null;
+
+  const previewDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setSelectedId(null),
+    enabled: !!selectedTemplate,
+  });
+  const editorDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: closeModal,
+    enabled: showModal,
+  });
 
   const filteredTemplates = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -376,7 +374,7 @@ export const ResearchTemplatesView: React.FC = () => {
       {selectedTemplate && (
         <>
           <div className="fixed z-50 bg-black/50 backdrop-blur-sm" style={OVERLAY_STYLE} onClick={() => setSelectedId(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
+          <div ref={previewDialogRef} role="dialog" aria-modal="true" aria-labelledby="template-preview-title" className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col overflow-hidden pointer-events-auto">
               {/* Header */}
               <div className="px-10 py-6 border-b border-gray-200 flex items-start justify-between shrink-0">
@@ -385,7 +383,7 @@ export const ResearchTemplatesView: React.FC = () => {
                     {CATEGORY_ICONS[selectedTemplate.category] || CATEGORY_ICONS.Custom}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h2 className="font-sans font-bold text-2xl text-[#191c1d] leading-tight">{selectedTemplate.name}</h2>
+                    <h2 id="template-preview-title" className="font-sans font-bold text-2xl text-[#191c1d] leading-tight">{selectedTemplate.name}</h2>
                     <div className="flex items-center gap-3 mt-2">
                       <span className="text-sm text-[#0037b0] bg-blue-50 px-3 py-1 rounded-full font-bold uppercase tracking-wide">{selectedTemplate.category}</span>
                       <span className="text-sm text-gray-400 font-semibold">
@@ -400,7 +398,7 @@ export const ResearchTemplatesView: React.FC = () => {
                   <button onClick={() => handleCopy(selectedTemplate)} className="px-5 py-2.5 bg-[#0037b0] text-white text-sm font-bold rounded-lg hover:bg-[#1d4ed8] transition-colors flex items-center gap-2 shadow">
                     <Copy className="w-4 h-4" /> Copy to Clipboard
                   </button>
-                  <button onClick={() => setSelectedId(null)} className="p-2.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                  <button onClick={() => setSelectedId(null)} className="p-2.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600" aria-label="Close">
                     <X className="w-6 h-6" />
                   </button>
                 </div>
@@ -430,15 +428,15 @@ export const ResearchTemplatesView: React.FC = () => {
       {showModal && (
         <>
           <div className="fixed z-50 bg-black/50 backdrop-blur-sm" style={OVERLAY_STYLE} onClick={closeModal} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
+          <div ref={editorDialogRef} role="dialog" aria-modal="true" aria-labelledby="template-editor-title" className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-full max-h-[90vh] flex flex-col overflow-hidden pointer-events-auto">
               {/* Header */}
               <div className="px-8 py-5 border-b border-gray-200 flex items-center justify-between shrink-0">
                 <div>
-                  <h2 className="font-sans font-bold text-xl text-[#191c1d]">{editingId ? 'Edit Custom Template' : 'Create Custom Template'}</h2>
+                  <h2 id="template-editor-title" className="font-sans font-bold text-xl text-[#191c1d]">{editingId ? 'Edit Custom Template' : 'Create Custom Template'}</h2>
                   <p className="text-sm text-gray-400 mt-1">{editingId ? 'Update the structure and section prompts for your template.' : 'Define the structure and section prompts for your template.'}</p>
                 </div>
-                <button onClick={closeModal} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                <button onClick={closeModal} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600" aria-label="Close">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -467,7 +465,7 @@ export const ResearchTemplatesView: React.FC = () => {
                   <label className="text-sm font-bold text-[#434655] uppercase">Category</label>
                   <div className="flex flex-wrap gap-2.5">
                     {CATEGORIES.map((cat) => (
-                      <button key={cat} onClick={() => setModalCategory(cat)}
+                      <button key={cat} onClick={() => setModalCategory(cat)} aria-pressed={modalCategory === cat}
                         className={`px-4 py-2 rounded-full text-sm font-bold border-2 transition-all ${modalCategory === cat ? 'bg-[#0037b0] text-white border-[#0037b0]' : 'bg-white text-[#434655] border-[#c4c5d7] hover:border-[#0037b0] hover:text-[#0037b0]'}`}>
                         {cat}
                       </button>

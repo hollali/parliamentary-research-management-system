@@ -45,6 +45,14 @@ export const Topbar: React.FC<TopbarProps> = ({ currentView, onNavigate, title, 
         <span className="font-sans font-bold text-sm sm:text-base md:text-lg text-[#191c1d] tracking-tight truncate">
           {title || "Research Portal"}
         </span>
+        <button
+          onClick={onSearchClick}
+          className="p-2 rounded-lg text-[#434655] hover:text-[#0037b0] hover:bg-gray-100 md:hidden cursor-pointer"
+          title="Search requests, briefs, or archives..."
+          aria-label="Search requests, briefs, or archives"
+        >
+          <Search className="w-5 h-5" />
+        </button>
         <div className="relative w-full max-w-md hidden md:block">
           <button
             onClick={onSearchClick}

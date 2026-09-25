@@ -18,6 +18,7 @@ import {
   MessageSquare,
   FileCheck2,
   Flag,
+  CheckCircle2,
 } from 'lucide-react';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -260,7 +261,10 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
           <div className="p-2.5 space-y-2.5 overflow-y-auto">
             {cards.map(renderCard)}
             {cards.length === 0 && (
-              <div className="text-center text-xs text-gray-400 py-6 italic">Nothing overdue 🎉</div>
+              <div className="flex flex-col items-center justify-center text-center py-8 px-2">
+                <CheckCircle2 className="w-6 h-6 text-emerald-400 mb-1.5" />
+                <p className="text-xs font-semibold text-gray-500">Nothing overdue</p>
+              </div>
             )}
           </div>
         </div>
@@ -304,7 +308,10 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
                 <div className="p-2.5 space-y-2.5 overflow-y-auto">
                   {cards.map(renderCard)}
                   {isEmpty && (
-                    <div className="text-center text-xs text-gray-400 py-6 italic">No briefs here</div>
+                    <div className="flex flex-col items-center justify-center text-center py-8 px-2">
+                      <FileText className="w-6 h-6 text-gray-300 mb-1.5" />
+                      <p className="text-xs font-semibold text-gray-500">No briefs here</p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -317,7 +324,8 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
 
   const renderList = () => (
     <div className="bg-white border border-[#e0e1e6] rounded-xl overflow-hidden">
-      <table className="w-full">
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[860px]">
         <thead>
           <tr className="bg-[#f9fafb] border-b border-[#e0e1e6]">
             <th className="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Request</th>
@@ -400,6 +408,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
           )}
         </tbody>
       </table>
+      </div>
       <Pagination
         currentPage={currentPageClamped}
         totalPages={totalPages}

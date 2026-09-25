@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getReportVersions, compareReportVersions } from '../lib/api';
 import { toPlainText } from '../lib/content';
+import { InlineError } from './InlineError';
 import { 
   GitCompare, 
   ChevronDown, 
@@ -8,7 +9,8 @@ import {
   FileText,
   ArrowLeft,
   ArrowRight,
-  Equal
+  Equal,
+  AlertTriangle
 } from 'lucide-react';
 
 interface ReportVersion {
@@ -82,8 +84,13 @@ export const DocumentVersionDiffView: React.FC<DocumentVersionDiffProps> = ({ re
   const [diff, setDiff] = useState<DiffLine[]>([]);
   const [comparing, setComparing] = useState(false);
   const [stats, setStats] = useState({ added: 0, removed: 0, unchanged: 0 });
+  const [error, setError] = useState<string | null>(null);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     getReportVersions(reportId)
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
@@ -93,12 +100,16 @@ export const DocumentVersionDiffView: React.FC<DocumentVersionDiffProps> = ({ re
         }
         setLoading(false);
       })
-      .catch(() => { setLoading(false); console.warn('Failed to load report versions'); });
-  }, [reportId]);
+      .catch(() => {
+        setLoading(false);
+        setError('Unable to load report versions.');
+      });
+  }, [reportId, reloadKey]);
 
   useEffect(() => {
     if (v1 && v2 && v1 !== v2) {
       setComparing(true);
+      setCompareError(null);
       compareReportVersions(reportId, v1, v2)
         .then((data) => {
           if (data?.versionA && data?.versionB) {
@@ -114,14 +125,25 @@ export const DocumentVersionDiffView: React.FC<DocumentVersionDiffProps> = ({ re
           }
           setComparing(false);
         })
-        .catch(() => { setComparing(false); console.warn('Failed to compare versions'); });
+        .catch(() => {
+          setComparing(false);
+          setCompareError('Unable to compare versions.');
+        });
     }
-  }, [reportId, v1, v2]);
+  }, [reportId, v1, v2, reloadKey]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="w-6 h-6 border-2 border-[#0037b0] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm">
+        <InlineError message={error} onRetry={() => setReloadKey((k) => k + 1)} />
       </div>
     );
   }
@@ -181,8 +203,9 @@ export const DocumentVersionDiffView: React.FC<DocumentVersionDiffProps> = ({ re
       {/* Diff display */}
       <div className="bg-white border border-[#c4c5d7] rounded-lg shadow-sm overflow-hidden">
         {comparing ? (
-          <div className="flex items-center justify-center h-40">
+          <div className="flex flex-col items-center justify-center h-40">
             <div className="w-5 h-5 border-2 border-[#0037b0] border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-semibold text-[#747686] mt-3">Comparing versions...</p>
           </div>
         ) : diff.length > 0 ? (
           <div className="font-mono text-xs max-h-[600px] overflow-y-auto">
@@ -205,6 +228,13 @@ export const DocumentVersionDiffView: React.FC<DocumentVersionDiffProps> = ({ re
                 <span className="py-0.5 px-2 flex-1 whitespace-pre-wrap break-words">{line.text || ' '}</span>
               </div>
             ))}
+          </div>
+        ) : compareError ? (
+          <div className="flex items-center justify-center h-40 text-[#ba1a1a]">
+            <p className="text-xs font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4" />
+              {compareError}
+            </p>
           </div>
         ) : v1 === v2 ? (
           <div className="flex flex-col items-center justify-center h-40 text-gray-400">

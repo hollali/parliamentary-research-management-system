@@ -6,6 +6,7 @@ import { highlightText } from '../lib/highlight';
 import { normalizeFetchedRequest } from '../lib/requestNormalize';
 import { honourable } from '../lib/format';
 import { ResearchRequest } from '../types';
+import { ConfirmDialog } from './ConfirmDialog';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
@@ -73,6 +74,8 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   const [reportId, setReportId] = useState<string | null>(null);
   const [draftVersion, setDraftVersion] = useState(1);
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [attachmentsError, setAttachmentsError] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -254,8 +257,9 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
         if (Array.isArray(data)) {
           setAttachments(data);
         }
+        setAttachmentsError(false);
       })
-      .catch(() => console.warn('Failed to load attachments'));
+      .catch(() => setAttachmentsError(true));
 
     return () => {
       clearTimeout(watchdog);
@@ -449,20 +453,37 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   };
 
   const handleRemoveAttachment = async (att: any) => {
-    if (!att?.id) return;
+    if (att?.id) setConfirmRemove(att);
+  };
+
+  const confirmRemoveAttachment = async () => {
+    if (!confirmRemove?.id) return;
     try {
-      await deleteAttachment(att.id);
-      setAttachments(prev => prev.filter(a => a.id !== att.id));
-      toast.success(`"${att.name}" removed.`);
+      await deleteAttachment(confirmRemove.id);
+      setAttachments(prev => prev.filter(a => a.id !== confirmRemove.id));
+      toast.success(`"${confirmRemove.name}" removed.`);
+      setConfirmRemove(null);
     } catch (err: any) {
-      toast.error(err?.message || `Failed to remove "${att.name}"`);
+      toast.error(err?.message || `Failed to remove "${confirmRemove.name}"`);
     }
   };
 
+  const retryAttachments = useCallback(() => {
+    setAttachmentsError(false);
+    getAttachments(requestId)
+      .then((data: any) => {
+        if (Array.isArray(data)) {
+          setAttachments(data);
+        }
+      })
+      .catch(() => setAttachmentsError(true));
+  }, [requestId]);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 text-[#0037b0] animate-spin" />
+        <p className="text-xs font-semibold text-[#747686] mt-3">Loading revision workspace...</p>
       </div>
     );
   }
@@ -853,6 +874,20 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             />
           </div>
         )}
+        {attachmentsError && (
+          <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <p className="text-[11px] font-semibold text-[#ba1a1a] flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              Could not load attachments.
+            </p>
+            <button
+              onClick={retryAttachments}
+              className="text-[10px] font-bold text-[#ba1a1a] hover:underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {attachments.length > 0 ? (
           <div className="space-y-2">
             {attachments.map((att: any, idx: number) => (
@@ -889,6 +924,20 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
           <p className="text-[11px] text-gray-500 text-center py-4">No files attached yet.</p>
         )}
       </div>
+
+      {confirmRemove && (
+        <ConfirmDialog
+          title="Remove Attachment"
+          confirmLabel="Remove"
+          message={
+            <>
+              Remove <strong>{confirmRemove.name}</strong>? This action cannot be undone.
+            </>
+          }
+          onConfirm={confirmRemoveAttachment}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
     </div>
   );
 };

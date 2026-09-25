@@ -23,8 +23,11 @@ export const Pagination: React.FC<PaginationProps> = ({
 }) => {
   if (totalItems === 0) {
     return (
-      <div className="px-4 lg:px-6 py-3 bg-[#f3f4f5]/40 border-t border-[#c4c5d7] text-sm text-[#434655]">
-        <span className="text-xs font-semibold">No {label}</span>
+      <div className="px-4 lg:px-6 py-6 bg-[#f3f4f5]/40 border-t border-[#c4c5d7] text-center">
+        <p className="text-xs font-semibold text-[#434655]">No {label} to display</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">
+          When new records are added, they will appear here.
+        </p>
       </div>
     );
   }
