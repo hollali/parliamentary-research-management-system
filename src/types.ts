@@ -21,6 +21,7 @@ export interface User {
   initials: string;
   title: string;
   constituency?: string;
+  phone?: string;
 }
 
 export interface Attachment {

@@ -74,6 +74,14 @@ function AppContent() {
     setIsSidebarMobileOpen(false);
   };
 
+  // Must go through the context logout: it clears the persisted token and
+  // cached state. Flipping isLoggedIn alone left the token in localStorage, so
+  // a page refresh silently signed the user back in.
+  const handleSignOut = () => {
+    logout();
+    setIsLoggedIn(false);
+  };
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -192,7 +200,7 @@ function AppContent() {
         return <SupportView />;
 
       case 'settings':
-        return <SettingsView onSignOut={() => setIsLoggedIn(false)} />;
+        return <SettingsView onSignOut={handleSignOut} />;
 
       case 'statistics':
         return <StatisticsView />;
@@ -275,7 +283,7 @@ function AppContent() {
           onNavigate={handleNavigate}
           title={getPageTitle()}
           onMenuClick={() => setIsSidebarMobileOpen(true)}
-          onSignOut={() => setIsLoggedIn(false)}
+          onSignOut={handleSignOut}
           onSearchClick={() => setIsSearchOpen(true)}
         />
 

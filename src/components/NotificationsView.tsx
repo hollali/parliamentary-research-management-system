@@ -163,9 +163,13 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
     setTriggers((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleSaveSettings = () => {
-    savePreferences(pushNotifs, emailDigest, emailNotifs, whatsappNotifs, triggers);
-    toast.success('Notification preferences saved');
+  const handleSaveSettings = async () => {
+    try {
+      await savePreferences(pushNotifs, emailDigest, emailNotifs, whatsappNotifs, triggers);
+      toast.success('Notification preferences saved');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save notification preferences');
+    }
   };
 
   return (

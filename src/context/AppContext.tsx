@@ -99,7 +99,7 @@ interface AppContextType extends AppState {
     emailRealTime: boolean,
     whatsapp: boolean,
     triggers: AppState["preferences"]["triggers"],
-  ) => void;
+  ) => Promise<void>;
   addTemplate: (
     name: string,
     description: string | undefined,
@@ -276,54 +276,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
 
-  const [preferences, setPreferences] = useState<AppState["preferences"]>(
-    () => {
-      try {
-        const savedPrefs = localStorage.getItem("prrms_prefs");
-        return savedPrefs
-          ? {
-              ...{
-                pushNotifications: true,
-                emailSummaries: false,
-                emailNotifications: true,
-                whatsappNotifications: false,
-                triggers: {
-                  newAssignments: true,
-                  statusChanges: true,
-                  draftMentions: false,
-                  deadlineReminders: true,
-                },
-              },
-              ...JSON.parse(savedPrefs),
-            }
-          : {
-              pushNotifications: true,
-              emailSummaries: false,
-              emailNotifications: true,
-              whatsappNotifications: false,
-              triggers: {
-                newAssignments: true,
-                statusChanges: true,
-                draftMentions: false,
-                deadlineReminders: true,
-              },
-            };
-      } catch {
-        return {
-          pushNotifications: true,
-          emailSummaries: false,
-          emailNotifications: true,
-          whatsappNotifications: false,
-          triggers: {
-            newAssignments: true,
-            statusChanges: true,
-            draftMentions: false,
-            deadlineReminders: true,
-          },
-        };
-      }
-    },
-  );
+  const [preferences, setPreferences] = useState<AppState["preferences"]>(() => {
+    // Mirrors DEFAULT_PREFS in server/lib/notificationPrefs.ts. Keep the two in
+    // step: a mismatch made the UI briefly show the opposite of the saved value
+    // before the backend fetch resolved.
+    const fallback: AppState["preferences"] = {
+      pushNotifications: true,
+      emailSummaries: true,
+      emailNotifications: true,
+      whatsappNotifications: false,
+      triggers: {
+        newAssignments: true,
+        statusChanges: true,
+        draftMentions: true,
+        deadlineReminders: true,
+      },
+    };
+    try {
+      const savedPrefs = localStorage.getItem("prrms_prefs");
+      if (!savedPrefs) return fallback;
+      const parsed = JSON.parse(savedPrefs);
+      return {
+        ...fallback,
+        ...parsed,
+        triggers: { ...fallback.triggers, ...(parsed?.triggers || {}) },
+      };
+    } catch {
+      return fallback;
+    }
+  });
 
   const [isOnline, setIsOnline] = useState(false);
 
@@ -925,7 +906,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const savePreferences = (
+  const savePreferences = async (
     push: boolean,
     email: boolean,
     emailRealTime: boolean,
@@ -939,11 +920,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       whatsappNotifications: whatsapp,
       triggers,
     };
+    const previous = preferences;
+    // Optimistic, so the UI feels instant offline. Rolled back on failure so the
+    // form never keeps showing a toggle that was not actually persisted.
     setPreferences(newPrefs);
-    if (isOnline) {
-      updateNotificationPrefs(newPrefs).catch((err: any) =>
-        console.warn("Failed to save notification preferences:", err?.message),
-      );
+    if (!isOnline) return;
+    try {
+      await updateNotificationPrefs(newPrefs);
+    } catch (error) {
+      setPreferences(previous);
+      throw error;
     }
   };
 
@@ -1024,10 +1010,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               ...prev,
               name: `${data.firstName} ${data.lastName}`,
               initials: data.initials || prev.initials,
-              title: data.title || prev.title,
+              // `||` would keep a stale title forever; the server returns null
+              // when a field is intentionally cleared.
+              title: data.title ?? prev.title,
               email: data.email || prev.email,
               ...(updates.constituency !== undefined && {
-                constituency: updates.constituency,
+                constituency: data.constituency ?? "",
+              }),
+              ...(updates.phone !== undefined && {
+                phone: data.phone ?? "",
               }),
             }));
           }

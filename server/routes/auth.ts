@@ -5,6 +5,8 @@ import prisma from "../lib/prisma.js";
 import { generateToken, authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, passwordResetEmail } from "../lib/email.js";
 import { rateLimit } from "../lib/rateLimit.js";
+import { deriveInitials, validatePhone } from "../lib/profile.js";
+import { DEFAULT_PREFS, validateNotificationPrefs } from "../lib/notificationPrefs.js";
 import { logger } from "../lib/logger.js";
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -165,16 +167,87 @@ router.put("/profile", authenticateToken, async (req, res) => {
     const userId = req.user!.userId;
     const { firstName, lastName, title, phone, constituency } = req.body;
 
+    if (firstName !== undefined && typeof firstName !== "string") {
+      return res.status(400).json({ error: "firstName must be a string" });
+    }
+    if (lastName !== undefined && typeof lastName !== "string") {
+      return res.status(400).json({ error: "lastName must be a string" });
+    }
+    // An empty firstName would leave the account nameless in every listing.
+    if (typeof firstName === "string" && !firstName.trim()) {
+      return res.status(400).json({ error: "First name cannot be empty" });
+    }
+    if (title !== undefined && title !== null && typeof title !== "string") {
+      return res.status(400).json({ error: "title must be a string" });
+    }
+    if (phone !== undefined && phone !== null && typeof phone !== "string") {
+      return res.status(400).json({ error: "phone must be a string" });
+    }
+    if (constituency !== undefined && constituency !== null && typeof constituency !== "string") {
+      return res.status(400).json({ error: "constituency must be a string" });
+    }
+    // Only keep a phone number if it looks dialable; WhatsApp needs this field
+    // to be populated, so storing junk here silently breaks notifications.
+    const cleanPhone =
+      phone === undefined ? undefined : phone === null ? null : String(phone).trim();
+    const phoneError = cleanPhone ? validatePhone(cleanPhone) : "";
+    if (phoneError) {
+      return res.status(400).json({ error: phoneError });
+    }
+
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const nextFirst = typeof firstName === "string" ? firstName.trim() : existing.firstName;
+    const nextLast = typeof lastName === "string" ? lastName.trim() : existing.lastName;
+    const nameChanged = nextFirst !== existing.firstName || nextLast !== existing.lastName;
+
+    // Initials are denormalised onto the user row, so they must be rebuilt
+    // whenever the name changes or every avatar keeps showing the old ones.
+    const initials = deriveInitials(nextFirst, nextLast);
+
     const user = await prisma.user.update({
       where: { id: userId },
       data: {
-        ...(firstName && { firstName }),
-        ...(lastName && { lastName }),
-        ...(title !== undefined && { title }),
-        ...(phone !== undefined && { phone }),
-        ...(constituency !== undefined && { constituency }),
+        ...(typeof firstName === "string" && { firstName: nextFirst }),
+        ...(typeof lastName === "string" && { lastName: nextLast }),
+        ...(nameChanged && { initials }),
+        ...(title !== undefined && { title: title === null ? null : String(title).trim() || null }),
+        ...(cleanPhone !== undefined && { phone: cleanPhone || null }),
+        ...(constituency !== undefined && {
+          constituency: constituency === null ? null : String(constituency).trim() || null,
+        }),
       },
-      select: { id: true, firstName: true, lastName: true, role: true, title: true, initials: true, email: true, departmentId: true, constituency: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        title: true,
+        initials: true,
+        email: true,
+        departmentId: true,
+        constituency: true,
+        phone: true,
+        lastLoginAt: true,
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        authorId: userId,
+        action: "UPDATED",
+        entityType: "User",
+        entityId: userId,
+        description: nameChanged
+          ? "Profile details updated (name changed)"
+          : "Profile details updated",
+      },
     });
 
     res.json(user);
@@ -237,13 +310,7 @@ router.get("/notification-prefs", authenticateToken, async (req, res) => {
       where: { id: req.user!.userId },
       select: { notificationPrefs: true },
     });
-    res.json(user?.notificationPrefs || {
-      pushNotifications: true,
-      emailSummaries: true,
-      emailNotifications: true,
-      whatsappNotifications: false,
-      triggers: { newAssignments: true, statusChanges: true, draftMentions: true, deadlineReminders: true },
-    });
+    res.json(user?.notificationPrefs || DEFAULT_PREFS);
   } catch (error) {
     logger.requestError("GET", "/notification-prefs", error);
     res.status(500).json({ error: "Internal server error" });
@@ -316,24 +383,44 @@ router.post("/logout", authenticateToken, async (req, res) => {
   }
 });
 
+// Recent activity for the signed-in user only. Backs the Security section of
+// the settings page with real records instead of decorative badges.
+router.get("/activity", authenticateToken, async (req, res) => {
+  try {
+    const logs = await prisma.activityLog.findMany({
+      where: { authorId: req.user!.userId },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+      select: { id: true, action: true, entityType: true, description: true, createdAt: true },
+    });
+    res.json(logs);
+  } catch (error) {
+    logger.requestError("GET", "/activity", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Update notification preferences
 router.put("/notification-prefs", authenticateToken, async (req, res) => {
   try {
-    const prefs = req.body;
-    if (!prefs || typeof prefs !== "object" ||
-        typeof prefs.pushNotifications !== "boolean" ||
-        typeof prefs.emailSummaries !== "boolean" ||
-        (prefs.emailNotifications != null && typeof prefs.emailNotifications !== "boolean") ||
-        (prefs.whatsappNotifications != null && typeof prefs.whatsappNotifications !== "boolean")) {
-      return res.status(400).json({ error: "Invalid notification preferences" });
-    }
-    // Limit payload size
-    if (JSON.stringify(prefs).length > 1024) {
-      return res.status(400).json({ error: "Preferences payload too large" });
+    const validation = validateNotificationPrefs(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error });
     }
     await prisma.user.update({
       where: { id: req.user!.userId },
-      data: { notificationPrefs: prefs },
+      // Safe cast: validateNotificationPrefs guarantees a plain JSON object of
+      // booleans, which Prisma's narrower InputJsonValue type cannot infer.
+      data: { notificationPrefs: validation.value as any },
+    });
+    await prisma.activityLog.create({
+      data: {
+        authorId: req.user!.userId,
+        action: "UPDATED",
+        entityType: "User",
+        entityId: req.user!.userId,
+        description: "Notification preferences updated",
+      },
     });
     res.json({ message: "Preferences updated" });
   } catch (error) {

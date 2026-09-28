@@ -131,6 +131,20 @@ export async function updateUserProfile(data: { firstName?: string; lastName?: s
   return request('/auth/profile', { method: 'PUT', body: data });
 }
 
+export interface AccountActivity {
+  id: string;
+  action: string;
+  entityType: string;
+  description: string;
+  createdAt: string;
+}
+
+// Recent activity recorded against the signed-in user. Used by Settings to show
+// real account history (sign-ins, password and profile changes).
+export async function getAccountActivity() {
+  return request<AccountActivity[]>('/auth/activity');
+}
+
 // ─── Requests ───────────────────────────────────────────
 
 export interface GetRequestsParams {

@@ -1,6 +1,6 @@
 import prisma from "./prisma.js";
 import { logger } from "./logger.js";
-import { createNotification } from "./notifications.js";
+import { createNotification, shouldEmail, shouldNotify } from "./notifications.js";
 
 export async function checkOverdueRequests(): Promise<void> {
   try {
@@ -42,6 +42,10 @@ export async function checkOverdueRequests(): Promise<void> {
       const daysOverdue = Math.ceil((now.getTime() - request.deadline.getTime()) / (1000 * 60 * 60 * 24));
 
       for (const recipientId of recipientIds) {
+        // Deadline reminders are opt-out via the member's notification
+        // preferences, so gate them like every other notification.
+        if (!(await shouldNotify(recipientId, "deadlineReminders"))) continue;
+        if (!(await shouldEmail(recipientId))) continue;
         await createNotification({
           recipientId,
           type: "GENERAL",
