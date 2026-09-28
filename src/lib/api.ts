@@ -8,6 +8,7 @@ interface ApiOptions {
   method?: string;
   body?: any;
   headers?: Record<string, string>;
+  keepalive?: boolean;
 }
 
 function getToken(): string | null {
@@ -39,6 +40,7 @@ async function request<T = any>(endpoint: string, options: ApiOptions = {}): Pro
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    keepalive: options.keepalive,
   });
 
   const text = await res.text();
@@ -242,21 +244,28 @@ export async function deactivateTeam(teamId: string) {
 
 // ─── Reports ────────────────────────────────────────────
 
-export async function createReport(data: {
-  requestId: string;
-  title: string;
-  content?: string;
-  filePath?: string;
-  fileType?: string;
-  fileSize?: number;
-  isDraft?: boolean;
-  notes?: string;
-}) {
-  return request('/reports/', { method: 'POST', body: data });
+export async function createReport(
+  data: {
+    requestId: string;
+    title: string;
+    content?: string;
+    filePath?: string;
+    fileType?: string;
+    fileSize?: number;
+    isDraft?: boolean;
+    notes?: string;
+  },
+  options: { keepalive?: boolean } = {},
+) {
+  return request('/reports/', { method: 'POST', body: data, keepalive: options.keepalive });
 }
 
-export async function updateReport(reportId: string, data: { content?: string; isDraft?: boolean; notes?: string }) {
-  return request(`/reports/${reportId}`, { method: 'PUT', body: data });
+export async function updateReport(
+  reportId: string,
+  data: { content?: string; isDraft?: boolean; notes?: string },
+  options: { keepalive?: boolean } = {},
+) {
+  return request(`/reports/${reportId}`, { method: 'PUT', body: data, keepalive: options.keepalive });
 }
 
 export async function getReportVersions(reportId: string) {

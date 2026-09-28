@@ -71,21 +71,30 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
   const draftVersionRef = useRef(1);
   const requestRef = useRef<ResearchRequest | null>(request);
 
-  const autoSave = useCallback(async (html: string, plain: string) => {
+  const [initialContent, setInitialContent] = useState('');
+  const htmlRef = useRef('');
+  const pendingRef = useRef<{ html: string; plain: string } | null>(null);
+  const unmountedRef = useRef(false);
+
+  const autoSave = useCallback(async (html: string, plain: string, keepalive = false) => {
     if (html === lastSavedText.current || plain.trim().length < 10) return;
     lastSavedText.current = html;
     updateRequestContent(requestId, html);
     try {
       if (reportIdRef.current) {
-        await updateReport(reportIdRef.current, { content: html, notes: 'Auto-saved' });
+        await updateReport(reportIdRef.current, { content: html, notes: 'Auto-saved' }, { keepalive });
       } else {
-        const data = await createReport({
-          requestId,
-          title: requestRef.current?.title || 'Research Brief',
-          content: html,
-          isDraft: true,
-          notes: 'Auto-saved',
-        });
+        const data = await createReport(
+          {
+            requestId,
+            title: requestRef.current?.title || 'Research Brief',
+            content: html,
+            isDraft: true,
+            notes: 'Auto-saved',
+          },
+          { keepalive },
+        );
+        if (unmountedRef.current) return;
         if (data?.id) {
           reportIdRef.current = data.id;
           setReportId(data.id);
@@ -95,21 +104,70 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
           setDraftVersion(data.version);
         }
       }
-      setLastSaved(new Date());
+      if (!unmountedRef.current) setLastSaved(new Date());
     } catch {
       // silent — manual save still available
     }
   }, [requestId, updateRequestContent]);
 
-  const [initialContent, setInitialContent] = useState('');
-  const htmlRef = useRef('');
+  const clearPending = useCallback(() => {
+    pendingRef.current = null;
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+  }, []);
+
+  // Persists edits made inside the debounce window that would otherwise be lost
+  // when the officer navigates away or closes the tab.
+  const flushPending = useCallback(
+    (keepalive: boolean) => {
+      const pending = pendingRef.current;
+      if (!pending) return;
+      clearPending();
+      void autoSave(pending.html, pending.plain, keepalive);
+    },
+    [autoSave, clearPending],
+  );
+
+  // autoSave is rebuilt whenever the context re-renders, so the teardown and
+  // pagehide handlers read through a ref to stay registered exactly once.
+  const flushRef = useRef(flushPending);
+  flushRef.current = flushPending;
 
   const handleEditorChange = useCallback((html: string, plain: string) => {
     htmlRef.current = html;
     setEditorText(plain);
+    pendingRef.current = { html, plain };
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => autoSave(html, plain), 3000);
-  }, [autoSave]);
+    autoSaveTimer.current = setTimeout(() => {
+      autoSaveTimer.current = null;
+      flushRef.current(false);
+    }, 3000);
+  }, []);
+
+  // Seeds the saved-content cache from the loaded document without queueing an
+  // autosave, so Save Draft and Submit work on a draft the officer has not typed in.
+  const handleEditorLoaded = useCallback((html: string, plain: string) => {
+    htmlRef.current = html;
+    setEditorText(plain);
+    lastSavedText.current = html;
+    pendingRef.current = null;
+  }, []);
+
+  // Fetch report content and reviews from API on mount
+  useEffect(() => {
+    return () => {
+      unmountedRef.current = true;
+      flushRef.current(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onPageHide = () => flushRef.current(true);
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, []);
 
   // Fetch report content and reviews from API on mount
   useEffect(() => {
@@ -281,6 +339,8 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
       toast.error('Nothing to save — the draft is empty.');
       return;
     }
+    // A manual save supersedes anything queued in the debounce window.
+    clearPending();
     updateRequestContent(requestId, html);
     lastSavedText.current = html;
 
@@ -320,6 +380,9 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
       toast.error('Cannot submit an empty brief.');
       return;
     }
+    // Submitting creates a new version, so drop the queued autosave to avoid
+    // writing the same content twice.
+    clearPending();
     updateRequestContent(requestId, html);
     
     // Get latest attachment info if available
@@ -552,6 +615,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             <RichTextEditor
               content={initialContent}
               onChange={handleEditorChange}
+              onContentLoaded={handleEditorLoaded}
               annotations={annotationTargets}
               onAnnotationClick={setActiveCommentId}
             />

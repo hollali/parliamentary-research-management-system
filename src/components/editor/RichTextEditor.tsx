@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { EditorContent, useEditor, type Editor } from '@tiptap/react';
+import { EditorContent, useEditor } from '@tiptap/react';
+import { createNodeFromContent } from '@tiptap/core';
+import { Fragment } from '@tiptap/pm/model';
+import type { Editor } from '@tiptap/core';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
@@ -19,6 +22,8 @@ import { AnnotationHighlight, refreshAnnotations, type AnnotationTarget } from '
 interface RichTextEditorProps {
   content: string;
   onChange: (html: string, text: string) => void;
+  onContentLoaded?: (html: string, text: string) => void;
+  onReady?: (editor: Editor) => void;
   annotations?: AnnotationTarget[];
   onAnnotationClick?: (commentId: string) => void;
   placeholder?: string;
@@ -31,6 +36,8 @@ const EDITOR_CLASS =
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   content,
   onChange,
+  onContentLoaded,
+  onReady,
   annotations = [],
   onAnnotationClick,
   placeholder = 'Start drafting the research brief…',
@@ -39,10 +46,14 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [showFind, setShowFind] = useState(false);
   const annotationsRef = useRef(annotations);
   const onChangeRef = useRef(onChange);
+  const onContentLoadedRef = useRef(onContentLoaded);
   const loadedContent = useRef<string | null>(null);
+  const lastReported = useRef<string | null>(null);
+  const applyingRef = useRef(false);
 
   annotationsRef.current = annotations;
   onChangeRef.current = onChange;
+  onContentLoadedRef.current = onContentLoaded;
 
   const editor = useEditor({
     extensions: [
@@ -73,20 +84,58 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         return false;
       },
     },
-    onUpdate: ({ editor: instance }) => {
-      onChangeRef.current(instance.getHTML(), instance.getText());
+    onTransaction: ({ editor: instance, transaction }) => {
+      if (applyingRef.current) return;
+      if (!transaction.docChanged) return;
+      // setEditable also dispatches a doc-changing transaction that is not an
+      // officer edit. Comparing serialised HTML means only genuine content
+      // changes are reported, so no phantom change is ever saved.
+      const html = instance.getHTML();
+      if (html === lastReported.current) return;
+      lastReported.current = html;
+      onChangeRef.current(html, instance.getText());
     },
   });
 
   useEffect(() => {
     if (!editor) return;
+    if (editor.isEditable === !readOnly) return;
     editor.setEditable(!readOnly);
   }, [editor, readOnly]);
+
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
+  useEffect(() => {
+    if (!editor) return;
+    onReadyRef.current?.(editor);
+  }, [editor]);
 
   useEffect(() => {
     if (!editor || loadedContent.current === content) return;
     loadedContent.current = content;
-    editor.commands.setContent(content || '', { emitUpdate: false });
+    // setContent dispatches synchronously, so the guard must be raised first.
+    // Replacing the document directly with addToHistory:false keeps the loaded
+    // draft out of the undo stack, so the first Ctrl+Z cannot wipe it.
+    applyingRef.current = true;
+    try {
+      const node = createNodeFromContent(content || '', editor.schema, {
+        parseOptions: editor.options.parseOptions,
+      });
+      const replacement = node instanceof Fragment ? node : node.content;
+      editor.view.dispatch(
+        editor.state.tr
+          .replaceWith(0, editor.state.doc.content.size, replacement)
+          .setMeta('addToHistory', false),
+      );
+      lastReported.current = editor.getHTML();
+    } finally {
+      applyingRef.current = false;
+    }
+    // Report the document as TipTap actually parsed it, so callers can save
+    // without waiting for the first keystroke. Deliberately not routed through
+    // onChange, which would schedule a redundant autosave on every open.
+    onContentLoadedRef.current?.(editor.getHTML(), editor.getText());
   }, [editor, content]);
 
   useEffect(() => {
