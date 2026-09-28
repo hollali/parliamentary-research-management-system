@@ -2,14 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useApp } from '../context/AppContext';
 import { useToast } from '../lib/toast';
 import { getRequest, getReviews, createReport, updateReport, getAttachments, uploadFile, downloadFile, deleteAttachment } from '../lib/api';
-import { highlightText } from '../lib/highlight';
 import { normalizeFetchedRequest } from '../lib/requestNormalize';
 import { honourable } from '../lib/format';
 import { ResearchRequest } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Highlight from '@tiptap/extension-highlight';
+import { RichTextEditor } from './editor/RichTextEditor';
 import { 
   FileText, 
   Save, 
@@ -25,17 +22,6 @@ import {
   Download,
   Trash2,
   Paperclip,
-  Bold,
-  Italic,
-  Strikethrough,
-  List,
-  ListOrdered,
-  Quote,
-  Heading1,
-  Heading2,
-  Minus,
-  Undo,
-  Redo,
   ChevronDown
 } from 'lucide-react';
 
@@ -115,22 +101,15 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     }
   }, [requestId, updateRequestContent]);
 
-  const editor = useEditor({
-    extensions: [StarterKit, Highlight.configure({ multicolor: true })],
-    content: '',
-    editorProps: {
-      attributes: {
-        class: 'prose prose-sm max-w-none font-serif text-sm leading-relaxed min-h-[400px] h-full outline-none p-4',
-      },
-    },
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      const plain = editor.getText();
-      setEditorText(plain);
-      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(() => autoSave(html, plain), 3000);
-    },
-  });
+  const [initialContent, setInitialContent] = useState('');
+  const htmlRef = useRef('');
+
+  const handleEditorChange = useCallback((html: string, plain: string) => {
+    htmlRef.current = html;
+    setEditorText(plain);
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => autoSave(html, plain), 3000);
+  }, [autoSave]);
 
   // Fetch report content and reviews from API on mount
   useEffect(() => {
@@ -193,9 +172,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
           }
         }
         setEditorText(content);
-        if (editor && content) {
-          editor.commands.setContent(content, { emitUpdate: false });
-        }
+        setInitialContent(content);
         finishLoading();
       })
       .catch(() => {
@@ -205,9 +182,7 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
         setReportId(request?.reportId || null);
         draftVersionRef.current = request?.draftVersion || 1;
         setDraftVersion(request?.draftVersion || 1);
-        if (editor && fallback) {
-          editor.commands.setContent(fallback, { emitUpdate: false });
-        }
+        setInitialContent(fallback);
         finishLoading();
       });
 
@@ -289,39 +264,19 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
     return `${bytes} B`;
   };
 
-  // Rebuild highlights only when the set of annotated comments changes,
-  // never while the officer is typing (avoids resetting the caret each keystroke).
-  const highlightSignature = useMemo(
-    () => JSON.stringify(reviewComments.map(c => c.highlightedText || '')),
+  // Reviewer annotations are rendered as ProseMirror decorations over the live
+  // document, so highlighting never rewrites or flattens the officer's formatting.
+  const annotationTargets = useMemo(
+    () =>
+      reviewComments
+        .filter((c) => !c.resolved && c.highlightedText && c.highlightedText.length > 2)
+        .map((c) => ({ text: c.highlightedText!, commentId: c.id, author: c.userName })),
     [reviewComments],
   );
 
-  useEffect(() => {
-    if (!editor) return;
-    // Only rewrite the document when there are actual annotations; with none,
-    // the document may contain rich formatting we must not flatten.
-    const hasHighlights = reviewComments.some(
-      (c) => c.highlightedText && c.highlightedText.length > 2,
-    );
-    if (!hasHighlights) return;
-    const content = highlightText(editor.getText(), reviewComments);
-    if (!content.trim() || editor.getHTML() === content) return;
-    const { from, to } = editor.state.selection;
-    editor.commands.setContent(content, { emitUpdate: false });
-    const size = editor.state.doc.content.size;
-    try {
-      editor.commands.setTextSelection({
-        from: Math.min(from, size),
-        to: Math.min(to, size),
-      });
-    } catch {
-      // Selection may be outside the new doc; ignore.
-    }
-  }, [highlightSignature]);
-
   const handleSaveDraft = async () => {
-    const plain = editor?.getText() ?? editorText;
-    const html = editor?.getHTML() ?? editorText;
+    const plain = editorText;
+    const html = htmlRef.current || editorText;
     if (!plain.trim()) {
       toast.error('Nothing to save — the draft is empty.');
       return;
@@ -358,8 +313,8 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
 
   const handleSubmitReview = async () => {
     setSubmitting(true);
-    const html = editor?.getHTML() ?? editorText;
-    const plain = editor?.getText() ?? editorText;
+    const html = htmlRef.current || editorText;
+    const plain = editorText;
     if (!plain.trim()) {
       setSubmitting(false);
       toast.error('Cannot submit an empty brief.');
@@ -593,100 +548,16 @@ export const OfficerRevisionWorkspaceView: React.FC<OfficerRevisionWorkspaceView
             </span>
           </div>
 
-          {/* Toolbar */}
-          {editor && (
-            <div className="border-b border-[#c4c5d7] px-4 py-2 flex items-center gap-1 flex-wrap">
-              <button
-                onClick={() => editor.chain().focus().toggleBold().run()}
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('bold') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
-                title="Bold"
-              >
-                <Bold className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleItalic().run()}
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('italic') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
-                title="Italic"
-              >
-                <Italic className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleStrike().run()}
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('strike') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
-                title="Strikethrough"
-              >
-                <Strikethrough className="w-3.5 h-3.5" />
-              </button>
-              <div className="w-px h-5 bg-gray-200 mx-1" />
-              <button
-                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('heading', { level: 1 }) ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
-                title="Heading 1"
-              >
-                <Heading1 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('heading', { level: 2 }) ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
-                title="Heading 2"
-              >
-                <Heading2 className="w-3.5 h-3.5" />
-              </button>
-              <div className="w-px h-5 bg-gray-200 mx-1" />
-              <button
-                onClick={() => editor.chain().focus().toggleBulletList().run()}
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('bulletList') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
-                title="Bullet List"
-              >
-                <List className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('orderedList') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
-                title="Numbered List"
-              >
-                <ListOrdered className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleBlockquote().run()}
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${editor.isActive('blockquote') ? 'bg-[#dce1ff] text-[#0037b0]' : 'text-gray-500'}`}
-                title="Blockquote"
-              >
-                <Quote className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().setHorizontalRule().run()}
-                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors"
-                title="Horizontal Rule"
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </button>
-              <div className="w-px h-5 bg-gray-200 mx-1" />
-              <button
-                onClick={() => editor.chain().focus().undo().run()}
-                disabled={!editor.can().undo()}
-                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-30"
-                title="Undo"
-              >
-                <Undo className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => editor.chain().focus().redo().run()}
-                disabled={!editor.can().redo()}
-                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-30"
-                title="Redo"
-              >
-                <Redo className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          <div className="flex-1 overflow-y-auto min-h-[400px] max-h-[600px]">
-            <EditorContent editor={editor} className="p-6" />
+          <div className="flex-1 min-h-0 max-h-[600px]">
+            <RichTextEditor
+              content={initialContent}
+              onChange={handleEditorChange}
+              annotations={annotationTargets}
+              onAnnotationClick={setActiveCommentId}
+            />
           </div>
 
           <div className="bg-[#f3f4f5] border-t border-[#c4c5d7] px-6 py-3 text-xs text-gray-500 font-semibold flex justify-between items-center">
-            <span>Word count: {editor ? editor.getText().split(/\s+/).filter(Boolean).length : 0} words</span>
             <span>{lastSaved ? `Last saved: ${lastSaved.toLocaleTimeString()}` : 'Not yet saved'}</span>
           </div>
         </div>
