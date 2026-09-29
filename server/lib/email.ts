@@ -21,6 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
   REVISED: "Revised",
   APPROVED: "Approved",
   DELIVERED: "Delivered",
+  MEMBER_CONFIRMED: "Member Confirmed",
   CLOSED: "Closed",
   OVERDUE: "Overdue",
 };
@@ -172,6 +173,42 @@ export function revisionRequestedEmail(officerName: string, requestNumber: strin
           <p style="margin: 8px 0 0 0;"><strong>Feedback:</strong></p>
           <p style="margin: 8px 0 0 0; color: #555; font-style: italic;">"${esc(comment)}"</p>
         </div>
+        <a href="${FRONTEND_URL}" style="display: inline-block; background: #0037b0; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px;">Open in Portal</a>
+        <p style="color: #888; font-size: 11px; margin-top: 24px;">Parliamentary Research Department — PRRMS</p>
+      </div>
+    </div>`;
+  return { subject, html };
+}
+
+export function memberConfirmedEmail(
+  adminName: string,
+  requestNumber: string,
+  title: string,
+  memberName: string,
+  confirmedAt: string,
+  note?: string | null,
+) {
+  const subject = `Brief ${esc(requestNumber)} confirmed and closed`;
+  const noteBlock = note
+    ? `<p style="margin: 8px 0 0 0;"><strong>Member's remarks:</strong></p>
+       <p style="margin: 8px 0 0 0; color: #555; font-style: italic;">"${esc(note)}"</p>`
+    : "";
+  const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #006b2c; padding: 20px; text-align: center;">
+        <h1 style="color: white; font-size: 18px; margin: 0;">PRRMS Member Sign-off</h1>
+      </div>
+      <div style="padding: 24px; background: #f9fafb;">
+        <p>Dear ${esc(adminName)},</p>
+        <p>The requesting member has reviewed the delivered brief and confirmed they are satisfied with the research.</p>
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <p style="margin: 0;"><strong>Request:</strong> ${esc(requestNumber)}</p>
+          <p style="margin: 8px 0 0 0;"><strong>Title:</strong> ${esc(title)}</p>
+          <p style="margin: 8px 0 0 0;"><strong>Confirmed by:</strong> ${esc(memberName)}</p>
+          <p style="margin: 8px 0 0 0;"><strong>Confirmed at:</strong> ${esc(confirmedAt)}</p>
+          ${noteBlock}
+        </div>
+        <p>The request has been marked <strong>Closed</strong>. No further action is required.</p>
         <a href="${FRONTEND_URL}" style="display: inline-block; background: #0037b0; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px;">Open in Portal</a>
         <p style="color: #888; font-size: 11px; margin-top: 24px;">Parliamentary Research Department — PRRMS</p>
       </div>

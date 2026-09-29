@@ -1,6 +1,7 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,9 +28,13 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir);
   },
   filename: (_req, file, cb) => {
-    const timestamp = Date.now();
+    // A bare Date.now() collides: two uploads of the same type within one
+    // millisecond produced an identical path, and diskStorage truncates, so the
+    // second write silently overwrote the first user's bytes while both
+    // Attachment rows pointed at the same file. A random component makes the
+    // name collision-proof and non-enumerable.
     const ext = ALLOWED_MIMETYPES[file.mimetype] || path.extname(file.originalname).slice(1);
-    cb(null, `${timestamp}.${ext}`);
+    cb(null, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.${ext}`);
   },
 });
 

@@ -7,6 +7,7 @@ export const REQUEST_STATUS_LABELS: Record<string, string> = {
   REVISED: "Revised",
   APPROVED: "Approved",
   DELIVERED: "Delivered",
+  MEMBER_CONFIRMED: "Confirmed by Member",
   CLOSED: "Closed",
   OVERDUE: "Overdue",
 };

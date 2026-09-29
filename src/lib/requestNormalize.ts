@@ -20,6 +20,9 @@ export function normalizeFetchedRequest(
     title: data?.title || "",
     topic: data?.subject || data?.title || "",
     category: data?.category?.name || data?.category || "",
+    committeeId: data?.committeeId || data?.category?.id || null,
+    committeeName: data?.category?.name || data?.committee?.name || null,
+    requestingOffice: data?.requestingOffice ?? null,
     member: data?.submitter
       ? `${data.submitter.firstName} ${data.submitter.lastName}`
       : "",
@@ -55,6 +58,8 @@ export function normalizeFetchedRequest(
     })),
     content: data?.reports?.[0]?.content || "",
     reportId: data?.reports?.[0]?.id || null,
+    memberConfirmedAt: data?.memberConfirmedAt || null,
+    memberConfirmationNote: data?.memberConfirmationNote ?? null,
     assignedOfficers: (data?.assignments || [])
       .filter((a: any) => a.assignedTo && !a.declinedAt && !a.supersededAt)
       .map((a: any) => ({

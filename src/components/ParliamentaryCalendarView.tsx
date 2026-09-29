@@ -41,6 +41,7 @@ const STATUS_COLORS: Record<string, string> = {
   OVERDUE: 'bg-red-100 text-red-700 border-red-200',
   APPROVED: 'bg-green-100 text-green-700 border-green-200',
   DELIVERED: 'bg-green-100 text-green-700 border-green-200',
+  MEMBER_CONFIRMED: 'bg-green-100 text-green-700 border-green-200',
   CLOSED: 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
@@ -61,7 +62,7 @@ export const ParliamentaryCalendarView: React.FC = () => {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
 
-  const isCompleted = (status: string) => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(status);
+  const isCompleted = (status: string) => ['APPROVED', 'DELIVERED', 'MEMBER_CONFIRMED', 'CLOSED'].includes(status);
 
   // Deadlines within the displayed month (for the summary chip)
   const monthDeadlines = useMemo(() => {
@@ -105,7 +106,7 @@ export const ParliamentaryCalendarView: React.FC = () => {
     const now = new Date();
     return requests.filter((r) =>
       r.deadline && new Date(r.deadline) < now &&
-      !['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)
+      !['APPROVED', 'DELIVERED', 'MEMBER_CONFIRMED', 'CLOSED'].includes(r.status)
     );
   }, [requests]);
 

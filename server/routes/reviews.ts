@@ -1,30 +1,37 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken } from "../middleware/auth.js";
-import { sendEmail, revisionRequestedEmail, commentAddedEmail } from "../lib/email.js";
+import { sendEmail, revisionRequestedEmail, commentAddedEmail, memberConfirmedEmail } from "../lib/email.js";
 import { shouldNotify, shouldEmail, createNotification } from "../lib/notifications.js";
 import { lookupByIdOrNumber } from "../lib/requestUtils.js";
+import { authorizeRequest } from "../lib/authorization.js";
+import { sanitizeRichText } from "../lib/sanitize.js";
 import { logger } from "../lib/logger.js";
+import type { RequestStatus } from "../../src/generated/prisma/enums.js";
 
 const router = Router();
+
+// A member can only sign off on research an admin has already approved.
+const CONFIRMABLE_STATUSES: RequestStatus[] = ["APPROVED", "DELIVERED"];
 
 
 // List reviews for a request
 router.get("/request/:requestId", authenticateToken, async (req, res) => {
   try {
-    const request = await prisma.researchRequest.findUnique({
-      where: lookupByIdOrNumber(req.params.requestId),
-      select: { id: true },
-    });
-    if (!request) {
-      return res.json([]);
+    // The write path below is gated to admins and the submitting MP; the read
+    // path has to enforce the same rule or any account can read every
+    // participant's feedback and highlighted passages on any request.
+    const access = await authorizeRequest(req.params.requestId, req.user!);
+    if (!access) {
+      return res.status(404).json({ error: "Request not found" });
     }
 
     const comments = await prisma.reviewComment.findMany({
-      where: { requestId: request.id, parentId: null },
+      where: { requestId: access.id, parentId: null },
       include: {
         author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } },
         replies: {
+          where: { requestId: access.id },
           include: { author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } } },
           orderBy: { createdAt: "asc" },
         },
@@ -43,8 +50,8 @@ router.post("/", authenticateToken, async (req, res) => {
   try {
     const { reportId, requestId, section, text, highlightedText, startOffset, endOffset, parentId } = req.body;
 
-    if (!reportId || !requestId || !text) {
-      return res.status(400).json({ error: "reportId, requestId, and text are required" });
+    if (!requestId || !text) {
+      return res.status(400).json({ error: "requestId and text are required" });
     }
 
     const request = await prisma.researchRequest.findUnique({
@@ -63,26 +70,55 @@ router.post("/", authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    // The report must belong to the request
-    const report = await prisma.researchReport.findUnique({
-      where: { id: reportId },
-      select: { id: true, requestId: true },
-    });
-    if (!report) {
-      return res.status(404).json({ error: "Report not found" });
+    // When attached to a report, the report must belong to the request.
+    // Comments without a reportId are request-level directives/feedback.
+    if (reportId) {
+      const report = await prisma.researchReport.findUnique({
+        where: { id: reportId },
+        select: { id: true, requestId: true },
+      });
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+      if (report.requestId !== request.id) {
+        return res.status(400).json({ error: "Report does not belong to this request" });
+      }
     }
-    if (report.requestId !== request.id) {
-      return res.status(400).json({ error: "Report does not belong to this request" });
+
+    // A reply must point at a root comment on the SAME request. Without this
+    // check a comment authored on request A could be grafted into request B's
+    // thread, leaking it to B's participants and hiding it from A.
+    if (parentId) {
+      const parent = await prisma.reviewComment.findUnique({
+        where: { id: parentId },
+        select: { id: true, requestId: true, parentId: true },
+      });
+      if (!parent) {
+        return res.status(404).json({ error: "Parent comment not found" });
+      }
+      if (parent.requestId !== request.id) {
+        return res.status(400).json({ error: "Parent comment belongs to a different request" });
+      }
+      if (parent.parentId !== null) {
+        return res.status(400).json({ error: "Replies cannot be nested more than one level" });
+      }
+    }
+
+    if (typeof text !== "string" || !text.trim()) {
+      return res.status(400).json({ error: "text must be a non-empty string" });
     }
 
     const comment = await prisma.reviewComment.create({
       data: {
-        reportId,
+        reportId: reportId || null,
         requestId: request.id,
         authorId: userId,
         section,
-        text,
-        highlightedText: highlightedText || null,
+        // Comment text is plain, but highlightedText quotes a passage out of
+        // the report. Both are stripped of markup so no future rendering path
+        // can turn them into script.
+        text: sanitizeRichText(text),
+        highlightedText: highlightedText ? sanitizeRichText(highlightedText) : null,
         startOffset: startOffset ?? null,
         endOffset: endOffset ?? null,
         parentId: parentId || null,
@@ -135,9 +171,22 @@ router.post("/", authenticateToken, async (req, res) => {
 // Resolve a review comment
 router.put("/:commentId/resolve", authenticateToken, async (req, res) => {
   try {
-    const comment = await prisma.reviewComment.findUnique({ where: { id: req.params.commentId } });
+    const { role, userId } = req.user!;
+    const comment = await prisma.reviewComment.findUnique({
+      where: { id: req.params.commentId },
+      select: { id: true, requestId: true, authorId: true, resolved: true },
+    });
     if (!comment) {
       return res.status(404).json({ error: "Comment not found" });
+    }
+
+    // Only admins and the submitting MP may close feedback on this request.
+    // Previously this route had no authorization at all: any authenticated
+    // account could resolve any comment in the system, and the activity log
+    // then attributed the action to them.
+    const access = await authorizeRequest(comment.requestId, { role, userId });
+    if (!access) {
+      return res.status(403).json({ error: "Access denied" });
     }
 
     const updated = await prisma.reviewComment.update({
@@ -306,6 +355,13 @@ router.post("/approve", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Report not found" });
     }
 
+    // The authorization above is against the request, so the report has to
+    // belong to that same request. Without this check the submitting MP of R1
+    // could approve an arbitrary report owned by a different member.
+    if (report.requestId !== request.id) {
+      return res.status(400).json({ error: "Report does not belong to this request" });
+    }
+
     const acceptedAt = new Date();
     const [updatedReport, updatedRequest] = await prisma.$transaction([
       prisma.researchReport.update({
@@ -372,6 +428,126 @@ router.post("/approve", authenticateToken, async (req, res) => {
     res.json({ report: updatedReport, request: updatedRequest });
   } catch (error) {
     logger.requestError("POST", "/approve", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Member sign-off — the requesting MP confirms they are satisfied with a brief
+// that has already been approved (and optionally delivered) by an admin.
+router.post("/confirm", authenticateToken, async (req, res) => {
+  try {
+    const { requestId, note } = req.body;
+
+    if (!requestId) {
+      return res.status(400).json({ error: "requestId is required" });
+    }
+
+    const request = await prisma.researchRequest.findUnique({
+      where: lookupByIdOrNumber(requestId),
+      include: { submitter: { select: { firstName: true, lastName: true } } },
+    });
+    if (!request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    // Only the member who submitted the request may sign off on it.
+    const { role, userId } = req.user!;
+    const isSubmitter = role === "MP" && request.submitterId === userId;
+    if (!isSubmitter) {
+      return res.status(403).json({ error: "Only the requesting member can confirm this brief" });
+    }
+
+    // Sign-off is only meaningful once an admin has approved the research.
+    // `memberConfirmedAt` — not the status — is the idempotency guard: a brief
+    // that has been signed off moves straight to CLOSED, so checking the status
+    // would let the member confirm the same brief twice.
+    if (request.memberConfirmedAt || request.status === "MEMBER_CONFIRMED") {
+      return res.status(409).json({ error: "This brief has already been confirmed" });
+    }
+    if (!CONFIRMABLE_STATUSES.includes(request.status)) {
+      return res.status(400).json({ error: "This brief is not awaiting your confirmation" });
+    }
+
+    const confirmedAt = new Date();
+    const trimmedNote = typeof note === "string" && note.trim() ? note.trim() : null;
+
+    // The member's sign-off completes the request. Leaving it sitting in a
+    // "Confirmed by Member" state meant the brief never actually closed, and the
+    // status badge read "Confirmed" on a finished job.
+    const updatedRequest = await prisma.researchRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "CLOSED",
+        dateClosed: confirmedAt,
+        memberConfirmedAt: confirmedAt,
+        memberConfirmedById: userId,
+        memberConfirmationNote: trimmedNote,
+      },
+    });
+
+    // Record the member's remarks on the request timeline so they stay visible
+    // alongside the brief itself.
+    if (trimmedNote) {
+      await prisma.reviewComment.create({
+        data: {
+          requestId: request.id,
+          authorId: userId,
+          section: "Member Sign-off",
+          text: trimmedNote,
+        },
+        include: { author: { select: { id: true, firstName: true, lastName: true, initials: true, title: true } } },
+      });
+    }
+
+    await prisma.activityLog.create({
+      data: {
+        authorId: userId,
+        action: "MEMBER_CONFIRMED",
+        entityType: "ResearchRequest",
+        entityId: request.id,
+        description: `Member confirmed satisfaction and closed the brief for ${request.requestNumber}${trimmedNote ? `: ${trimmedNote.slice(0, 160)}` : ""}`,
+      },
+    });
+
+    // Notify every active admin for the record. The request is already closed.
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { id: true, email: true, firstName: true },
+    });
+
+    const memberName = `${request.submitter?.firstName ?? ""} ${request.submitter?.lastName ?? ""}`.trim() || "The requesting member";
+    const confirmedAtLabel = confirmedAt.toLocaleString("en-GB", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+    for (const admin of admins) {
+      if (await shouldNotify(admin.id, "statusChanges")) {
+        await createNotification({
+          recipientId: admin.id,
+          type: "MEMBER_CONFIRMED",
+          title: "Brief Confirmed and Closed",
+          message: `${memberName} confirmed they are satisfied with "${request.title}", which is now closed.`,
+          requestId: request.id,
+        }, { dispatchEmail: false });
+      }
+
+      if (await shouldEmail(admin.id)) {
+        const email = memberConfirmedEmail(
+          admin.firstName,
+          request.requestNumber,
+          request.title,
+          memberName,
+          confirmedAtLabel,
+          trimmedNote,
+        );
+        sendEmail({ to: admin.email, ...email }).catch((err) => logger.requestError("POST", "/confirm (email)", err));
+      }
+    }
+
+    res.json({ request: updatedRequest, confirmedAt });
+  } catch (error) {
+    logger.requestError("POST", "/confirm", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

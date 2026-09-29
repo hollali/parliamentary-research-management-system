@@ -64,8 +64,8 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
   };
 
   // Form state
-  const [researchTopic, setResearchTopic] = useState('');
   const [topic, setTopic] = useState('');
+  const [requestingOffice, setRequestingOffice] = useState('');
   const [description, setDescription] = useState('');
   const [language, setLanguage] = useState('English');
   const [deadline, setDeadline] = useState(getDefaultDeadline);
@@ -83,7 +83,8 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
   const validateStep = (stepToValidate: number): ValidationError[] => {
     const fieldsToValidate: Record<string, { value: string; validators: ((val: string) => string | null)[] }> = {};
     if (stepToValidate === 1) {
-      fieldsToValidate.topic = { value: topic, validators: [v => validateRequired(v, 'Specific Request Topic'), v => validateMinLength(v, 5, 'Specific Request Topic')] };
+      fieldsToValidate.topic = { value: topic, validators: [v => validateRequired(v, 'Research topic'), v => validateMinLength(v, 5, 'Research topic')] };
+      fieldsToValidate.requestingOffice = { value: requestingOffice, validators: [v => validateRequired(v, 'Requesting office or ministry')] };
       if (currentUser.role === 'ADMIN') {
         fieldsToValidate.selectedMemberId = { value: selectedMemberId, validators: [v => validateRequired(v, 'On Behalf Of')] };
       }
@@ -144,17 +145,16 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
         : currentUser.name;
 
       const ok = await addRequest({
-        title: topic || 'Research Request: ' + researchTopic,
-        topic: topic || researchTopic + ' Research Request',
-        scope: researchTopic,
-        category: researchTopic,
+        title: topic,
+        topic,
+        description,
+        requestingOffice: requestingOffice.trim(),
         member: memberName,
         assignedOfficerId: null,
         assignedOfficerName: null,
         status: 'SUBMITTED',
         priority,
         deadline,
-        description,
         language,
         templateId: selectedTemplateId || null,
         attachments: uploadedFiles.map(f => {
@@ -265,15 +265,56 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                 
                 {/* Research Topic */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Research Topic</label>
+                  <label htmlFor="topic" className="text-xs font-bold text-[#434655] uppercase tracking-wider">
+                    Research Topic <span className="text-[#ba1a1a]">*</span>
+                  </label>
                   <input 
+                    id="topic"
                     type="text"
-                    value={researchTopic}
-                    onChange={(e) => setResearchTopic(e.target.value)}
-                    placeholder="e.g. Climate policy and carbon taxation"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    onBlur={() => {
+                      const fieldErrors = validateForm({
+                        topic: { value: topic, validators: [v => validateRequired(v, 'Research topic'), v => validateMinLength(v, 5, 'Research topic')] }
+                      });
+                      setErrors(prev => [...prev.filter(e => e.field !== 'topic'), ...fieldErrors]);
+                    }}
+                    placeholder="e.g. Legal framework for autonomous vehicle liability"
                     className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
                   />
-                  <p className="text-[10px] text-gray-500">Enter the primary research topic this request covers.</p>
+                  {getFieldError('topic') && (
+                    <div aria-live="polite">
+                      <p className="text-[10px] text-red-600">{getFieldError('topic')}</p>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-500">The subject of the research request. This is what the brief will be titled.</p>
+                </div>
+
+                {/* Requesting Office / Ministry */}
+                <div className="space-y-1.5">
+                  <label htmlFor="requestingOffice" className="text-xs font-bold text-[#434655] uppercase tracking-wider">
+                    Requesting Office / Ministry <span className="text-[#ba1a1a]">*</span>
+                  </label>
+                  <input
+                    id="requestingOffice"
+                    type="text"
+                    value={requestingOffice}
+                    onChange={(e) => setRequestingOffice(e.target.value)}
+                    onBlur={() => {
+                      const fieldErrors = validateForm({
+                        requestingOffice: { value: requestingOffice, validators: [v => validateRequired(v, 'Requesting office or ministry')] }
+                      });
+                      setErrors(prev => [...prev.filter(e => e.field !== 'requestingOffice'), ...fieldErrors]);
+                    }}
+                    placeholder="e.g. Office of the Minority Leader, Ministry of Finance"
+                    className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
+                  />
+                  {getFieldError('requestingOffice') && (
+                    <div aria-live="polite">
+                      <p className="text-[10px] text-red-600">{getFieldError('requestingOffice')}</p>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-500">Which office, ministry, or cabinet is this request coming from?</p>
                 </div>
 
                 {/* Submitting Requester */}
@@ -331,28 +372,6 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                   </div>
                 )}
 
-                {/* Specific Topic / Title */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Specific Request Topic</label>
-                  <input 
-                    type="text" 
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    onBlur={() => {
-                      const fieldErrors = validateForm({
-                        topic: { value: topic, validators: [v => validateRequired(v, 'Specific Request Topic'), v => validateMinLength(v, 5, 'Specific Request Topic')] }
-                      });
-                      setErrors(prev => [...prev.filter(e => e.field !== 'topic'), ...fieldErrors]);
-                    }}
-                    placeholder="e.g. Legal Framework for Autonomous Vehicle Liability"
-                    className="w-full bg-[#f3f4f5] border border-[#c4c5d7] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#0037b0]"
-                  />
-                  {getFieldError('topic') && (
-                    <div aria-live="polite">
-                      <p className="text-[10px] text-red-600">{getFieldError('topic')}</p>
-                    </div>
-                  )}
-                </div>
 
               </div>
             )}
@@ -365,11 +384,12 @@ export const NewRequestFormView: React.FC<NewRequestFormViewProps> = ({ onSucces
                 {/* Policy / Research question details */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold text-[#434655] uppercase tracking-wider">Request Scope & Key Research Questions</label>
+                    <label htmlFor="description" className="text-xs font-bold text-[#434655] uppercase tracking-wider">Request Scope & Key Research Questions</label>
                   </div>
 
                   <div className="space-y-1.5">
                     <textarea 
+                      id="description"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       onBlur={() => {

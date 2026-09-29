@@ -6,6 +6,7 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import { logger } from "./lib/logger.js";
+import prisma from "./lib/prisma.js";
 import { isSmtpConfigured } from "./lib/email.js";
 import multer from "multer";
 
@@ -81,7 +82,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   res.status(500).json({ error: "Internal server error" });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`PRRMS API server running on port ${PORT}`, { route: `/`, method: 'START' });
   if (!isSmtpConfigured()) {
     logger.warn('SMTP not configured — emails will be logged to console only', { route: '/', method: 'START' });
@@ -89,5 +90,41 @@ app.listen(PORT, () => {
   checkOverdueRequests();
   setInterval(() => checkOverdueRequests(), 60 * 60 * 1000).unref();
 });
+
+/**
+ * Without an explicit shutdown the process is killed as soon as the container
+ * stops, so in-flight requests are dropped and the Postgres connection pool is
+ * torn down mid-transaction. Drain first, then close Prisma, then exit — and
+ * force-exit if something refuses to settle.
+ */
+let shuttingDown = false;
+
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info(`Received ${signal} — shutting down gracefully`, { route: "/", method: "SHUTDOWN" });
+
+  const forceExit = setTimeout(() => {
+    logger.error("Graceful shutdown timed out — forcing exit", { route: "/", method: "SHUTDOWN" });
+    process.exit(1);
+  }, 10_000);
+  forceExit.unref();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+    await prisma.$disconnect();
+    logger.info("Shutdown complete", { route: "/", method: "SHUTDOWN" });
+    clearTimeout(forceExit);
+    process.exit(0);
+  } catch (err) {
+    logger.error("Error during shutdown", { error: err });
+    process.exit(1);
+  }
+}
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
 
 export default app;

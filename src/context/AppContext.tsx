@@ -24,10 +24,12 @@ import {
   checkHealth,
   getToken,
   clearToken,
+  setUnauthorizedHandler,
   createReview,
   resolveReviewComment,
   requestRevision,
   approveReport,
+  confirmSatisfaction,
   createReport,
   getUsers,
   createAssignment,
@@ -69,6 +71,7 @@ interface AppContextType extends AppState {
   refreshRequests: () => Promise<void>;
   requestRevisionForRequest: (requestId: string, commentText?: string) => Promise<void>;
   approveRequestForReview: (requestId: string) => Promise<void>;
+  confirmMemberSatisfaction: (requestId: string, note?: string) => Promise<void>;
   updateRequestStatus: (
     requestId: string,
     status: ResearchRequest["status"],
@@ -86,7 +89,7 @@ interface AppContextType extends AppState {
     startOffset?: number,
     endOffset?: number,
     parentId?: string,
-  ) => void;
+  ) => Promise<boolean>;
   resolveComment: (requestId: string, commentId: string) => void;
   updateRequestContent: (requestId: string, content: string) => void;
   uploadAttachment: (requestId: string, attachment: Attachment) => void;
@@ -150,6 +153,7 @@ function mapApiRequest(r: any): ResearchRequest {
     REVISED: "REVISED",
     APPROVED: "APPROVED",
     DELIVERED: "DELIVERED",
+    MEMBER_CONFIRMED: "MEMBER_CONFIRMED",
     CLOSED: "CLOSED",
     OVERDUE: "OVERDUE",
   };
@@ -158,7 +162,12 @@ function mapApiRequest(r: any): ResearchRequest {
     id: r.requestNumber || r.id,
     title: r.title,
     topic: r.subject || r.title,
-    category: r.category?.name || r.category || r.scope || "",
+    // Committee name only. This used to fall back to r.scope, which made a
+    // free-text topic masquerade as the category across every view.
+    category: r.category?.name || "",
+    committeeId: r.committeeId || r.category?.id || null,
+    committeeName: r.category?.name || null,
+    requestingOffice: r.requestingOffice ?? null,
     member: r.submitter
       ? `${r.submitter.firstName} ${r.submitter.lastName}`
       : "",
@@ -440,25 +449,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => clearInterval(interval);
   }, [isOnline, fetchNotifications]);
 
+  // localStorage writes can throw QuotaExceededError, and an exception inside
+  // an effect body propagates to the nearest error boundary. Wrap them so a
+  // full storage quota degrades to "not persisted" instead of tearing down the
+  // app (and losing whatever the officer was editing).
+  const persist = useCallback((key: string, value: unknown) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (err) {
+      console.warn(`Could not persist ${key}:`, err);
+    }
+  }, []);
+
+  // The full request array (every report's HTML) is deliberately NOT cached:
+  // it is never read back, and serializing it on every 3s autosave was both a
+  // quota risk and a confidentiality exposure via localStorage.
   useEffect(() => {
-    localStorage.setItem("prrms_user", JSON.stringify(currentUser));
-  }, [currentUser]);
+    persist("prrms_user", currentUser);
+  }, [currentUser, persist]);
 
   useEffect(() => {
-    localStorage.setItem("prrms_requests", JSON.stringify(requests));
-  }, [requests]);
+    persist("prrms_history", history);
+  }, [history, persist]);
 
   useEffect(() => {
-    localStorage.setItem("prrms_notifications", JSON.stringify(notifications));
-  }, [notifications]);
-
-  useEffect(() => {
-    localStorage.setItem("prrms_history", JSON.stringify(history));
-  }, [history]);
-
-  useEffect(() => {
-    localStorage.setItem("prrms_prefs", JSON.stringify(preferences));
-  }, [preferences]);
+    persist("prrms_prefs", preferences);
+  }, [preferences, persist]);
 
   const login = async (email: string, password?: string): Promise<boolean> => {
     if (!isOnline) return false;
@@ -482,10 +498,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const logout = () => {
-    logoutApi().catch((err) =>
-      console.warn("Failed to log out on server:", err?.message),
-    );
+  const resetLocalSession = useCallback(() => {
     clearToken();
     localStorage.removeItem("prrms_user");
     localStorage.removeItem("prrms_requests");
@@ -502,6 +515,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       initials: "",
       title: "",
     });
+  }, []);
+
+  // When the API rejects our credentials (expired token, deactivated account),
+  // tear the session down so the user lands back on the login screen instead
+  // of staring at a shell whose every request fails.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      resetLocalSession();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [resetLocalSession]);
+
+  const logout = () => {
+    logoutApi().catch((err) =>
+      console.warn("Failed to log out on server:", err?.message),
+    );
+    resetLocalSession();
   };
 
   const switchUser = async (role: Role) => {
@@ -542,15 +572,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         await createRequest({
           title: newReqData.title,
-          subject: newReqData.topic,
           description: newReqData.description || "",
-          scope: newReqData.scope,
           keyStakeholders: newReqData.keyStakeholders,
           dataSources: newReqData.dataSources,
           language: newReqData.language,
           priority: newReqData.priority,
           deadline: newReqData.deadline,
+          // Dropped: `subject` was a byte-for-byte copy of title, and
+          // `category` was never read by the server (it wants committeeId).
           committeeId: (newReqData as any).committeeId,
+          requestingOffice: (newReqData as any).requestingOffice,
           templateId: newReqData.templateId || undefined,
         });
         // Refresh requests from API
@@ -608,15 +639,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     requestId: string,
     commentText?: string,
   ) => {
+    // The revision endpoint is keyed off the request, so it works even before a
+    // draft exists (e.g. a member sending a delivered brief back).
     if (isOnline) {
-      const req = requests.find((r) => r.id === requestId);
-      if (req?.reportId) {
-        await requestRevision({
-          reportId: req.reportId,
-          requestId,
-          commentText,
-        });
-      }
+      await requestRevision({ reportId: "", requestId, commentText });
     }
 
     setRequests((prev) =>
@@ -649,6 +675,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  // The requesting MP signs off on a brief an admin has already approved.
+  // Admins are notified server-side so they can close the request out.
+  const confirmMemberSatisfaction = async (
+    requestId: string,
+    note?: string,
+  ) => {
+    if (isOnline) {
+      const result = await confirmSatisfaction({ requestId, note });
+      setRequests((prev) =>
+        prev.map((req) =>
+          req.id === requestId
+            ? {
+                ...req,
+                status: "CLOSED",
+                dateClosed: result?.confirmedAt ?? new Date().toISOString(),
+                memberConfirmedAt:
+                  result?.confirmedAt ?? new Date().toISOString(),
+                memberConfirmationNote: note?.trim() || null,
+              }
+            : req,
+        ),
+      );
+      fetchNotifications();
+      return;
+    }
+
+    setRequests((prev) =>
+      prev.map((req) =>
+        req.id === requestId
+          ? {
+              ...req,
+              status: "CLOSED",
+              dateClosed: new Date().toISOString(),
+              memberConfirmedAt: new Date().toISOString(),
+              memberConfirmationNote: note?.trim() || null,
+            }
+          : req,
+      ),
+    );
+  };
+
   const updateRequestStatus = async (
     requestId: string,
     status: ResearchRequest["status"],
@@ -663,6 +730,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       REVISED: "REVISED",
       APPROVED: "APPROVED",
       DELIVERED: "DELIVERED",
+      MEMBER_CONFIRMED: "MEMBER_CONFIRMED",
       CLOSED: "CLOSED",
     };
 
@@ -761,6 +829,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     endOffset?: number,
     parentId?: string,
   ) => {
+    let persisted = !isOnline;
     const newComment: Comment = {
       id: "comment_" + Date.now(),
       userName:
@@ -779,25 +848,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       resolved: false,
     };
 
-    // Persist to backend if online
+    // Persist to backend if online. Comments are request-level by default so
+    // feedback on a request without a report yet is still saved.
     if (isOnline) {
       const req = requests.find((r) => r.id === requestId);
-      if (req?.reportId) {
-        try {
-          const created = await createReview({
-            reportId: req.reportId,
-            requestId,
-            section: section || "",
-            text,
-            highlightedText,
-            startOffset,
-            endOffset,
-            parentId,
-          });
-          newComment.id = created.id || newComment.id;
-        } catch {
-          // Fall through to local-only
-        }
+      try {
+        const created = await createReview({
+          reportId: req?.reportId ?? undefined,
+          requestId,
+          section: section || "",
+          text,
+          highlightedText,
+          startOffset,
+          endOffset,
+          parentId,
+        });
+        newComment.id = created.id || newComment.id;
+        persisted = true;
+      } catch {
+        persisted = false;
       }
     }
 
@@ -816,6 +885,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     if (isOnline) {
       fetchNotifications();
     }
+
+    return persisted;
   };
 
   const resolveComment = async (requestId: string, commentId: string) => {
@@ -989,6 +1060,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         refreshRequests,
         requestRevisionForRequest,
         approveRequestForReview,
+        confirmMemberSatisfaction,
         updateRequestStatus,
         updateRequestPriority,
         extendRequestDeadline,

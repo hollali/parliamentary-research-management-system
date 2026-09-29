@@ -10,6 +10,7 @@ import { fileURLToPath } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { logger } from "../lib/logger.js";
+import { canAccessRequest, accessRequestSelect } from "../lib/authorization.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, "../../uploads");
@@ -17,22 +18,9 @@ const execFileAsync = promisify(execFile);
 
 const router = Router();
 
-function canAccessRequest(request: {
-  submitterId: string | null;
-  assignedOfficerId: string | null;
-  teamId: string | null;
-  assignments?: Array<{ assignedToId: string | null }>;
-  team?: { members?: Array<{ userId: string }> } | null;
-}, userId: string, role: string) {
-  if (role === "ADMIN") return true;
-
-  const isSubmitter = request.submitterId === userId;
-  const isAssignedOfficer = request.assignedOfficerId === userId;
-  const isDirectAssignment = request.assignments?.some((assignment) => assignment.assignedToId === userId) ?? false;
-  const isTeamMember = request.team?.members?.some((member) => member.userId === userId) ?? false;
-
-  return isSubmitter || isAssignedOfficer || isDirectAssignment || isTeamMember;
-}
+/** Bound on concurrent LibreOffice conversions, to cap server memory use. */
+const MAX_CONCURRENT_CONVERSIONS = 4;
+let activeConversions = 0;
 
 // List attachments for a request
 router.get("/request/:requestId", authenticateToken, async (req, res) => {
@@ -41,22 +29,14 @@ router.get("/request/:requestId", authenticateToken, async (req, res) => {
     const { userId, role } = req.user!;
     const request = await prisma.researchRequest.findUnique({
       where: lookupByIdOrNumber(requestId),
-      select: {
-        id: true,
-        requestNumber: true,
-        submitterId: true,
-        assignedOfficerId: true,
-        teamId: true,
-        assignments: { select: { assignedToId: true } },
-        team: { select: { members: { select: { userId: true } } } },
-      },
+      select: { ...accessRequestSelect, requestNumber: true },
     });
 
     if (!request) {
       return res.status(404).json({ error: "Request not found" });
     }
 
-    if (!canAccessRequest(request, userId, role)) {
+    if (!canAccessRequest(request, { userId, role })) {
       return res.status(403).json({ error: "Access denied" });
     }
 
@@ -86,16 +66,7 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
     const attachment = await prisma.attachment.findUnique({
       where: { id: attachmentId },
       include: {
-        request: {
-          select: {
-            id: true,
-            submitterId: true,
-            assignedOfficerId: true,
-            teamId: true,
-            assignments: { select: { assignedToId: true } },
-            team: { select: { members: { select: { userId: true } } } },
-          },
-        },
+        request: { select: accessRequestSelect },
       },
     });
 
@@ -103,7 +74,7 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Attachment not found" });
     }
 
-    if (!canAccessRequest(attachment.request, userId, role)) {
+    if (!canAccessRequest(attachment.request, { userId, role })) {
       return res.status(403).json({ error: "Access denied" });
     }
 
@@ -119,6 +90,14 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
 
     // Convert non-PDF, non-ZIP files to PDF via LibreOffice headless
     if (attachment.fileType !== "PDF" && attachment.fileType !== "ZIP") {
+      // LibreOffice is expensive (hundreds of MB RSS per process). Without a
+      // bound, one member could spawn hundreds of concurrent conversions and
+      // exhaust the server. Skip the queue when it is saturated rather than
+      // failing the whole request.
+      if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) {
+        return res.status(503).json({ error: "Document conversion is busy, please retry shortly" });
+      }
+      activeConversions += 1;
       try {
         tempPdfDir = fs.mkdtempSync(path.join(os.tmpdir(), "prrms-pdf-"));
         await execFileAsync(
@@ -130,36 +109,72 @@ router.get("/:attachmentId/download", authenticateToken, async (req, res) => {
         if (fs.existsSync(converted)) {
           servePath = converted;
           downloadName = pdfName;
+          contentType = "application/pdf";
         } else {
           logger.requestError("PDF conversion", attachment.name, new Error("Converted file not found"));
-          tempPdfDir = null;
         }
       } catch (convErr) {
         logger.requestError("PDF conversion", attachment.name, convErr);
-        tempPdfDir = null;
+      } finally {
+        activeConversions -= 1;
       }
-    } else if (attachment.fileType === "PDF") {
-      contentType = "application/pdf";
-    } else {
+    } else if (attachment.fileType === "ZIP") {
       contentType = "application/zip";
     }
 
+    // `filename*` is only meaningful for the converted PDF. For every other
+    // type it must track the real name, otherwise browsers download a ZIP as
+    // "data.pdf" because filename* takes precedence.
+    const dispositionName = downloadName;
     res.setHeader("Content-Type", contentType);
-    res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"; filename*=UTF-8''${encodeURIComponent(pdfName)}`);
-    res.setHeader("Content-Length", fs.statSync(servePath).size);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${dispositionName}"; filename*=UTF-8''${encodeURIComponent(dispositionName)}`,
+    );
+
+    let size: number;
+    try {
+      size = fs.statSync(servePath).size;
+    } catch (statErr) {
+      logger.requestError("stat", attachment.name, statErr);
+      return res.status(404).json({ error: "File not found on disk" });
+    }
+    res.setHeader("Content-Length", size);
+
+    // Clean up the temp directory on completion AND on client abort. "finish"
+    // alone never fires for an aborted response, which leaked a temp dir on
+    // every cancelled download. The handle must not be nulled on the failure
+    // paths above or the directory is never removed.
+    if (tempPdfDir) {
+      const dir = tempPdfDir;
+      const cleanup = () => {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+      };
+      res.on("close", cleanup);
+    }
 
     const stream = fs.createReadStream(servePath);
+    // An unhandled 'error' on the stream is a fatal, uncaught exception that
+    // takes down the whole process. The file can vanish between the statSync
+    // above and the stream's open() (e.g. a concurrent delete).
+    stream.on("error", (streamErr) => {
+      logger.requestError("stream", attachment.name, streamErr);
+      if (!res.headersSent) {
+        res.status(404).json({ error: "File not found on disk" });
+      } else {
+        res.destroy();
+      }
+    });
+    res.on("close", () => stream.destroy());
     stream.pipe(res);
-
-    // Clean up temp directory after response completes
-    if (tempPdfDir) {
-      res.on("finish", () => {
-        try { fs.rmSync(tempPdfDir!, { recursive: true, force: true }); } catch {}
-      });
-    }
   } catch (error) {
     logger.requestError("GET", "/:attachmentId/download", error);
-    res.status(500).json({ error: "Internal server error" });
+    if (tempPdfDir) {
+      try { fs.rmSync(tempPdfDir, { recursive: true, force: true }); } catch {}
+    }
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
 });
 
@@ -172,16 +187,7 @@ router.delete("/:attachmentId", authenticateToken, async (req, res) => {
     const attachment = await prisma.attachment.findUnique({
       where: { id: attachmentId },
       include: {
-        request: {
-          select: {
-            requestNumber: true,
-            submitterId: true,
-            assignedOfficerId: true,
-            teamId: true,
-            assignments: { select: { assignedToId: true } },
-            team: { select: { members: { select: { userId: true } } } },
-          },
-        },
+        request: { select: { ...accessRequestSelect, requestNumber: true } },
       },
     });
 
@@ -189,7 +195,7 @@ router.delete("/:attachmentId", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Attachment not found" });
     }
 
-    if (!canAccessRequest(attachment.request, userId, role)) {
+    if (!canAccessRequest(attachment.request, { userId, role })) {
       return res.status(403).json({ error: "Access denied" });
     }
 
@@ -238,15 +244,7 @@ router.post(
 
       const request = await prisma.researchRequest.findUnique({
         where: lookupByIdOrNumber(requestId),
-        select: {
-          id: true,
-          requestNumber: true,
-          submitterId: true,
-          assignedOfficerId: true,
-          teamId: true,
-          assignments: { select: { assignedToId: true } },
-          team: { select: { members: { select: { userId: true } } } },
-        },
+        select: { ...accessRequestSelect, requestNumber: true },
       });
       if (!request) {
         return res.status(404).json({ error: "Request not found" });
@@ -254,7 +252,7 @@ router.post(
 
       // Authorization: only the submitter, assigned officer, direct assignees, team members, or admin can upload
       const { role, userId } = req.user!;
-      if (!canAccessRequest(request, userId, role)) {
+      if (!canAccessRequest(request, { userId, role })) {
         return res.status(403).json({ error: "Access denied" });
       }
 

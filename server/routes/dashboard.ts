@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
+import { activityScopeFor } from "../lib/authorization.js";
 import type { RequestStatus } from "../../src/generated/prisma/enums.js";
 
 const router = Router();
@@ -33,14 +34,19 @@ router.get("/", authenticateToken, async (req, res) => {
       prisma.researchRequest.count({ where: baseWhere }),
       prisma.researchRequest.count({ where: { ...baseWhere, status: { in: ["SUBMITTED", "ASSIGNED"] } } }),
       prisma.researchRequest.count({ where: { ...baseWhere, status: { in: ["IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"] } } }),
-      prisma.researchRequest.count({ where: { ...baseWhere, status: { in: ["APPROVED", "DELIVERED", "CLOSED"] } } }),
+      prisma.researchRequest.count({ where: { ...baseWhere, status: { in: ["APPROVED", "DELIVERED", "MEMBER_CONFIRMED", "CLOSED"] } } }),
       prisma.researchRequest.count({ where: { ...baseWhere, deadline: { lt: now }, status: { in: ["SUBMITTED", "ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"] } } }),
       prisma.notification.count({ where: { recipientId: userId, isRead: false } }),
     ]);
 
-    // Recent activity
+    // Recent activity. The activity log is global, so it must be scoped to the
+    // caller — otherwise every MP received every other user's login events and
+    // request titles. `baseWhere` only ever carries submitterId/assignedOfficerId,
+    // so keying off `baseWhere.authorId` silently always took the `{}` branch.
+    const activityWhere = await activityScopeFor({ userId, role });
+
     const recentActivity = await prisma.activityLog.findMany({
-      where: baseWhere.authorId ? { authorId: baseWhere.authorId } : {},
+      where: activityWhere,
       include: { author: { select: { id: true, firstName: true, lastName: true, initials: true } } },
       orderBy: { createdAt: "desc" },
       take: 10,
@@ -96,7 +102,7 @@ router.get("/analytics", authenticateToken, async (req, res) => {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const ACTIVE_STATUSES: RequestStatus[] = ["SUBMITTED", "ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"];
-    const COMPLETED_STATUSES: RequestStatus[] = ["APPROVED", "DELIVERED", "CLOSED"];
+    const COMPLETED_STATUSES: RequestStatus[] = ["APPROVED", "DELIVERED", "MEMBER_CONFIRMED", "CLOSED"];
 
     const [
       requestsByStatus,
@@ -149,7 +155,7 @@ router.get("/analytics", authenticateToken, async (req, res) => {
       prisma.$queryRaw<Array<{ avgDays: number | null }>>`
         SELECT AVG(EXTRACT(EPOCH FROM (COALESCE("dateCompleted", "createdAt") - COALESCE("dateSubmitted", "createdAt"))) / 86400.0) AS "avgDays"
         FROM "research_requests"
-        WHERE "status" IN ('APPROVED','DELIVERED','CLOSED') AND "dateCompleted" IS NOT NULL
+        WHERE "status" IN ('APPROVED','DELIVERED','MEMBER_CONFIRMED','CLOSED') AND "dateCompleted" IS NOT NULL
       `,
     ]);
 
@@ -192,8 +198,7 @@ router.get("/activity", authenticateToken, async (req, res) => {
     const l = Math.min(100, Math.max(1, parseInt(rawLimit as string) || 50));
     const skip = (p - 1) * l;
 
-    const where: any = {};
-    if (role === "MP") where.authorId = userId;
+    const where: any = await activityScopeFor({ userId, role }) ?? {};
     if (action) where.action = action;
     if (entityType) where.entityType = entityType;
 

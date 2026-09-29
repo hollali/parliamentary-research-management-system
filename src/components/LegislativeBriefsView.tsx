@@ -30,6 +30,7 @@ const STATUS_LABELS: Record<string, string> = {
   REVISED: 'Revised',
   APPROVED: 'Approved',
   DELIVERED: 'Delivered',
+  MEMBER_CONFIRMED: 'Confirmed by Member',
   CLOSED: 'Closed',
   OVERDUE: 'Overdue',
 };
@@ -43,6 +44,7 @@ const STATUS_COLORS: Record<string, string> = {
   REVISED: 'bg-teal-50 text-teal-700',
   APPROVED: 'bg-green-50 text-green-700',
   DELIVERED: 'bg-emerald-50 text-emerald-700',
+  MEMBER_CONFIRMED: 'bg-emerald-50 text-emerald-700',
   CLOSED: 'bg-gray-100 text-gray-500',
   OVERDUE: 'bg-red-50 text-[#ba1a1a]',
 };
@@ -50,7 +52,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_GROUPS = [
   { label: 'All', values: null },
   { label: 'Active', values: ['SUBMITTED', 'ASSIGNED', 'IN_PROGRESS', 'DRAFT_SUBMITTED', 'REVISION_REQUESTED', 'REVISED'] },
-  { label: 'Completed', values: ['APPROVED', 'DELIVERED', 'CLOSED'] },
+  { label: 'Completed', values: ['APPROVED', 'DELIVERED', 'MEMBER_CONFIRMED', 'CLOSED'] },
   { label: 'Overdue', values: ['OVERDUE'] },
 ];
 
@@ -69,7 +71,7 @@ const PIPELINE: PipelineColumn[] = [
   { key: 'preparation', label: 'In Preparation', hint: 'Requested or being researched', values: ['SUBMITTED', 'ASSIGNED', 'IN_PROGRESS'], dotClass: 'bg-[#0037b0]', headerBg: 'bg-[#dce1ff]/60', accent: 'text-[#0037b0]' },
   { key: 'awaiting-review', label: 'Awaiting Review', hint: 'Draft in — action required', values: ['DRAFT_SUBMITTED', 'REVISION_REQUESTED', 'REVISED'], dotClass: 'bg-amber-500', headerBg: 'bg-amber-50', accent: 'text-amber-700', attention: true },
   { key: 'approved', label: 'Approved', hint: 'Brief approved', values: ['APPROVED'], dotClass: 'bg-green-600', headerBg: 'bg-green-50', accent: 'text-green-700' },
-  { key: 'delivered', label: 'Delivered', hint: 'Sent to member', values: ['DELIVERED'], dotClass: 'bg-emerald-600', headerBg: 'bg-emerald-50', accent: 'text-emerald-700' },
+  { key: 'delivered', label: 'Delivered', hint: 'Sent to member', values: ['DELIVERED', 'MEMBER_CONFIRMED'], dotClass: 'bg-emerald-600', headerBg: 'bg-emerald-50', accent: 'text-emerald-700' },
   { key: 'closed', label: 'Closed', hint: 'Matter concluded', values: ['CLOSED'], dotClass: 'bg-gray-400', headerBg: 'bg-gray-100', accent: 'text-gray-500' },
 ];
 
@@ -165,7 +167,7 @@ export const LegislativeBriefsView: React.FC<LegislativeBriefsViewProps> = ({ on
     const c: Record<string, number> = { all: requests.length, active: 0, completed: 0, overdue: 0 };
     requests.forEach((r) => {
       if (['OVERDUE'].includes(r.status)) c.overdue++;
-      else if (['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)) c.completed++;
+      else if (['APPROVED', 'DELIVERED', 'MEMBER_CONFIRMED', 'CLOSED'].includes(r.status)) c.completed++;
       else c.active++;
     });
     return c;

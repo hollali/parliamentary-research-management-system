@@ -10,5 +10,12 @@ export default defineConfig({
   },
   datasource: {
     url: process.env["DATABASE_URL"],
+    // Required by `prisma migrate diff --from-migrations` (the drift check in
+    // CI): Prisma replays the whole migration history into a throwaway database
+    // to compare it against the datamodel. Defaults to the main database in
+    // local development, so it is only required in CI.
+    ...(process.env["SHADOW_DATABASE_URL"]
+      ? { shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"] }
+      : {}),
   },
 });

@@ -70,13 +70,14 @@ export interface ResearchRequest {
   assignedOfficers?: { id: string; firstName: string; lastName: string; initials: string }[];
   declinedAssignments?: { id: string; firstName: string; lastName: string; initials: string; reason: string | null }[];
   previousOfficers?: { id: string; firstName: string; lastName: string; initials: string; reason: string | null }[];
-  status: 'SUBMITTED' | 'ASSIGNED' | 'IN_PROGRESS' | 'DRAFT_SUBMITTED' | 'REVISION_REQUESTED' | 'REVISED' | 'APPROVED' | 'DELIVERED' | 'CLOSED' | 'OVERDUE';
+  status: 'SUBMITTED' | 'ASSIGNED' | 'IN_PROGRESS' | 'DRAFT_SUBMITTED' | 'REVISION_REQUESTED' | 'REVISED' | 'APPROVED' | 'DELIVERED' | 'MEMBER_CONFIRMED' | 'CLOSED' | 'OVERDUE';
   priority: 'STANDARD' | 'URGENT';
   dateSubmitted: string;
   dateSubmittedRaw?: string | null;
   deadline: string;
   description: string;
   scope?: string;
+  requestingOffice?: string | null;
   language: string;
   draftVersion: number;
   attachments: Attachment[];
@@ -85,6 +86,9 @@ export interface ResearchRequest {
   keyStakeholders?: string;
   dataSources?: string;
   templateId?: string | null;
+  memberConfirmedAt?: string | null;
+  memberConfirmationNote?: string | null;
+  dateClosed?: string | null;
 }
 
 export interface NotificationItem {

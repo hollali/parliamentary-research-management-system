@@ -49,7 +49,7 @@ export const OfficerWorkflowView: React.FC<OfficerWorkflowViewProps> = ({
 
   // Officer's assigned requests — backend already filters by role (direct, assignment, or team)
   const officerRequests = requests.filter(
-    (r) => !["APPROVED", "DELIVERED", "CLOSED"].includes(r.status),
+    (r) => !["APPROVED", "DELIVERED", "MEMBER_CONFIRMED", "CLOSED"].includes(r.status),
   );
 
   const shortId = (id: string) => (id.length > 8 ? `O#${id.slice(0, 8)}` : id);

@@ -34,6 +34,8 @@ const getStatusLabel = (status: ResearchRequest["status"]) => {
       return "Approved";
     case "DELIVERED":
       return "Delivered";
+    case "MEMBER_CONFIRMED":
+      return "Confirmed by Member";
     case "CLOSED":
       return "Closed";
     case "OVERDUE":
@@ -53,6 +55,7 @@ const STATUS_STYLES: Record<string, string> = {
   OVERDUE: "bg-[#ffdad6] text-[#93000a]",
   APPROVED: "bg-emerald-100 text-emerald-800",
   DELIVERED: "bg-emerald-100 text-emerald-800",
+  MEMBER_CONFIRMED: "bg-emerald-100 text-emerald-800",
   CLOSED: "bg-emerald-100 text-emerald-800",
 };
 
@@ -64,7 +67,7 @@ export const OfficerDashboardView: React.FC<OfficerDashboardViewProps> = ({
   const activeRequests = useMemo(
     () =>
       requests.filter(
-        (r) => !["APPROVED", "DELIVERED", "CLOSED"].includes(r.status),
+        (r) => !["APPROVED", "DELIVERED", "MEMBER_CONFIRMED", "CLOSED"].includes(r.status),
       ),
     [requests],
   );
@@ -86,7 +89,7 @@ export const OfficerDashboardView: React.FC<OfficerDashboardViewProps> = ({
   const completedRequests = useMemo(
     () =>
       requests.filter((r) =>
-        ["APPROVED", "DELIVERED", "CLOSED"].includes(r.status),
+        ["APPROVED", "DELIVERED", "MEMBER_CONFIRMED", "CLOSED"].includes(r.status),
       ),
     [requests],
   );

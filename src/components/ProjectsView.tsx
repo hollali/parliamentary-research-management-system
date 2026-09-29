@@ -305,6 +305,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
         return 40;
       case "APPROVED":
         return 100;
+      case "DELIVERED":
+      case "MEMBER_CONFIRMED":
+      case "CLOSED":
+        return 100;
       default:
         return 0;
     }
@@ -313,6 +317,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
   const getProgressColor = (status: string): string => {
     switch (status) {
       case "APPROVED":
+      case "MEMBER_CONFIRMED":
+      case "CLOSED":
         return "bg-emerald-600";
       case "OVERDUE":
         return "bg-[#ba1a1a]";
@@ -372,6 +378,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ onNavigate }) => {
         return (
           <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
             Approved
+          </span>
+        );
+      case "MEMBER_CONFIRMED":
+        return (
+          <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
+            Confirmed by Member
           </span>
         );
       default:

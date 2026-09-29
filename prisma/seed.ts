@@ -6,6 +6,18 @@ import bcrypt from "bcryptjs";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+// The seed creates full-privilege admin accounts with a well-known password
+// and is not idempotent (bare creates throw P2002 on a second run). Running it
+// against a shared environment would hand out working admin credentials for
+// free, so refuse unless the operator opts in explicitly.
+if (process.env.NODE_ENV === "production" && process.env.PRRMS_ALLOW_SEED !== "true") {
+  console.error(
+    "Refusing to seed: NODE_ENV is production. The seed creates admin accounts\n" +
+      "with a shared demo password. Set PRRMS_ALLOW_SEED=true to override.",
+  );
+  process.exit(1);
+}
+
 async function main() {
   console.log("Seeding database...");
 

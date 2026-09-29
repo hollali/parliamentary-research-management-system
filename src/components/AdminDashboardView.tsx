@@ -408,6 +408,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             Delivered
           </span>
         );
+      case "MEMBER_CONFIRMED":
+        return (
+          <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+            Confirmed by Member
+          </span>
+        );
       case "CLOSED":
         return (
           <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">

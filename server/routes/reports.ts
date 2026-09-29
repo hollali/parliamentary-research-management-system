@@ -4,9 +4,32 @@ import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, draftSubmittedEmail } from "../lib/email.js";
 import { shouldNotify, shouldEmail, createNotification } from "../lib/notifications.js";
 import { logger } from "../lib/logger.js";
-import { lookupByIdOrNumber } from "../lib/requestUtils.js";
+import { lookupByIdOrNumber, retryOnUniqueViolation } from "../lib/requestUtils.js";
+import { authorizeRequest } from "../lib/authorization.js";
+import { sanitizeRichText } from "../lib/sanitize.js";
 
 const router = Router();
+
+/**
+ * Workflow states in which a brief body may still be edited. Once a request
+ * reaches APPROVED / DELIVERED / MEMBER_CONFIRMED / CLOSED the text is part of
+ * the parliamentary record and must be frozen.
+ */
+const EDITABLE_STATUSES = ["ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"];
+
+const VALID_FILE_TYPES = ["PDF", "DOCX", "XLSX", "ZIP", "PPTX", "TXT", "CSV", "RTF", "ODT"] as const;
+
+function validFileType(value: unknown): (typeof VALID_FILE_TYPES)[number] {
+  const t = typeof value === "string" ? value.toUpperCase() : "";
+  return (VALID_FILE_TYPES as readonly string[]).includes(t)
+    ? (t as (typeof VALID_FILE_TYPES)[number])
+    : "PDF";
+}
+
+function validFileSize(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+}
 
 async function officerCanWorkRequest(requestId: string, userId: string): Promise<boolean> {
   const request = await prisma.researchRequest.findUnique({
@@ -39,9 +62,9 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
     }
 
     // Only working/officer-owned states are editable; reviews must be submitted
-    // from these states and never resurface from APPROVED/DELIVERED/CLOSED.
-    const editableStatuses = ["ASSIGNED", "IN_PROGRESS", "DRAFT_SUBMITTED", "REVISION_REQUESTED", "REVISED"];
-    if (req.user!.role === "RESEARCH_OFFICER" && !editableStatuses.includes(request.status)) {
+    // from these states and never resurface from APPROVED/DELIVERED/
+    // MEMBER_CONFIRMED/CLOSED.
+    if (req.user!.role === "RESEARCH_OFFICER" && !EDITABLE_STATUSES.includes(request.status)) {
       return res.status(409).json({ error: "Request is not in an editable state" });
     }
 
@@ -51,60 +74,77 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
       return res.status(403).json({ error: "Not assigned to this request" });
     }
 
-    // Get next version number
-    const lastReport = await prisma.researchReport.findFirst({
-      where: { requestId: request.id },
-      orderBy: { version: "desc" },
-    });
-    const nextVersion = (lastReport?.version || 0) + 1;
-
-    const report = await prisma.researchReport.create({
-      data: {
-        requestId: request.id,
-        authorId: req.user!.userId,
-        uploadedById: req.user!.userId,
-        title,
-        content,
-        filePath,
-        fileType: fileType || "PDF",
-        fileSize,
-        isDraft: isDraft !== false,
-        version: nextVersion,
-      },
-      include: {
-        author: { select: { id: true, firstName: true, lastName: true, initials: true } },
-      },
-    });
-
-    // Create version record
-    await prisma.reportVersion.create({
-      data: {
-        reportId: report.id,
-        version: nextVersion,
-        content,
-        filePath,
-        fileType: fileType || "PDF",
-        fileSize,
-        notes: notes || `Version ${nextVersion} uploaded`,
-      },
-    });
-
     // Workflow status only advances on an explicit submission. Auto-save and
     // Save Draft (isDraft true) must not move the request to "Draft Submitted"
     // nor notify reviewers. A resubmission after a revision request becomes
     // REVISED; a first submission becomes DRAFT_SUBMITTED.
     const isSubmission = isDraft === false;
-    const nextStatus = isSubmission
-      ? request.status === "REVISION_REQUESTED" ? "REVISED" : "DRAFT_SUBMITTED"
-      : request.status;
 
-    await prisma.researchRequest.update({
-      where: { id: request.id },
-      data: {
-        ...(isSubmission ? { status: nextStatus } : {}),
-        draftVersion: nextVersion,
-      },
+    // Report + its first version + the workflow status bump are one logical
+    // unit. Without a transaction a failure part-way through leaves a report
+    // with no version row at all, and the diff viewer is permanently empty.
+    const [report] = await retryOnUniqueViolation(async () => {
+      // Re-read the latest version inside the attempt: the number is chosen by
+      // a read-then-write, so two officers saving at the same moment can compute
+      // the same version. research_reports has a unique (requestId, version)
+      // index, and the database rejecting the duplicate is the signal to
+      // recompute rather than surfacing a 500 to the user.
+      const latest = await prisma.researchReport.findFirst({
+        where: { requestId: request.id },
+        orderBy: { version: "desc" },
+        select: { version: true },
+      });
+      const version = (latest?.version || 0) + 1;
+
+      return prisma.$transaction(async (tx) => {
+        const created = await tx.researchReport.create({
+          data: {
+            requestId: request.id,
+            authorId: req.user!.userId,
+            uploadedById: req.user!.userId,
+            title,
+            content: sanitizeRichText(content),
+            filePath,
+            fileType: validFileType(fileType),
+            fileSize: validFileSize(fileSize),
+            isDraft: isDraft !== false,
+            version,
+          },
+          include: {
+            author: { select: { id: true, firstName: true, lastName: true, initials: true } },
+          },
+        });
+
+        await tx.reportVersion.create({
+          data: {
+            reportId: created.id,
+            version,
+            content: sanitizeRichText(content),
+            filePath,
+            fileType: validFileType(fileType),
+            fileSize: validFileSize(fileSize),
+            notes: notes || `Version ${version} uploaded`,
+          },
+        });
+
+        // Workflow status only advances on an explicit submission (see above).
+        const nextStatus = isSubmission
+          ? request.status === "REVISION_REQUESTED" ? "REVISED" : "DRAFT_SUBMITTED"
+          : request.status;
+
+        await tx.researchRequest.update({
+          where: { id: request.id },
+          data: {
+            ...(isSubmission ? { status: nextStatus } : {}),
+            draftVersion: version,
+          },
+        });
+
+        return [created];
+      });
     });
+
+    const nextVersion = report.version;
 
     await prisma.activityLog.create({
       data: {
@@ -175,7 +215,10 @@ router.post("/", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), as
 router.put("/:reportId", authenticateToken, requireRole("RESEARCH_OFFICER", "ADMIN"), async (req, res) => {
   try {
     const { content, isDraft, notes } = req.body;
-    const report = await prisma.researchReport.findUnique({ where: { id: req.params.reportId } });
+    const report = await prisma.researchReport.findUnique({
+      where: { id: req.params.reportId },
+      include: { request: { select: { id: true, status: true, requestNumber: true } } },
+    });
     if (!report) return res.status(404).json({ error: "Report not found" });
 
     // RESEARCH_OFFICERs may edit their own reports, or reports for requests
@@ -189,15 +232,58 @@ router.put("/:reportId", authenticateToken, requireRole("RESEARCH_OFFICER", "ADM
       }
     }
 
-    const updated = await prisma.researchReport.update({
-      where: { id: report.id },
-      data: {
-        ...(content !== undefined && { content }),
-        ...(isDraft !== undefined && { isDraft }),
-      },
-      include: {
-        author: { select: { id: true, firstName: true, lastName: true, initials: true } },
-      },
+    // Once a brief has been approved, delivered or signed off, its body is
+    // part of the parliamentary record and must not be rewritten in place.
+    // POST already refused edits outside these states; the update path did
+    // not, which let an officer replace text a member had already approved
+    // while the version history continued to show the old body.
+    if (!EDITABLE_STATUSES.includes(report.request.status)) {
+      return res.status(409).json({ error: "Request is not in an editable state" });
+    }
+
+    if (content !== undefined && typeof content !== "string") {
+      return res.status(400).json({ error: "content must be a string" });
+    }
+
+    const cleanContent = content !== undefined ? sanitizeRichText(content) : undefined;
+
+    // Each autosave creates a version snapshot so the history is an accurate
+    // record of what was submitted versus what is currently being edited.
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.researchReport.update({
+        where: { id: report.id },
+        data: {
+          ...(cleanContent !== undefined && { content: cleanContent }),
+          ...(isDraft !== undefined && { isDraft }),
+        },
+        include: {
+          author: { select: { id: true, firstName: true, lastName: true, initials: true } },
+        },
+      });
+
+      if (cleanContent !== undefined) {
+        const last = await tx.reportVersion.findFirst({
+          where: { reportId: report.id },
+          orderBy: { version: "desc" },
+          select: { version: true, content: true },
+        });
+        // Skip a duplicate snapshot when nothing actually changed.
+        if (last?.content !== cleanContent) {
+          await tx.reportVersion.create({
+            data: {
+              reportId: report.id,
+              version: (last?.version ?? 0) + 1,
+              content: cleanContent,
+              filePath: report.filePath,
+              fileType: report.fileType,
+              fileSize: report.fileSize,
+              notes: notes || `Auto-save ${new Date().toISOString()}`,
+            },
+          });
+        }
+      }
+
+      return next;
     });
 
     res.json(updated);
@@ -210,9 +296,21 @@ router.put("/:reportId", authenticateToken, requireRole("RESEARCH_OFFICER", "ADM
 // Get report versions
 router.get("/:reportId/versions", authenticateToken, async (req, res) => {
   try {
+    // Version history holds the full body of every earlier draft, including
+    // pre-review text. It is guarded exactly like the request it belongs to.
+    const report = await prisma.researchReport.findUnique({
+      where: { id: req.params.reportId },
+      select: { requestId: true },
+    });
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    const access = await authorizeRequest(report.requestId, req.user!);
+    if (!access) return res.status(404).json({ error: "Report not found" });
+
     const versions = await prisma.reportVersion.findMany({
       where: { reportId: req.params.reportId },
       orderBy: { version: "desc" },
+      take: 200,
     });
     res.json(versions);
   } catch (error) {
@@ -225,14 +323,29 @@ router.get("/:reportId/versions", authenticateToken, async (req, res) => {
 router.get("/:reportId/versions/:v1/compare/:v2", authenticateToken, async (req, res) => {
   try {
     const { reportId, v1, v2 } = req.params;
-    const [versionA, versionB] = await Promise.all([
-      prisma.reportVersion.findFirst({ where: { reportId, version: parseInt(v1) } }),
-      prisma.reportVersion.findFirst({ where: { reportId, version: parseInt(v2) } }),
+    const report = await prisma.researchReport.findUnique({
+      where: { id: reportId },
+      select: { requestId: true },
+    });
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    const access = await authorizeRequest(report.requestId, req.user!);
+    if (!access) return res.status(404).json({ error: "Report not found" });
+
+    const versionA = parseInt(v1, 10);
+    const versionB = parseInt(v2, 10);
+    if (!Number.isInteger(versionA) || !Number.isInteger(versionB)) {
+      return res.status(400).json({ error: "Version numbers must be integers" });
+    }
+
+    const [a, b] = await Promise.all([
+      prisma.reportVersion.findFirst({ where: { reportId, version: versionA } }),
+      prisma.reportVersion.findFirst({ where: { reportId, version: versionB } }),
     ]);
-    if (!versionA || !versionB) {
+    if (!a || !b) {
       return res.status(404).json({ error: "Version not found" });
     }
-    res.json({ versionA, versionB });
+    res.json({ versionA: a, versionB: b });
   } catch (error) {
     logger.requestError("GET", "/:reportId/versions/:v1/compare/:v2", error);
     res.status(500).json({ error: "Internal server error" });

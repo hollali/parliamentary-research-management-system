@@ -11,12 +11,13 @@ describe('ResearchRequest status types', () => {
     'REVISED',
     'APPROVED',
     'DELIVERED',
+    'MEMBER_CONFIRMED',
     'CLOSED',
     'OVERDUE',
   ];
 
   it('contains all valid status values', () => {
-    expect(validStatuses).toHaveLength(10);
+    expect(validStatuses).toHaveLength(11);
     expect(validStatuses).toContain('SUBMITTED');
     expect(validStatuses).toContain('ASSIGNED');
     expect(validStatuses).toContain('IN_PROGRESS');
@@ -25,6 +26,7 @@ describe('ResearchRequest status types', () => {
     expect(validStatuses).toContain('REVISED');
     expect(validStatuses).toContain('APPROVED');
     expect(validStatuses).toContain('DELIVERED');
+    expect(validStatuses).toContain('MEMBER_CONFIRMED');
     expect(validStatuses).toContain('CLOSED');
     expect(validStatuses).toContain('OVERDUE');
   });
@@ -39,6 +41,7 @@ describe('ResearchRequest status types', () => {
       REVISED: 'Revised',
       APPROVED: 'Approved',
       DELIVERED: 'Delivered',
+      MEMBER_CONFIRMED: 'Confirmed by Member',
       CLOSED: 'Closed',
       OVERDUE: 'Overdue',
     };

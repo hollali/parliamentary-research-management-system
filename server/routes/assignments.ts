@@ -4,8 +4,16 @@ import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { sendEmail, assignmentEmail } from "../lib/email.js";
 import { shouldNotify, shouldEmail, createNotification } from "../lib/notifications.js";
 import { logger } from "../lib/logger.js";
+import type { RequestStatus } from "../../src/generated/prisma/enums.js";
 
 const router = Router();
+
+/**
+ * An assignment may only be picked up while the request is still sitting in an
+ * unassigned queue state. Accepting an assignment on a request that has already
+ * moved on (APPROVED, ARCHIVED, NEEDS_REVISION, ...) would drag it backwards.
+ */
+const ACCEPTABLE_STATUSES: RequestStatus[] = ["SUBMITTED", "ASSIGNED"];
 
 // List pending requests (admin)
 router.get("/pending", authenticateToken, requireRole("ADMIN"), async (_req, res) => {
@@ -514,6 +522,24 @@ router.post("/:assignmentId/accept", authenticateToken, requireRole("RESEARCH_OF
   try {
     const assignment = await prisma.assignment.findUnique({ where: { id: req.params.assignmentId } });
     if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+
+    // A declined or superseded assignment is closed. Accepting one used to
+    // succeed and flip the request back to IN_PROGRESS, which let an officer
+    // who had been replaced during a reassignment re-enter the workflow and
+    // override the incoming officer's fresh ASSIGNED state.
+    if (assignment.declinedAt) return res.status(409).json({ error: "Assignment was already declined" });
+    if (assignment.supersededAt) return res.status(409).json({ error: "Assignment was superseded" });
+    if (assignment.acceptedAt) return res.status(409).json({ error: "Assignment was already accepted" });
+
+    const request = await prisma.researchRequest.findUnique({
+      where: { id: assignment.requestId },
+      select: { status: true, assignedOfficerId: true },
+    });
+    if (!request) return res.status(404).json({ error: "Request not found" });
+    if (!ACCEPTABLE_STATUSES.includes(request.status)) {
+      return res.status(409).json({ error: `Request is ${request.status} and cannot be picked up` });
+    }
+
     if (assignment.assignedToId !== req.user!.userId) {
       // Allow members of an assigned team to accept the team assignment
       if (!assignment.teamId) return res.status(403).json({ error: "Not your assignment" });
@@ -532,11 +558,26 @@ router.post("/:assignmentId/accept", authenticateToken, requireRole("RESEARCH_OF
           assignedTo: { select: { firstName: true, lastName: true } },
         },
       }),
-      prisma.researchRequest.update({
-        where: { id: assignment.requestId },
+      // Gate the transition on the status we validated above. Without the
+      // guard, an admin approving or archiving the request in the window
+      // between our read and this write would have the status dragged back to
+      // IN_PROGRESS.
+      prisma.researchRequest.updateMany({
+        where: {
+          id: assignment.requestId,
+          status: { in: [...ACCEPTABLE_STATUSES] },
+        },
         data: { status: "IN_PROGRESS" },
       }),
     ]);
+
+    const claim = await prisma.researchRequest.findUnique({
+      where: { id: assignment.requestId },
+      select: { status: true },
+    });
+    if (claim?.status !== "IN_PROGRESS") {
+      return res.status(409).json({ error: "Request changed state before the assignment could be accepted" });
+    }
 
     await prisma.activityLog.create({
       data: {
@@ -572,6 +613,9 @@ router.post("/:assignmentId/decline", authenticateToken, requireRole("RESEARCH_O
     const { reason } = req.body;
     const assignment = await prisma.assignment.findUnique({ where: { id: req.params.assignmentId } });
     if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+    if (assignment.declinedAt) return res.status(409).json({ error: "Assignment was already declined" });
+    if (assignment.supersededAt) return res.status(409).json({ error: "Assignment was superseded" });
+
     if (assignment.assignedToId !== req.user!.userId) {
       // Allow members of an assigned team to decline the team assignment
       if (!assignment.teamId) return res.status(403).json({ error: "Not your assignment" });
@@ -581,23 +625,32 @@ router.post("/:assignmentId/decline", authenticateToken, requireRole("RESEARCH_O
       if (!membership) return res.status(403).json({ error: "Not your assignment" });
     }
 
-    const updated = await prisma.assignment.update({
-      where: { id: req.params.assignmentId },
-      data: {
-        declinedAt: new Date(),
-        declineReason: reason || null,
-      },
-      include: {
-        assignedBy: { select: { firstName: true, lastName: true } },
-        assignedTo: { select: { firstName: true, lastName: true } },
-      },
-    });
-
-    // Unassign and revert status
-    await prisma.researchRequest.update({
-      where: { id: assignment.requestId },
-      data: { assignedOfficerId: null, status: "SUBMITTED" },
-    });
+    // Marking declined and reverting the request were two separate writes, so a
+    // failure in between left the assignment declined while the request still
+    // pointed at the officer who had walked away. Make it one transaction.
+    const [updated] = await prisma.$transaction([
+      prisma.assignment.update({
+        where: { id: req.params.assignmentId },
+        data: {
+          declinedAt: new Date(),
+          declineReason: reason || null,
+        },
+        include: {
+          assignedBy: { select: { firstName: true, lastName: true } },
+          assignedTo: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      // Only clear assignedOfficerId if it still points at this assignment, so
+      // a decline that lands after a reassignment does not unassign the
+      // incoming officer.
+      prisma.researchRequest.updateMany({
+        where: {
+          id: assignment.requestId,
+          assignedOfficerId: assignment.assignedToId,
+        },
+        data: { assignedOfficerId: null, status: "SUBMITTED" },
+      }),
+    ]);
 
     await prisma.activityLog.create({
       data: {

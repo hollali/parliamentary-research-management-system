@@ -28,6 +28,9 @@ import {
   GitBranch,
   Calendar,
   CheckCircle2,
+  BadgeCheck,
+  ShieldCheck,
+  RefreshCw,
   AlertTriangle,
   Gauge,
 } from "lucide-react";
@@ -43,6 +46,8 @@ interface DetailedRequest {
   dateCompleted: string | null;
   dateDelivered: string | null;
   dateClosed: string | null;
+  memberConfirmedAt: string | null;
+  memberConfirmationNote: string | null;
   draftVersion: number;
   category: { id: string; name: string };
   submitter: {
@@ -136,7 +141,8 @@ const PROGRESS_MAP: Record<string, number> = {
   REVISION_REQUESTED: 70,
   REVISED: 75,
   APPROVED: 90,
-  DELIVERED: 100,
+  DELIVERED: 95,
+  MEMBER_CONFIRMED: 100,
   CLOSED: 100,
   OVERDUE: 40,
 };
@@ -149,8 +155,9 @@ const STATUS_STYLES: Record<string, string> = {
   REVISION_REQUESTED: "bg-orange-100 text-orange-800",
   REVISED: "bg-orange-100 text-orange-800",
   OVERDUE: "bg-[#ffdad6] text-[#93000a]",
-  APPROVED: "bg-emerald-100 text-emerald-800",
-  DELIVERED: "bg-emerald-100 text-emerald-800",
+  APPROVED: "bg-teal-100 text-teal-800",
+  DELIVERED: "bg-teal-100 text-teal-800",
+  MEMBER_CONFIRMED: "bg-emerald-100 text-emerald-800",
   CLOSED: "bg-emerald-100 text-emerald-800",
 };
 
@@ -162,6 +169,7 @@ const ACTION_LABELS: Record<string, string> = {
   FILE_UPLOADED: "File Uploaded",
   COMMENT_ADDED: "Comment Added",
   APPROVED: "Approved",
+  MEMBER_CONFIRMED: "Member Confirmed",
   REJECTED: "Rejected",
   DEACTIVATED: "Deactivated",
 };
@@ -245,10 +253,14 @@ function extendDeadlineStr(currentDeadline: string, days: number): string {
 }
 
 const isClosedStatus = (status: ResearchRequest["status"]) =>
-  ["APPROVED", "DELIVERED", "CLOSED"].includes(status);
+  ["APPROVED", "DELIVERED", "MEMBER_CONFIRMED", "CLOSED"].includes(status);
+
+// A brief an admin has approved and sent to the member is waiting on the
+// member to either sign off or send it back with feedback.
+const AWAITING_MEMBER_STATUSES = ["APPROVED", "DELIVERED"];
 
 export const MemberDashboardView: React.FC = () => {
-  const { requests, currentUser, addComment, updateRequestPriority, refreshRequests, extendRequestDeadline } = useApp();
+  const { requests, currentUser, addComment, updateRequestPriority, refreshRequests, extendRequestDeadline, requestRevisionForRequest, confirmMemberSatisfaction } = useApp();
   const { toast } = useToast();
   const memberRequests = filterRequestsForCurrentUser(requests, currentUser);
 
@@ -273,11 +285,21 @@ export const MemberDashboardView: React.FC = () => {
 
   const [feedbackText, setFeedbackText] = useState("");
   const [isExpedited, setIsExpedited] = useState(false);
+  const [sendBackOpen, setSendBackOpen] = useState(false);
+  const [sendBackText, setSendBackText] = useState("");
+  const [sendingBack, setSendingBack] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmNote, setConfirmNote] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const [trackingModalRequest, setTrackingModalRequest] =
     useState<ResearchRequest | null>(null);
   const trackingDialogRef = useDialogA11y<HTMLDivElement>({
     onClose: () => setTrackingModalRequest(null),
     enabled: !!trackingModalRequest,
+  });
+  const confirmDialogRef = useDialogA11y<HTMLDivElement>({
+    onClose: () => setConfirmOpen(false),
+    enabled: confirmOpen,
   });
 
   const [extendMenuOpenId, setExtendMenuOpenId] = useState<string | null>(null);
@@ -347,18 +369,65 @@ export const MemberDashboardView: React.FC = () => {
   useEffect(() => {
     if (trackingModalRequest) {
       fetchModalData(trackingModalRequest.id);
+      setSendBackOpen(false);
+      setSendBackText("");
     } else {
       setDetail(null);
       setActivityLogs([]);
     }
   }, [trackingModalRequest, fetchModalData]);
 
-  const handleSendFeedback = (e: React.FormEvent) => {
+  const handleSendFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!feedbackText.trim() || !activeRequest) return;
-    addComment(activeRequest.id, feedbackText);
-    setFeedbackText("");
-    toast.success("Your feedback has been appended to the request timeline.");
+    const persisted = await addComment(activeRequest.id, feedbackText);
+    if (persisted) {
+      setFeedbackText("");
+      toast.success("Your feedback has been appended to the request timeline.");
+    } else {
+      toast.error("Feedback could not be saved. Please try again.");
+    }
+  };
+
+  // Send an approved/delivered brief back to the research team with feedback.
+  const handleSendBack = async () => {
+    if (!detail || !sendBackText.trim()) return;
+    setSendingBack(true);
+    try {
+      await requestRevisionForRequest(detail.id, sendBackText);
+      await addComment(detail.id, sendBackText, "Revision Request");
+      toast.success(
+        "Brief sent back for revision. The research team and administrators have been notified.",
+      );
+      setSendBackOpen(false);
+      setSendBackText("");
+      await refreshRequests();
+      await fetchModalData(detail.id);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to send the brief back");
+    } finally {
+      setSendingBack(false);
+    }
+  };
+
+  // Record that the member is satisfied with the delivered research.
+  const handleConfirmSatisfaction = async () => {
+    if (!detail) return;
+    setConfirming(true);
+    try {
+      await confirmMemberSatisfaction(detail.id, confirmNote.trim() || undefined);
+      toast.success(
+        "Thank you. Your confirmation has been recorded and the administrators have been notified.",
+      );
+      setConfirmOpen(false);
+      setConfirmNote("");
+      await refreshRequests();
+      await fetchModalData(detail.id);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to record your confirmation");
+    } finally {
+      setConfirming(false);
+    }
   };
 
   const handleExtendDeadline = async (
@@ -397,6 +466,8 @@ export const MemberDashboardView: React.FC = () => {
         return "Approved";
       case "DELIVERED":
         return "Delivered";
+      case "MEMBER_CONFIRMED":
+        return "Confirmed by Member";
       case "CLOSED":
         return "Closed";
       case "OVERDUE":
@@ -415,6 +486,7 @@ export const MemberDashboardView: React.FC = () => {
       "REVISED",
       "APPROVED",
       "DELIVERED",
+      "CLOSED",
     ].includes(req.status);
     const isInProgress = [
       "IN_PROGRESS",
@@ -423,12 +495,16 @@ export const MemberDashboardView: React.FC = () => {
       "REVISED",
       "APPROVED",
       "DELIVERED",
+      "CLOSED",
     ].includes(req.status);
     const isRevision = ["REVISION_REQUESTED", "REVISED"].includes(req.status);
-    const isCompleted = ["APPROVED", "DELIVERED", "CLOSED"].includes(
+    const isCompleted = ["APPROVED", "DELIVERED", "MEMBER_CONFIRMED", "CLOSED"].includes(
       req.status,
     );
-    const isDelivered = ["DELIVERED", "CLOSED"].includes(req.status);
+    const isDelivered = ["DELIVERED", "MEMBER_CONFIRMED", "CLOSED"].includes(req.status);
+    // Confirming closes the brief, so the status cannot be the signal here.
+    const isMemberConfirmed = !!req.memberConfirmedAt;
+    const isAwaitingMember = AWAITING_MEMBER_STATUSES.includes(req.status);
 
     type StepStatus = "completed" | "active" | "pending";
     const steps: {
@@ -478,8 +554,20 @@ export const MemberDashboardView: React.FC = () => {
         date: isDelivered ? detail?.dateDelivered || req.deadline : null,
         desc: isDelivered
           ? "Secure brief transmitted to Member Office."
-          : "Delivery upon final peer-review approval.",
-        status: isDelivered ? "completed" : "pending",
+          : isAwaitingMember
+            ? "Approved and released to your office for your response."
+            : "Delivery upon final peer-review approval.",
+        status: isDelivered ? "completed" : isAwaitingMember ? "active" : "pending",
+      },
+      {
+        title: "Member Sign-off",
+        date: isMemberConfirmed ? detail?.memberConfirmedAt || null : null,
+        desc: isMemberConfirmed
+          ? "You confirmed the research met your requirements."
+          : isAwaitingMember
+            ? "Confirm the research is satisfactory, or send it back with feedback."
+            : "Recorded once you confirm the delivered research is satisfactory.",
+        status: isMemberConfirmed ? "completed" : isAwaitingMember ? "active" : "pending",
       },
     ];
     return steps;
@@ -1079,6 +1167,100 @@ export const MemberDashboardView: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* ── Member sign-off banner ── */}
+                  {detail.status === "MEMBER_CONFIRMED" && (
+                    <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                      <BadgeCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold text-emerald-800">
+                          You confirmed this brief
+                        </p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5">
+                          Confirmed on {formatDate(detail.memberConfirmedAt)}. The administrators have been notified and will close the request.
+                        </p>
+                        {detail.memberConfirmationNote && (
+                          <p className="text-[11px] text-emerald-800 mt-1 italic">
+                            Your remarks: &ldquo;{detail.memberConfirmationNote}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {AWAITING_MEMBER_STATUSES.includes(detail.status) && (
+                    <div className="space-y-3 rounded-lg border border-teal-200 bg-teal-50 p-4">
+                      <div className="flex items-start gap-3">
+                        <ShieldCheck className="w-5 h-5 text-teal-700 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-teal-900">
+                            {detail.status === "DELIVERED"
+                              ? "Research brief delivered"
+                              : "Research brief approved"}
+                          </p>
+                          <p className="text-[11px] text-teal-800 mt-0.5">
+                            Are you satisfied with this research? Confirm it so the
+                            administrators can close the request, or send it back with
+                            your feedback and the research team will revise it.
+                          </p>
+                        </div>
+                      </div>
+                      {sendBackOpen ? (
+                        <div className="space-y-2">
+                          <label
+                            htmlFor="member-send-back"
+                            className="block text-xs font-bold text-teal-900"
+                          >
+                            What needs to change?
+                          </label>
+                          <textarea
+                            id="member-send-back"
+                            value={sendBackText}
+                            onChange={(e) => setSendBackText(e.target.value)}
+                            rows={3}
+                            placeholder="e.g., Please expand the fiscal impact section and include 2025 figures..."
+                            className="w-full border border-[#c4c5d7] rounded p-2.5 text-xs outline-none focus:ring-1 focus:ring-[#0037b0] bg-white"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setSendBackOpen(false);
+                                setSendBackText("");
+                              }}
+                              className="px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleSendBack}
+                              disabled={sendingBack || !sendBackText.trim()}
+                              className="px-3 py-1.5 text-xs font-semibold bg-[#b45309] text-white rounded hover:bg-[#92400e] transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              {sendingBack ? "Sending..." : "Send Back for Revision"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <button
+                            onClick={() => setSendBackOpen(true)}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border border-[#b45309] text-[#b45309] text-xs font-bold rounded-lg hover:bg-amber-50 transition-colors cursor-pointer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Send Back with Feedback
+                          </button>
+                          <button
+                            onClick={() => setConfirmOpen(true)}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#006b2c] text-white text-xs font-bold rounded-lg hover:bg-[#005a25] transition-colors cursor-pointer"
+                          >
+                            <BadgeCheck className="w-3.5 h-3.5" />
+                            I&rsquo;m Satisfied
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* ── Assignment confirmation (team/officer identity withheld) ── */}
                   {(detail.officer || detail.assignments.length > 0) && (
                     <div className="flex items-center gap-3 bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
@@ -1102,7 +1284,7 @@ export const MemberDashboardView: React.FC = () => {
                       { label: "Submitted", date: detail.dateSubmitted },
                       { label: "Assigned", date: detail.dateAssigned },
                       { label: "Completed", date: detail.dateCompleted },
-                      { label: "Delivered", date: detail.dateDelivered },
+                      { label: "Confirmed", date: detail.memberConfirmedAt },
                     ].map((m) => (
                       <div
                         key={m.label}
@@ -1442,6 +1624,79 @@ export const MemberDashboardView: React.FC = () => {
                 className="text-xs font-semibold px-4 py-2 rounded bg-white border border-[#c4c5d7] text-[#191c1d] hover:bg-gray-50 transition-colors"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          MEMBER SATISFACTION CONFIRMATION MODAL
+          ═══════════════════════════════════════════════════════ */}
+      {confirmOpen && detail && (
+        <div
+          ref={confirmDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="member-satisfaction-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            className="bg-white border border-[#c4c5d7] rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 bg-emerald-50 border-b border-emerald-100 flex items-center gap-3">
+              <BadgeCheck className="w-6 h-6 text-emerald-600 shrink-0" />
+              <div>
+                <h3
+                  id="member-satisfaction-title"
+                  className="font-sans font-bold text-gray-900 text-sm"
+                >
+                  Confirm You Are Satisfied
+                </h3>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  {detail.title}
+                </p>
+              </div>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                This records that the research answers your question. The date and
+                time will be logged, the administrators will be notified, and the
+                request will move to <strong>Confirmed by Member</strong> so they can
+                close it out.
+              </p>
+              <label
+                htmlFor="member-satisfaction-note"
+                className="block text-xs font-bold text-gray-700"
+              >
+                Remarks{" "}
+                <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <textarea
+                id="member-satisfaction-note"
+                value={confirmNote}
+                onChange={(e) => setConfirmNote(e.target.value)}
+                rows={3}
+                placeholder="e.g., This covers the western region breakdown we needed. Thank you."
+                className="w-full border border-[#c4c5d7] rounded p-3 text-xs outline-none focus:ring-1 focus:ring-[#0037b0]"
+              />
+            </div>
+            <div className="px-6 py-4 bg-[#f3f4f5] border-t border-[#c4c5d7] flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSatisfaction}
+                disabled={confirming}
+                className="px-4 py-2 text-xs font-semibold bg-[#006b2c] text-white rounded hover:bg-[#005a25] transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                <BadgeCheck className="w-3.5 h-3.5" />
+                {confirming ? "Recording..." : "Yes, I'm Satisfied"}
               </button>
             </div>
           </div>

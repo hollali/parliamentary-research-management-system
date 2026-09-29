@@ -1,5 +1,11 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+/**
+ * Upper bound on a single request. Without it a request that never settles
+ * leaves the caller's spinner on forever.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
 if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
   console.error('VITE_API_URL is not set. API calls will fail in production.');
 }
@@ -9,6 +15,7 @@ interface ApiOptions {
   body?: any;
   headers?: Record<string, string>;
   keepalive?: boolean;
+  signal?: AbortSignal;
 }
 
 function getToken(): string | null {
@@ -23,8 +30,25 @@ function clearToken() {
   localStorage.removeItem('prrms_token');
 }
 
+/**
+ * Invoked when the API rejects our credentials so the app can drop the stale
+ * session and return the user to the login screen. Set once by AppContext.
+ * Without this, an expired token left the app shell rendered with every
+ * request failing and no way back except a manual reload.
+ */
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
+function handleAuthFailure() {
+  clearToken();
+  onUnauthorized?.();
+}
+
 async function request<T = any>(endpoint: string, options: ApiOptions = {}): Promise<T> {
-  const { method = 'GET', body, headers: extraHeaders = {} } = options;
+  const { method = 'GET', body, headers: extraHeaders = {}, signal } = options;
   const token = getToken();
 
   const headers: Record<string, string> = {
@@ -36,12 +60,23 @@ async function request<T = any>(endpoint: string, options: ApiOptions = {}): Pro
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    keepalive: options.keepalive,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      keepalive: options.keepalive,
+      signal: options.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // A rejected fetch is a transport failure (offline, DNS, CORS, abort) and
+    // must not be reported as an auth failure.
+    if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+      throw new Error(options.signal ? 'Request cancelled' : 'Request timed out — please try again');
+    }
+    throw new Error('Network error — check your connection and try again');
+  }
 
   const text = await res.text();
   if (!res.ok) {
@@ -52,6 +87,9 @@ async function request<T = any>(endpoint: string, options: ApiOptions = {}): Pro
       } catch {
         errorBody = { message: text };
       }
+    }
+    if (res.status === 401) {
+      handleAuthFailure();
     }
     throw new Error(errorBody.message || errorBody.error || `API error: ${res.status}`);
   }
@@ -67,7 +105,7 @@ async function request<T = any>(endpoint: string, options: ApiOptions = {}): Pro
   }
 }
 
-async function uploadRequest<T = any>(endpoint: string, formData: FormData): Promise<T> {
+async function uploadRequest<T = any>(endpoint: string, formData: FormData, options: ApiOptions = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) {
@@ -78,14 +116,23 @@ async function uploadRequest<T = any>(endpoint: string, formData: FormData): Pro
     method: 'POST',
     headers,
     body: formData,
+    signal: options.signal,
   });
-
   if (!res.ok) {
+    if (res.status === 401) {
+      handleAuthFailure();
+    }
     const error = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(error.message || `API error: ${res.status}`);
+    throw new Error(error.message || error.error || `API error: ${res.status}`);
   }
 
-  return res.json();
+  // Guard the parse: an empty or non-JSON 2xx body previously rejected with a
+  // raw SyntaxError that bypassed the message formatting every caller expects.
+  try {
+    return await res.json();
+  } catch {
+    return null as T;
+  }
 }
 
 // ─── Auth ───────────────────────────────────────────────
@@ -178,15 +225,15 @@ export async function getRequestActivity(id: string) {
 
 export async function createRequest(data: {
   title: string;
-  subject?: string;
   description: string;
   scope?: string;
+  requestingOffice?: string;
   keyStakeholders?: string;
   dataSources?: string;
   language?: string;
   priority?: string;
   deadline: string;
-  committeeId?: string;
+  committeeId?: string | null;
   templateId?: string;
 }) {
   return request('/requests/', { method: 'POST', body: data });
@@ -292,8 +339,8 @@ export async function compareReportVersions(reportId: string, v1: number, v2: nu
 
 // ─── Global Search ──────────────────────────────────────
 
-export async function globalSearch(query: string) {
-  return request(`/requests/search/global?q=${encodeURIComponent(query)}`);
+export async function globalSearch(query: string, signal?: AbortSignal) {
+  return request(`/requests/search/global?q=${encodeURIComponent(query)}`, { signal });
 }
 
 // ─── Assignment Accept/Decline ──────────────────────────
@@ -326,7 +373,7 @@ export async function getReviews(requestId: string) {
 }
 
 export async function createReview(data: {
-  reportId: string;
+  reportId?: string;
   requestId: string;
   section?: string;
   text: string;
@@ -338,7 +385,7 @@ export async function createReview(data: {
   return request('/reviews/', { method: 'POST', body: data });
 }
 
-export async function requestRevision(data: { reportId: string; requestId: string; commentText?: string }) {
+export async function requestRevision(data: { requestId: string; reportId?: string; commentText?: string }) {
   return request('/reviews/request-revision', {
     method: 'POST',
     body: { requestId: data.requestId, commentText: data.commentText },
@@ -347,6 +394,13 @@ export async function requestRevision(data: { reportId: string; requestId: strin
 
 export async function approveReport(data: { reportId: string; requestId: string }) {
   return request('/reviews/approve', { method: 'POST', body: data });
+}
+
+export async function confirmSatisfaction(data: { requestId: string; note?: string }) {
+  return request('/reviews/confirm', {
+    method: 'POST',
+    body: { requestId: data.requestId, note: data.note },
+  });
 }
 
 export async function resolveReviewComment(commentId: string) {

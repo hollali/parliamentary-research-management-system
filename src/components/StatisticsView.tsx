@@ -25,6 +25,7 @@ const STATUS_HEX: Record<string, string> = {
   REVISED: '#6366f1',
   APPROVED: '#15803d',
   DELIVERED: '#0d9488',
+  MEMBER_CONFIRMED: '#0f766e',
   CLOSED: '#475569',
 };
 
@@ -37,10 +38,11 @@ const STATUS_ORDER = [
   'REVISED',
   'APPROVED',
   'DELIVERED',
+  'MEMBER_CONFIRMED',
   'CLOSED',
 ];
 
-const COMPLETED = ['APPROVED', 'DELIVERED', 'CLOSED'];
+const COMPLETED = ['APPROVED', 'DELIVERED', 'MEMBER_CONFIRMED', 'CLOSED'];
 const ACTIVE = ['SUBMITTED', 'ASSIGNED', 'IN_PROGRESS', 'DRAFT_SUBMITTED', 'REVISION_REQUESTED', 'REVISED'];
 
 export const StatisticsView: React.FC = () => {

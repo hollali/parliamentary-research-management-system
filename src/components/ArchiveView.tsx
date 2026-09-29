@@ -52,7 +52,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
     getRequests({ limit: 500, archived: true })
       .then((data) => {
         const requests = Array.isArray(data) ? data : (data?.requests || []);
-        setArchived(requests.filter((r: any) => ['APPROVED', 'DELIVERED', 'CLOSED'].includes(r.status)));
+        setArchived(requests.filter((r: any) => ['APPROVED', 'DELIVERED', 'MEMBER_CONFIRMED', 'CLOSED'].includes(r.status)));
         setLoading(false);
       })
       .catch(() => {
@@ -86,6 +86,8 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
         return <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Approved</span>;
       case 'DELIVERED':
         return <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Delivered</span>;
+      case 'MEMBER_CONFIRMED':
+        return <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Confirmed by Member</span>;
       case 'CLOSED':
         return <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Closed</span>;
       default:
@@ -173,6 +175,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
   const statChips = [
     { label: 'Approved', count: countByStatus('APPROVED'), cls: 'bg-emerald-100 text-emerald-800', icon: ShieldCheck },
     { label: 'Delivered', count: countByStatus('DELIVERED'), cls: 'bg-blue-100 text-blue-800', icon: Eye },
+    { label: 'Confirmed', count: archived.filter((r: any) => !!r.memberConfirmedAt).length, cls: 'bg-emerald-100 text-emerald-800', icon: ShieldCheck },
     { label: 'Closed', count: countByStatus('CLOSED'), cls: 'bg-gray-100 text-gray-600', icon: Archive },
   ];
 
@@ -489,6 +492,9 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({ onNavigate }) => {
                 )}
                 {viewRequest.status === 'CLOSED' && (
                   <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Closed</span>
+                )}
+                {viewRequest.memberConfirmedAt && (
+                  <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider">Confirmed by Member</span>
                 )}
                 {viewRequest.priority === 'URGENT' && (
                   <span className="bg-red-50 text-red-700 text-[10px] font-extrabold px-2 py-0.5 rounded border border-red-200 uppercase tracking-wider">

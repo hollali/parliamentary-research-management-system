@@ -25,6 +25,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const searchDialogRef = useDialogA11y<HTMLDivElement>({ onClose, enabled: isOpen });
 
@@ -57,19 +58,28 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onNavigate, isOpen, 
 
   const handleSearch = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Abort the in-flight query. Debouncing alone does not prevent a slow
+    // response for "ab" landing after a fast response for "abc" and
+    // overwriting the newer results with stale ones.
+    if (abortRef.current) abortRef.current.abort();
     if (q.length < 2) {
       setResults({ requests: [], users: [], reports: [] });
+      setLoading(false);
       return;
     }
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
-        const data = await globalSearch(q);
+        const data = await globalSearch(q, controller.signal);
+        if (controller.signal.aborted) return;
         setResults(data || { requests: [], users: [], reports: [] });
       } catch {
+        if (controller.signal.aborted) return;
         setResults({ requests: [], users: [], reports: [] });
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }, 300);
   }, []);

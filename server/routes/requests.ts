@@ -4,13 +4,14 @@ import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { clampPagination } from "../lib/pagination.js";
 import { shouldNotify, createNotification } from "../lib/notifications.js";
 import { logger } from "../lib/logger.js";
-import { generateUniqueRequestNumber, lookupByIdOrNumber } from "../lib/requestUtils.js";
+import { createWithUniqueRequestNumber, lookupByIdOrNumber } from "../lib/requestUtils.js";
+import { authorizeRequest, requestScopeFor } from "../lib/authorization.js";
 
 const router = Router();
 
-const VALID_STATUSES = ["SUBMITTED","ASSIGNED","IN_PROGRESS","DRAFT_SUBMITTED","REVISION_REQUESTED","REVISED","APPROVED","DELIVERED","CLOSED"];
+const VALID_STATUSES = ["SUBMITTED","ASSIGNED","IN_PROGRESS","DRAFT_SUBMITTED","REVISION_REQUESTED","REVISED","APPROVED","DELIVERED","MEMBER_CONFIRMED","CLOSED"];
 const VALID_PRIORITIES = ["STANDARD","URGENT"];
-const ARCHIVED_STATUSES = ["APPROVED", "DELIVERED", "CLOSED"];
+const ARCHIVED_STATUSES = ["APPROVED", "DELIVERED", "MEMBER_CONFIRMED", "CLOSED"];
 
 // List requests (filtered by role)
 router.get("/", authenticateToken, async (req, res) => {
@@ -123,8 +124,16 @@ router.get("/", authenticateToken, async (req, res) => {
 // Get single request
 router.get("/:id", authenticateToken, async (req, res) => {
   try {
+    // Confirm the caller is a participant on this request before reading it.
+    // The list endpoint is role-scoped, so without this the scoping was only
+    // hiding rows, not the objects themselves.
+    const access = await authorizeRequest(req.params.id, req.user!);
+    if (!access) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
     const request = await prisma.researchRequest.findUnique({
-      where: lookupByIdOrNumber(req.params.id),
+      where: { id: access.id },
       include: {
         category: true,
         submitter: { select: { id: true, firstName: true, lastName: true, initials: true, title: true, email: true } },
@@ -167,21 +176,18 @@ router.get("/:id", authenticateToken, async (req, res) => {
 // Get activity log for a specific request
 router.get("/:id/activity", authenticateToken, async (req, res) => {
   try {
-    const request = await prisma.researchRequest.findUnique({
-      where: lookupByIdOrNumber(req.params.id),
-      select: { id: true, submitterId: true },
-    });
-    if (!request) {
+    const access = await authorizeRequest(req.params.id, req.user!);
+    if (!access) {
       return res.status(404).json({ error: "Request not found" });
     }
 
     const [reportIds, commentIds] = await Promise.all([
       prisma.researchReport.findMany({
-        where: { requestId: request.id },
+        where: { requestId: access.id },
         select: { id: true },
       }),
       prisma.reviewComment.findMany({
-        where: { requestId: request.id },
+        where: { requestId: access.id },
         select: { id: true },
       }),
     ]);
@@ -189,7 +195,7 @@ router.get("/:id/activity", authenticateToken, async (req, res) => {
     const logs = await prisma.activityLog.findMany({
       where: {
         OR: [
-          { entityType: "ResearchRequest", entityId: request.id },
+          { entityType: "ResearchRequest", entityId: access.id },
           { entityType: "ResearchReport", entityId: { in: reportIds.map(r => r.id) } },
           { entityType: "ReviewComment", entityId: { in: commentIds.map(c => c.id) } },
         ],
@@ -211,37 +217,46 @@ router.get("/:id/activity", authenticateToken, async (req, res) => {
 // Create request
 router.post("/", authenticateToken, async (req, res) => {
   try {
-    const { title, subject, description, scope, keyStakeholders, dataSources, language, priority, deadline, committeeId, templateId, attachments } = req.body;
+    const { title, subject, description, scope, requestingOffice, keyStakeholders, dataSources, language, priority, deadline, committeeId, templateId, attachments } = req.body;
 
     if (!title || !description || !deadline) {
       return res.status(400).json({ error: "Title, description, and deadline are required" });
+    }
+    if (requestingOffice !== undefined && requestingOffice !== null && typeof requestingOffice !== "string") {
+      return res.status(400).json({ error: "requestingOffice must be a string" });
     }
 
     if (new Date(deadline) <= new Date()) {
       return res.status(400).json({ error: "Deadline must be in the future" });
     }
 
-    const request = await prisma.researchRequest.create({
-      data: {
-        requestNumber: await generateUniqueRequestNumber(),
-        title,
-        subject,
-        description,
-        scope,
-        keyStakeholders,
-        dataSources,
-        language: language || "English",
-        priority: priority || "STANDARD",
-        deadline: new Date(deadline),
-        submitterId: req.user!.userId,
-        committeeId,
-        templateId: templateId || null,
-      },
-      include: {
-        category: true,
-        submitter: { select: { id: true, firstName: true, lastName: true, initials: true } },
-      },
-    });
+    const request = await createWithUniqueRequestNumber((requestNumber) =>
+      prisma.researchRequest.create({
+        data: {
+          requestNumber,
+          title,
+          subject,
+          description,
+          scope,
+          requestingOffice:
+            requestingOffice === undefined || requestingOffice === null
+              ? null
+              : String(requestingOffice).trim() || null,
+          keyStakeholders,
+          dataSources,
+          language: language || "English",
+          priority: priority || "STANDARD",
+          deadline: new Date(deadline),
+          submitterId: req.user!.userId,
+          committeeId,
+          templateId: templateId || null,
+        },
+        include: {
+          category: true,
+          submitter: { select: { id: true, firstName: true, lastName: true, initials: true } },
+        },
+      }),
+    );
 
     await prisma.activityLog.create({
       data: {
@@ -495,27 +510,45 @@ router.get("/search/global", authenticateToken, async (req, res) => {
       ],
     };
 
+    // Report search is scoped identically. Without this the reports query
+    // returned the titles and request numbers of every member's briefs, and
+    // matching on `content` turned search into a boolean oracle for
+    // reconstructing another member's confidential draft text.
+    const reportScope: any = {};
+    let reportWhere: any = { OR: [{ title: mode }, { content: mode }] };
+
     if (role === "MP") {
       requestWhere.submitterId = userId;
+      reportWhere = { AND: [reportWhere, { request: { submitterId: userId } }] };
     } else if (role === "RESEARCH_OFFICER") {
-      requestWhere.OR = [
-        { title: mode },
-        { subject: mode },
-        { requestNumber: mode },
-        { description: mode },
+      reportScope.OR = [
+        { assignedOfficerId: userId },
+        { assignments: { some: { assignedToId: userId, declinedAt: null, supersededAt: null } } },
+        { team: { members: { some: { userId } } } },
       ];
-      requestWhere.AND = [
-        {
-          OR: [
-            { assignedOfficerId: userId },
-            { assignments: { some: { assignedToId: userId } } },
-            { team: { members: { some: { userId } } } },
-          ],
-        },
-      ];
+      requestWhere.AND = [reportScope];
+      reportWhere = { AND: [reportWhere, { request: reportScope }] };
     }
 
-    const [requests, users, reports] = await Promise.all([
+    // The user directory is staff/committee-facing reference data, so it is
+    // limited to admins. Previously every account could enumerate the full
+    // staff list.
+    const users = role === "ADMIN"
+      ? await prisma.user.findMany({
+          where: {
+            OR: [
+              { firstName: mode },
+              { lastName: mode },
+              { email: mode },
+            ],
+            isActive: true,
+          },
+          select: { id: true, firstName: true, lastName: true, role: true, initials: true },
+          take: 10,
+        })
+      : [];
+
+    const [requests, reports] = await Promise.all([
       prisma.researchRequest.findMany({
         where: requestWhere,
         select: {
@@ -530,25 +563,8 @@ router.get("/search/global", authenticateToken, async (req, res) => {
         take: 20,
         orderBy: { createdAt: "desc" },
       }),
-      prisma.user.findMany({
-        where: {
-          OR: [
-            { firstName: mode },
-            { lastName: mode },
-            { email: mode },
-          ],
-          isActive: true,
-        },
-        select: { id: true, firstName: true, lastName: true, role: true, initials: true },
-        take: 10,
-      }),
       prisma.researchReport.findMany({
-        where: {
-          OR: [
-            { title: mode },
-            { content: mode },
-          ],
-        },
+        where: reportWhere,
         select: {
           id: true,
           title: true,
@@ -616,8 +632,12 @@ router.post("/:requestId/share", authenticateToken, requireRole("ADMIN"), async 
 // Get committees a request is shared with
 router.get("/:requestId/shared", authenticateToken, async (req, res) => {
   try {
+    const access = await authorizeRequest(req.params.requestId, req.user!);
+    if (!access) {
+      return res.status(404).json({ error: "Request not found" });
+    }
     const shares = await prisma.sharedResearch.findMany({
-      where: { requestId: req.params.requestId },
+      where: { requestId: access.id },
       include: {
         sharedWith: { select: { id: true, name: true, shortName: true, committeeType: true } },
         sharedBy: { select: { id: true, firstName: true, lastName: true } },
@@ -634,8 +654,14 @@ router.get("/:requestId/shared", authenticateToken, async (req, res) => {
 // Get all requests shared with a specific committee
 router.get("/shared/committee/:committeeId", authenticateToken, async (req, res) => {
   try {
+    const { role, userId } = req.user!;
+    // Sharing a brief with a committee does not make it public to the whole
+    // user base. Reuse the shared request scope, expressed against the related
+    // request so the filtering happens in the database.
+    const requestScope = requestScopeFor({ userId, role });
+
     const shares = await prisma.sharedResearch.findMany({
-      where: { sharedWithId: req.params.committeeId },
+      where: { sharedWithId: req.params.committeeId, request: requestScope },
       include: {
         request: {
           select: {
@@ -646,6 +672,7 @@ router.get("/shared/committee/:committeeId", authenticateToken, async (req, res)
         sharedBy: { select: { firstName: true, lastName: true } },
       },
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json(shares);
   } catch (error) {

@@ -24,6 +24,8 @@ enum RequestStatus {
   REVISED
   APPROVED
   DELIVERED
+  // The requesting MP reviewed the delivered brief and confirmed satisfaction.
+  MEMBER_CONFIRMED
   CLOSED
 }
 
@@ -39,6 +41,7 @@ enum NotificationType {
   REVISION_REQUESTED
   REPORT_APPROVED
   REPORT_DELIVERED
+  MEMBER_CONFIRMED
   GENERAL
 }
 
@@ -63,6 +66,7 @@ enum ActivityAction {
   FILE_UPLOADED
   COMMENT_ADDED
   APPROVED
+  MEMBER_CONFIRMED
   REJECTED
   DEACTIVATED
   LOGIN
@@ -91,7 +95,7 @@ model User {
   passwordHash      String
   firstName         String
   lastName          String
-  role              Role
+  role              Role      @default(MP)
   title             String?
   phone             String?
   avatarUrl         String?
@@ -112,8 +116,14 @@ model User {
   // Research requests assigned to this user (as Officer)
   assignedRequests ResearchRequest[] @relation("AssignedOfficer")
 
+  // Research requests this user signed off on as the requesting MP
+  confirmedRequests ResearchRequest[] @relation("MemberConfirmedBy")
+
   // Research reports authored by this user
   authoredReports ResearchReport[] @relation("ReportAuthor")
+
+  // Research reports this user approved
+  approvedReports ResearchReport[] @relation("ReportApprover")
 
   // Reports reviewed by this user
   reviewedReports ReviewComment[] @relation("CommentAuthor")
@@ -147,6 +157,8 @@ model User {
   // Custom templates created by this user
   createdTemplates Template[] @relation("TemplateCreator")
 
+  // Unindexed foreign key: resolving a member's department was a seq scan.
+  @@index([departmentId])
   @@map("users")
 }
 
@@ -181,35 +193,42 @@ model Committee {
 // ─── Research Request ───────────────────────────────────
 
 model ResearchRequest {
-  id                String        @id @default(uuid())
-  requestNumber     String        @unique
-  title             String
-  subject           String?
-  description       String
-  scope             String?
-  keyStakeholders   String?
-  dataSources       String?
-  language          String        @default("English")
-  priority          Priority      @default(STANDARD)
-  status            RequestStatus @default(SUBMITTED)
-  deadline          DateTime
-  dateSubmitted     DateTime      @default(now())
-  dateAssigned      DateTime?
-  dateCompleted     DateTime?
-  dateDelivered     DateTime?
-  dateClosed        DateTime?
-  draftVersion      Int           @default(0)
-  committeeId       String?
-  templateId        String?
-  submitterId       String
-  assignedOfficerId String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  id                     String        @id @default(uuid())
+  requestNumber          String        @unique
+  title                  String
+  subject                String?
+  description            String
+  scope                  String?
+  // Office, ministry, or cabinet the request originates from (requesting side).
+  requestingOffice       String?
+  keyStakeholders        String?
+  dataSources            String?
+  language               String        @default("English")
+  priority               Priority      @default(STANDARD)
+  status                 RequestStatus @default(SUBMITTED)
+  deadline               DateTime
+  dateSubmitted          DateTime      @default(now())
+  dateAssigned           DateTime?
+  dateCompleted          DateTime?
+  dateDelivered          DateTime?
+  dateClosed             DateTime?
+  // Set when the requesting MP signs off on a delivered brief.
+  memberConfirmedAt      DateTime?
+  memberConfirmationNote String?
+  memberConfirmedById    String?
+  draftVersion           Int           @default(0)
+  committeeId            String?
+  templateId             String?
+  submitterId            String
+  assignedOfficerId      String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
-  category  Committee? @relation(fields: [committeeId], references: [id])
-  template  Template?  @relation(fields: [templateId], references: [id])
-  submitter User       @relation("RequestSubmitter", fields: [submitterId], references: [id])
-  officer   User?      @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id])
+  category          Committee? @relation(fields: [committeeId], references: [id])
+  template          Template?  @relation(fields: [templateId], references: [id])
+  submitter         User       @relation("RequestSubmitter", fields: [submitterId], references: [id])
+  officer           User?      @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id])
+  memberConfirmedBy User?      @relation("MemberConfirmedBy", fields: [memberConfirmedById], references: [id], onDelete: SetNull)
 
   reports     ResearchReport[]
   comments    ReviewComment[]
@@ -226,6 +245,8 @@ model ResearchRequest {
   @@index([deadline])
   @@index([committeeId])
   @@index([teamId])
+  @@index([memberConfirmedById])
+  @@index([templateId])
   @@map("research_requests")
 }
 
@@ -253,6 +274,10 @@ model Assignment {
 
   @@index([requestId])
   @@index([assignedToId])
+  // Foreign keys used to be unindexed, so every "what did this officer
+  // assign" and "which requests does this team cover" question was a seq scan.
+  @@index([assignedById])
+  @@index([teamId])
   @@map("assignments")
 }
 
@@ -272,6 +297,7 @@ model ResearchTeam {
   assignments Assignment[]
   requests    ResearchRequest[]
 
+  @@index([leadId])
   @@map("research_teams")
 }
 
@@ -280,12 +306,15 @@ model TeamMember {
   teamId    String
   userId    String
   joinedAt  DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   team ResearchTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
+  // The unique index above only helps lookups by (teamId, userId). Resolving
+  // "which teams is this officer on" is keyed on userId alone.
+  @@index([userId])
   @@map("team_members")
 }
 
@@ -312,12 +341,18 @@ model ResearchReport {
   request  ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   author   User            @relation("ReportAuthor", fields: [authorId], references: [id])
   uploader User?           @relation("ReportUploader", fields: [uploadedById], references: [id])
+  approver User?           @relation("ReportApprover", fields: [approvedById], references: [id], onDelete: SetNull)
 
   versions ReportVersion[]
   comments ReviewComment[]
 
   @@index([requestId])
   @@index([authorId])
+  @@index([uploadedById])
+  // One report per version number per request. The application allocated
+  // versions with a read-then-write, so two concurrent saves could produce the
+  // same version; the database is the only reliable arbiter.
+  @@unique([requestId, version], map: "research_reports_requestId_version_key")
   @@map("research_reports")
 }
 
@@ -333,7 +368,7 @@ model ReportVersion {
   fileSize  Int?
   notes     String?
   createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  updatedAt DateTime  @default(now()) @updatedAt
 
   report ResearchReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
@@ -345,7 +380,7 @@ model ReportVersion {
 
 model ReviewComment {
   id              String   @id @default(uuid())
-  reportId        String
+  reportId        String?
   requestId       String
   authorId        String
   parentId        String?
@@ -358,7 +393,7 @@ model ReviewComment {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  report  ResearchReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  report  ResearchReport? @relation(fields: [reportId], references: [id], onDelete: Cascade)
   request ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   author  User            @relation("CommentAuthor", fields: [authorId], references: [id])
   parent  ReviewComment?  @relation("CommentReplies", fields: [parentId], references: [id])
@@ -367,6 +402,7 @@ model ReviewComment {
   @@index([reportId])
   @@index([requestId])
   @@index([parentId])
+  @@index([authorId])
   @@map("review_comments")
 }
 
@@ -381,12 +417,13 @@ model Attachment {
   filePath     String
   fileSize     Int?
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime @default(now()) @updatedAt
 
   request  ResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   uploader User            @relation("AttachmentUploader", fields: [uploadedById], references: [id])
 
   @@index([requestId])
+  @@index([uploadedById])
   @@map("attachments")
 }
 
@@ -399,13 +436,15 @@ model SharedResearch {
   sharedById   String
   notes        String?
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime @default(now()) @updatedAt
 
   request    ResearchRequest @relation("SharedWith", fields: [requestId], references: [id], onDelete: Cascade)
   sharedWith Committee       @relation("SharedCommittee", fields: [sharedWithId], references: [id], onDelete: Cascade)
   sharedBy   User            @relation("SharedBy", fields: [sharedById], references: [id], onDelete: Cascade)
 
   @@unique([requestId, sharedWithId])
+  @@index([sharedWithId])
+  @@index([sharedById])
   @@map("shared_research")
 }
 
@@ -420,7 +459,7 @@ model Notification {
   link        String?
   isRead      Boolean          @default(false)
   createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  updatedAt   DateTime         @default(now()) @updatedAt
 
   recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
 
@@ -487,7 +526,7 @@ model Template {
   isBuiltIn   Boolean  @default(false)
   createdById String?
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @default(now()) @updatedAt
 
   creator User? @relation("TemplateCreator", fields: [createdById], references: [id])
 

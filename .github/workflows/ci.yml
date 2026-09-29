@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: prrms
+          POSTGRES_PASSWORD: prrms
+          POSTGRES_DB: prrms_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://prrms:prrms@localhost:5432/prrms_ci
+      JWT_SECRET: ci-only-secret-not-used-by-any-real-deployment
+      NODE_ENV: ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      - name: Apply migrations from scratch
+        run: npx prisma migrate deploy
+
+      # prisma migrate diff replays the migration history into the shadow
+      # database named above, so it has to exist.
+      - name: Create the shadow database
+        run: psql "postgresql://prrms:prrms@localhost:5432/postgres" -c "CREATE DATABASE prrms_shadow"
+
+      # The schema and the migration history drifting apart is what caused the
+      # `password_reset_tokens` / `templates` tables to be missing from a
+      # database that had been "fully migrated". This step fails the build if
+      # a single object differs between the two.
+      #
+      # Prisma 7 takes the shadow database from prisma.config.ts
+      # (datasource.shadowDatabaseUrl), not from a CLI flag.
+      - name: Verify migrations match the schema
+        env:
+          SHADOW_DATABASE_URL: postgresql://prrms:prrms@localhost:5432/prrms_shadow
+        run: |
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema prisma/schema.prisma \
+            --exit-code

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma.js";
-import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { authenticateToken, requireRole, invalidateActiveUserCache } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
 
 const VALID_ROLES = ["ADMIN", "RESEARCH_OFFICER", "MP"] as const;
@@ -220,6 +220,10 @@ router.post("/:id/deactivate", authenticateToken, requireRole("ADMIN"), async (r
       where: { id: req.params.id },
       data: { isActive: false },
     });
+
+    // Drop the cached isActive result so the deactivated account loses access on
+    // its very next request instead of after the cache window.
+    invalidateActiveUserCache(req.params.id);
 
     await prisma.activityLog.create({
       data: {

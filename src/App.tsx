@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useState, useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
@@ -6,10 +7,13 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { LoginView } from './components/LoginView';
-import { SupportView } from './components/SupportView';
-import { GlobalSearch } from './components/GlobalSearch';
 import { FileText, Loader2 } from 'lucide-react';
 import { getToken } from './lib/api';
+
+// Rendered only on demand — the support page, and the search palette behind a
+// keyboard shortcut. Both used to be pulled into the initial shell bundle.
+const SupportView = lazy(() => import('./components/SupportView').then(m => ({ default: m.SupportView })));
+const GlobalSearch = lazy(() => import('./components/GlobalSearch').then(m => ({ default: m.GlobalSearch })));
 
 const AdminDashboardView = lazy(() => import('./components/AdminDashboardView').then(m => ({ default: m.AdminDashboardView })));
 const MemberDashboardView = lazy(() => import('./components/MemberDashboardView').then(m => ({ default: m.MemberDashboardView })));
@@ -52,6 +56,16 @@ const VIEW_TITLES: Record<string, string> = {
   workflow: 'Officer Workflow',
   support: 'Support',
 };
+
+/**
+ * Resets the error boundary whenever the route changes, so a view that throws
+ * does not leave the user stuck on its error screen — navigating away and back
+ * remounts the subtree and recovers.
+ */
+function ViewErrorBoundary({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
+}
 
 function AppContent() {
   const { currentUser, logout } = useApp();
@@ -287,11 +301,15 @@ function AppContent() {
           onSearchClick={() => setIsSearchOpen(true)}
         />
 
-        <GlobalSearch
-          onNavigate={handleNavigate}
-          isOpen={isSearchOpen}
-          onClose={() => setIsSearchOpen(false)}
-        />
+        {isSearchOpen && (
+          <Suspense fallback={null}>
+            <GlobalSearch
+              onNavigate={handleNavigate}
+              isOpen={isSearchOpen}
+              onClose={() => setIsSearchOpen(false)}
+            />
+          </Suspense>
+        )}
 
         <main className="flex-1 pt-24 px-4 sm:px-6 lg:px-8 pb-12 overflow-y-auto max-w-[120rem] mx-auto w-full min-w-0">
           <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-[#0037b0]" /></div>}>
@@ -305,14 +323,18 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <AppProvider>
-        <ToastProvider>
-          <BrowserRouter>
+    // The boundary sits BELOW AppProvider and BrowserRouter on purpose. Wrapping
+    // them meant a crash in any view destroyed auth state and routing, leaving
+    // no way back except a full reload. AppProvider and ToastProvider are
+    // cheap and must never be unmounted by a view-level error.
+    <AppProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <ViewErrorBoundary>
             <AppContent />
-          </BrowserRouter>
-        </ToastProvider>
-      </AppProvider>
-    </ErrorBoundary>
+          </ViewErrorBoundary>
+        </BrowserRouter>
+      </ToastProvider>
+    </AppProvider>
   );
 }
